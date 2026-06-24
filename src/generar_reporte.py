@@ -161,6 +161,13 @@ def main() -> int:
     salida.append(f"Estado auditor: {pick['estado_auditor']}")
     salida.append("")
 
+    pick_ajustado_path = BASE_DIR / "reports" / "pick_ajustado_ultimo.txt"
+    if pick_ajustado_path.exists():
+        salida.append("PICK AJUSTADO ANTI-TUMBA")
+        salida.append("-" * 60)
+        salida.extend(pick_ajustado_path.read_text(encoding="utf-8", errors="ignore").strip().splitlines())
+        salida.append("")
+
     salida.append("SURVIVOR")
     salida.append("-" * 60)
     salida.append(f"Equipos bloqueados: {', '.join(bloqueados) if bloqueados else 'No detectados'}")
@@ -186,12 +193,18 @@ def main() -> int:
         fecha = partido.get("fecha", "PENDIENTE")
         hora = partido.get("hora", "PENDIENTE")
         bajas_txt = formatear_bajas(partido)
+        riesgo = partido.get("riesgo_sorpresa", {}) if isinstance(partido.get("riesgo_sorpresa", {}), dict) else {}
+        riesgo_etiqueta = riesgo.get("etiqueta", "No calculado")
+        riesgo_score = riesgo.get("score", "N/A")
+        riesgo_recomendacion = riesgo.get("recomendacion", "Sin recomendación")
 
         salida.append(f"{idx}. {local} vs {visitante}")
         salida.append(f"   Estadio: {estadio}")
         salida.append(f"   Ciudad: {ciudad}")
         salida.append(f"   Fecha/hora: {fecha} {hora}")
         salida.append(f"   Bajas: {bajas_txt}")
+        salida.append(f"   Riesgo sorpresa: {riesgo_etiqueta} | Score: {riesgo_score}/100")
+        salida.append(f"   Recomendación riesgo: {riesgo_recomendacion}")
         salida.append("")
 
     output_path = Path(args.output)
