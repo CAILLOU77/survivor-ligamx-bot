@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import unicodedata
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -27,6 +28,9 @@ NOTICIAS_PATH = BASE_DIR / "data" / "noticias_ligamx.txt"
 SALIDA_BAJAS_PATH = BASE_DIR / "data" / "bajas_ia_ultimo.json"
 SALIDA_REVISION_PATH = BASE_DIR / "data" / "bajas_ia_pendientes_revision.json"
 GROQ_CACHE_MINUTES = int(os.getenv("GROQ_CACHE_MINUTES", "60"))
+GROQ_MAX_NOTICIAS = int(os.getenv("GROQ_MAX_NOTICIAS", "15"))
+GROQ_MAX_INPUT_CHARS = int(os.getenv("GROQ_MAX_INPUT_CHARS", "18000"))
+GROQ_MAX_RESUMEN_CHARS = int(os.getenv("GROQ_MAX_RESUMEN_CHARS", "300"))
 
 
 LOCAL_KEYS = ["local", "equipo_local", "home", "home_team", "casa"]
@@ -251,6 +255,86 @@ def aplicar_baja_a_partido(partido: Dict[str, Any], baja: Dict[str, Any]) -> boo
     return False
 
 
+PALABRAS_CLAVE_IA = [
+    "lesión", "lesion", "lesionado", "lesionados",
+    "suspendido", "suspensión", "suspension", "sancionado",
+    "baja", "bajas", "descartado", "no jugará", "no jugara",
+    "no estará", "no estara", "duda", "molestia",
+    "entrenó separado", "entreno separado", "convocatoria",
+    "rueda de prensa", "alineación", "alineacion", "titular",
+    "regresa", "alta médica", "alta medica",
+]
+
+
+def score_noticia_para_ia(bloque: str) -> int:
+    texto = bloque.lower()
+    return sum(1 for palabra in PALABRAS_CLAVE_IA if palabra in texto)
+
+
+def recortar_bloque_noticia_para_ia(bloque: str) -> str:
+    lineas = []
+
+    for linea in bloque.splitlines():
+        if linea.startswith("Link:"):
+            continue
+
+        if linea.startswith("Resumen:"):
+            resumen = linea.replace("Resumen:", "", 1).strip()
+            if len(resumen) > GROQ_MAX_RESUMEN_CHARS:
+                resumen = resumen[:GROQ_MAX_RESUMEN_CHARS].rstrip() + "..."
+            lineas.append(f"Resumen: {resumen}")
+            continue
+
+        if linea.startswith("Título:") and len(linea) > 240:
+            lineas.append(linea[:240].rstrip() + "...")
+            continue
+
+        lineas.append(linea)
+
+    return "\n".join(lineas).strip()
+
+
+def preparar_texto_noticias_para_groq(texto: str) -> str:
+    partes = re.split(r"\n(?=NOTICIA #\d+)", texto)
+    encabezado = partes[0].strip() if partes else ""
+
+    bloques = [
+        parte.strip()
+        for parte in partes[1:]
+        if parte.strip().startswith("NOTICIA #")
+    ]
+
+    if not bloques:
+        return texto[:GROQ_MAX_INPUT_CHARS].rstrip()
+
+    puntuados = sorted(
+        bloques,
+        key=lambda bloque: score_noticia_para_ia(bloque),
+        reverse=True,
+    )
+
+    seleccionados = puntuados[:GROQ_MAX_NOTICIAS]
+    seleccionados = [recortar_bloque_noticia_para_ia(b) for b in seleccionados]
+
+    salida = [
+        encabezado,
+        "",
+        f"NOTA: Entrada recortada dentro de aplicar_noticias_ia.py para Groq.",
+        f"Máximo noticias enviadas: {GROQ_MAX_NOTICIAS}.",
+        f"Máximo caracteres enviados: {GROQ_MAX_INPUT_CHARS}.",
+        "Prioridad: bajas confirmadas, lesiones, suspensiones, dudas, convocatorias y ruedas de prensa.",
+        "",
+    ]
+
+    salida.extend(seleccionados)
+    texto_final = "\n\n".join(salida).strip()
+
+    if len(texto_final) > GROQ_MAX_INPUT_CHARS:
+        texto_final = texto_final[:GROQ_MAX_INPUT_CHARS].rstrip() + "\n\n[RECORTADO POR LIMITE INTERNO]"
+
+    return texto_final
+
+
 def sha256_texto(texto: str) -> str:
     return hashlib.sha256(texto.encode("utf-8")).hexdigest()
 
@@ -356,7 +440,16 @@ def main() -> int:
     if not NOTICIAS_PATH.exists():
         raise SystemExit(f"ERROR: No existe {NOTICIAS_PATH}")
 
-    texto_noticias = NOTICIAS_PATH.read_text(encoding="utf-8")
+    texto_noticias_original = NOTICIAS_PATH.read_text(encoding="utf-8")
+    texto_noticias = preparar_texto_noticias_para_groq(texto_noticias_original)
+
+    if len(texto_noticias) != len(texto_noticias_original):
+        print(
+            f"✂️ Noticias para Groq recortadas: "
+            f"{len(texto_noticias_original)} -> {len(texto_noticias)} caracteres"
+        )
+    else:
+        print(f"📄 Noticias para Groq: {len(texto_noticias)} caracteres")
 
     cache_ok, cache_msg, resultado_cache = cache_ia_fresco(texto_noticias)
 
