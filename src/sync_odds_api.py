@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import unicodedata
@@ -346,6 +347,14 @@ def aplicar_fallback_no_api(partido: Dict[str, Any]) -> None:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Salta el cooldown normal, pero respeta el límite mensual del API Budget.",
+    )
+    args = parser.parse_args()
+
     leer_env_si_existe()
 
     if not JORNADAS_PATH.exists():
@@ -361,6 +370,10 @@ def main() -> int:
     print("=" * 60)
 
     min_interval = int(os.getenv("ODDS_SYNC_MIN_INTERVAL_MINUTES", "360"))
+
+    if args.force:
+        print("⚡ FORCE MODE: se salta cooldown normal, pero se respeta límite mensual.")
+        min_interval = 0
 
     if budget_can_call is not None:
         permitido, mensaje_budget = budget_can_call(
@@ -388,7 +401,7 @@ def main() -> int:
             budget_record_call(
                 "the_odds_api",
                 units=1,
-                note=f"sync_odds_api eventos={len(eventos)}",
+                note=f"sync_odds_api eventos={len(eventos)} force={args.force}",
             )
 
         if budget_write_report is not None:
