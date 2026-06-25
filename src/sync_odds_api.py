@@ -152,12 +152,40 @@ def leer_env_si_existe() -> None:
         os.environ.setdefault(key.strip(), value.strip())
 
 
-def fetch_odds() -> List[Dict[str, Any]]:
-    api_key = os.getenv("ODDS_API_KEY", "").strip()
 
-    if not api_key:
-        raise RuntimeError("Falta ODDS_API_KEY en .env")
+FAILOVER_STATUS_CODES = {500, 502, 503, 504}
+NO_ROTATE_STATUS_CODES = {401, 403, 429}
 
+
+def key_valida(value: str) -> bool:
+    if not value:
+        return False
+
+    value = value.strip()
+    return bool(value) and "AQUÍ_" not in value and "tu_api_key" not in value.lower()
+
+
+def odds_api_key_candidates() -> List[tuple[str, str]]:
+    primary = os.getenv("ODDS_API_KEY_PRIMARY", "").strip() or os.getenv("ODDS_API_KEY", "").strip()
+    backup = os.getenv("ODDS_API_KEY_BACKUP", "").strip()
+
+    keys: List[tuple[str, str]] = []
+    seen = set()
+
+    for label, value in [("primary", primary), ("backup", backup)]:
+        if not key_valida(value):
+            continue
+
+        if value in seen:
+            continue
+
+        keys.append((label, value))
+        seen.add(value)
+
+    return keys
+
+
+def build_odds_url(api_key: str) -> str:
     params = {
         "apiKey": api_key,
         "regions": REGIONS,
@@ -165,11 +193,15 @@ def fetch_odds() -> List[Dict[str, Any]]:
         "oddsFormat": ODDS_FORMAT,
     }
 
-    url = (
+    return (
         f"https://api.the-odds-api.com/v4/sports/{SPORT}/odds/"
         + "?"
         + urllib.parse.urlencode(params)
     )
+
+
+def fetch_odds_with_key(label: str, api_key: str) -> List[Dict[str, Any]]:
+    url = build_odds_url(api_key)
 
     with urllib.request.urlopen(url, timeout=30) as response:
         raw = response.read().decode("utf-8")
@@ -177,10 +209,59 @@ def fetch_odds() -> List[Dict[str, Any]]:
     data = json.loads(raw)
 
     if not isinstance(data, list):
-        raise RuntimeError(f"Respuesta inesperada de The Odds API: {data}")
+        raise RuntimeError(f"Respuesta inesperada de The Odds API usando llave {label}: {data}")
 
     return data
 
+
+def fetch_odds() -> List[Dict[str, Any]]:
+    import socket
+    import urllib.error
+
+    keys = odds_api_key_candidates()
+
+    if not keys:
+        raise RuntimeError("Falta ODDS_API_KEY_PRIMARY u ODDS_API_KEY válida en .env")
+
+    last_error: Exception | None = None
+
+    for idx, (label, api_key) in enumerate(keys):
+        try:
+            print(f"🎰 The Odds API: intentando llave {label}...")
+            data = fetch_odds_with_key(label, api_key)
+            print(f"✅ The Odds API: conexión exitosa con llave {label}.")
+            return data
+
+        except urllib.error.HTTPError as exc:
+            status = int(exc.code)
+            last_error = exc
+
+            if status in FAILOVER_STATUS_CODES:
+                print(f"⚠️ The Odds API error técnico {status} con llave {label}.")
+                if idx < len(keys) - 1:
+                    print("➡️ Probando llave backup por falla técnica del servidor.")
+                    continue
+
+                raise RuntimeError(f"The Odds API sigue con error técnico {status}; no hay más backup.") from exc
+
+            if status in NO_ROTATE_STATUS_CODES:
+                raise RuntimeError(
+                    f"The Odds API respondió {status}. No se rota llave por auth/cuota/rate limit."
+                ) from exc
+
+            raise RuntimeError(f"The Odds API respondió error HTTP {status}. No se rota llave.") from exc
+
+        except (urllib.error.URLError, TimeoutError, socket.timeout) as exc:
+            last_error = exc
+            print(f"⚠️ Falla técnica de red con The Odds API usando llave {label}: {type(exc).__name__}")
+
+            if idx < len(keys) - 1:
+                print("➡️ Probando llave backup por timeout/conexión.")
+                continue
+
+            raise RuntimeError("The Odds API no respondió y no hay más backup.") from exc
+
+    raise RuntimeError("No se pudo consultar The Odds API con ninguna llave.") from last_error
 
 def evento_coincide(partido: Dict[str, Any], evento: Dict[str, Any]) -> bool:
     local = nombre_local(partido)

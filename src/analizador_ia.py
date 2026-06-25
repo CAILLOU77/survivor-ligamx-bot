@@ -155,22 +155,72 @@ Reglas estrictas:
 """.strip()
 
 
-def llamar_groq(texto_noticias: str) -> Dict[str, Any]:
-    """
-    Envía el texto a GroqCloud y devuelve el JSON parseado.
-    """
-    if Groq is None:
-        raise RuntimeError(
-            "No está instalada la librería 'groq'. Instálala con: pip3 install groq"
-        )
 
-    api_key = os.getenv("GROQ_API_KEY")
-    if not api_key:
-        raise RuntimeError(
-            "Falta GROQ_API_KEY. Configúrala antes de ejecutar:\n"
-            "export GROQ_API_KEY='tu_api_key_aqui'"
-        )
+FAILOVER_STATUS_CODES = {500, 502, 503, 504}
+NO_ROTATE_STATUS_CODES = {401, 403, 429}
 
+
+def key_valida(value: str) -> bool:
+    if not value:
+        return False
+
+    value = value.strip()
+    return bool(value) and "tu_api_key" not in value.lower()
+
+
+def groq_key_candidates() -> list[tuple[str, str]]:
+    primary = os.getenv("GROQ_API_KEY_PRIMARY", "").strip() or os.getenv("GROQ_API_KEY", "").strip()
+    backup = os.getenv("GROQ_API_KEY_BACKUP", "").strip()
+
+    keys: list[tuple[str, str]] = []
+    seen = set()
+
+    for label, value in [("primary", primary), ("backup", backup)]:
+        if not key_valida(value):
+            continue
+
+        if value in seen:
+            continue
+
+        keys.append((label, value))
+        seen.add(value)
+
+    return keys
+
+
+def status_code_from_exception(exc: Exception) -> int | None:
+    status = getattr(exc, "status_code", None)
+    if isinstance(status, int):
+        return status
+
+    response = getattr(exc, "response", None)
+    response_status = getattr(response, "status_code", None)
+
+    if isinstance(response_status, int):
+        return response_status
+
+    return None
+
+
+def es_falla_tecnica_groq(exc: Exception) -> bool:
+    nombre = type(exc).__name__.lower()
+    texto = str(exc).lower()
+
+    patrones = [
+        "timeout",
+        "connection",
+        "connect",
+        "temporarily unavailable",
+        "server error",
+        "service unavailable",
+        "bad gateway",
+        "gateway timeout",
+    ]
+
+    return any(p in nombre or p in texto for p in patrones)
+
+
+def llamar_groq_con_key(label: str, api_key: str, texto_noticias: str) -> Dict[str, Any]:
     client = Groq(api_key=api_key)
 
     respuesta = client.chat.completions.create(
@@ -197,6 +247,55 @@ def llamar_groq(texto_noticias: str) -> Dict[str, Any]:
     contenido = respuesta.choices[0].message.content or "{}"
     return cargar_json_seguro(contenido)
 
+
+def llamar_groq(texto_noticias: str) -> Dict[str, Any]:
+    """
+    Envía el texto a GroqCloud y devuelve el JSON parseado.
+    Usa failover técnico solo en errores 5xx o fallas de red/timeout.
+    No rota por 401/403/429.
+    """
+    if Groq is None:
+        raise RuntimeError(
+            "No está instalada la librería 'groq'. Instálala con: pip3 install groq"
+        )
+
+    keys = groq_key_candidates()
+
+    if not keys:
+        raise RuntimeError(
+            "Falta GROQ_API_KEY_PRIMARY o GROQ_API_KEY. Configúrala antes de ejecutar."
+        )
+
+    last_error: Exception | None = None
+
+    for idx, (label, api_key) in enumerate(keys):
+        try:
+            print(f"🤖 Groq: intentando llave {label}...")
+            resultado = llamar_groq_con_key(label, api_key, texto_noticias)
+            print(f"✅ Groq: análisis exitoso con llave {label}.")
+            return resultado
+
+        except Exception as exc:
+            last_error = exc
+            status = status_code_from_exception(exc)
+
+            if status in FAILOVER_STATUS_CODES or (status is None and es_falla_tecnica_groq(exc)):
+                print(f"⚠️ Groq falla técnica con llave {label}: {type(exc).__name__}")
+
+                if idx < len(keys) - 1:
+                    print("➡️ Probando llave backup por falla técnica de Groq.")
+                    continue
+
+                raise RuntimeError("Groq falló técnicamente y no hay más backup.") from exc
+
+            if status in NO_ROTATE_STATUS_CODES:
+                raise RuntimeError(
+                    f"Groq respondió {status}. No se rota llave por auth/cuota/rate limit."
+                ) from exc
+
+            raise
+
+    raise RuntimeError("No se pudo consultar Groq con ninguna llave.") from last_error
 
 def cargar_json_seguro(contenido: str) -> Dict[str, Any]:
     """
