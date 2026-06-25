@@ -45,6 +45,15 @@ run_step() {
 }
 
 run_step "Normalizar jornada" python3 src/normalizar_jornadas.py || exit 1
+
+if [ -f "src/thesportsdb_ligamx.py" ]; then
+  run_step "TheSportsDB fallback Liga MX" python3 src/thesportsdb_ligamx.py || {
+    echo "⚠️ TheSportsDB falló; se continúa porque solo es respaldo calendario/resultados." | tee -a "$LOG"
+  }
+else
+  echo "⚠️ No existe src/thesportsdb_ligamx.py; se continúa sin fallback TheSportsDB." | tee -a "$LOG"
+fi
+
 run_step "Sincronizar momios reales API" python3 src/sync_odds_api.py
 run_step "Buscar noticias web Liga MX" python3 src/actualizador_noticias_web.py
 
