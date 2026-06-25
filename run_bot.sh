@@ -66,6 +66,14 @@ fi
 
 run_step "Buscar noticias web Liga MX" python3 src/actualizador_noticias_web.py
 
+if [ -f "src/buscador_web.py" ]; then
+  run_step "Buscar noticias web frescas DuckDuckGo" python3 src/buscador_web.py || {
+    echo "⚠️ Buscador web DuckDuckGo falló; se continúa con noticias/cache existentes." | tee -a "$LOG"
+  }
+else
+  echo "⚠️ No existe src/buscador_web.py; se continúa sin búsqueda web fresca." | tee -a "$LOG"
+fi
+
 if [ -f "src/limitar_noticias.py" ]; then
   run_step "Limitar noticias para Groq antes de IA" python3 src/limitar_noticias.py
 else
