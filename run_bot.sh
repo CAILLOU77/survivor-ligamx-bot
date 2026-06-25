@@ -64,6 +64,7 @@ if [ "$IA_STATUS" -ne 0 ]; then
 fi
 
 run_step "Calcular riesgo tumba quinielas" python3 src/riesgo_sorpresa.py
+run_step "Aplicar reglas Liga MX 2026" python3 src/reglas_ligamx_2026.py
 run_step "Auditar data" python3 src/auditor_datos.py
 run_step "Correr bot principal" python3 -u main.py || exit 1
 run_step "Ajustar pick anti-tumba" python3 src/ajustar_pick_survivor.py --main-log "$LOG" --output-json "data/pick_ajustado_survivor.json" --output-text "reports/pick_ajustado_ultimo.txt"

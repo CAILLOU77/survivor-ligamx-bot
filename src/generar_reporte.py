@@ -182,6 +182,13 @@ def main() -> int:
         salida.extend(lectura_mercado_path.read_text(encoding="utf-8", errors="ignore").strip().splitlines())
         salida.append("")
 
+    reglas_ligamx_path = BASE_DIR / "reports" / "reglas_ligamx_2026_ultimo.txt"
+    if reglas_ligamx_path.exists():
+        salida.append("REGLAS LIGA MX 2026")
+        salida.append("-" * 60)
+        salida.extend(reglas_ligamx_path.read_text(encoding="utf-8", errors="ignore").strip().splitlines())
+        salida.append("")
+
     salida.append("SURVIVOR")
     salida.append("-" * 60)
     salida.append(f"Equipos bloqueados: {', '.join(bloqueados) if bloqueados else 'No detectados'}")
