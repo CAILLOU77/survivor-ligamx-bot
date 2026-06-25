@@ -7,8 +7,8 @@ from dotenv import load_dotenv
 load_dotenv()
 API_KEY = os.getenv("ODDS_API_KEY")
 
-def obtener_datos_casino():
-    print("🎰 Bot: Conectando a los servidores del casino en vivo...")
+def obtener_datos_mercado():
+    print("📈 Bot: Revisando estado del mercado/momios...")
     
     if not API_KEY or "AQUÍ_" in API_KEY:
         print("❌ Error: No se ha detectado una API Key válida en tu archivo .env")
@@ -44,7 +44,7 @@ def obtener_datos_casino():
         partidos_reales = response.json()
         
         if not partidos_reales:
-            print("⚠️ Nota: El casino aún no publica momios para la jornada actual (Mercado cerrado por pretemporada).")
+            print("⚠️ Nota: The Odds API aún no publica mercado real para la jornada actual.")
             return None
 
         jornada_procesada = []
@@ -79,7 +79,7 @@ def obtener_datos_casino():
         with open('data/jornadas.json', 'w', encoding='utf-8') as f:
             json.dump(jornada_procesada, f, indent=4, ensure_ascii=False)
             
-        print(f"✅ Bot: Se descargaron e integraron {len(jornada_procesada)} partidos reales del casino.")
+        print(f"✅ Bot: Se descargaron e integraron {len(jornada_procesada)} partidos reales del mercado.")
         return jornada_procesada
 
     except Exception as e:
@@ -87,4 +87,4 @@ def obtener_datos_casino():
         return None
 
 if __name__ == "__main__":
-    obtener_datos_casino()
+    obtener_datos_mercado()

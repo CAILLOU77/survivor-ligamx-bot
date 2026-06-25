@@ -304,7 +304,15 @@ def main() -> int:
             print("   ⚠️ Fecha/hora: faltante")
 
         if reporte["clima"]:
-            print(f"   ⛅ Clima: detectado")
+            clima_real = bool(partido.get("clima_real", False))
+            clima_estado = str(partido.get("clima_estado") or "sin detalle")
+            clima_temp = partido.get("clima_temperatura_c")
+
+            if clima_real:
+                temp_txt = f"{clima_temp}°C | " if clima_temp is not None else ""
+                print(f"   ⛅ Clima: REAL Open-Meteo | {temp_txt}{clima_estado}")
+            else:
+                print(f"   ⚠️ Clima: fallback técnico / no real | {clima_estado}")
         else:
             print("   ⚠️ Clima: faltante o fallback")
 

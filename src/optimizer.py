@@ -24,7 +24,7 @@ def seleccionar_pick_survivor():
         local = partido['home_team']
         visita = partido['away_team']
         
-        # Calcular probabilidades del casino
+        # Calcular probabilidades del mercado
         outcomes = partido['bookmakers'][0]['markets'][0]['outcomes']
         cuota_l = next(o['price'] for o in outcomes if o['name'] == local)
         cuota_v = next(o['price'] for o in outcomes if o['name'] == visita)

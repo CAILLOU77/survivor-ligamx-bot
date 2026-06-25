@@ -14,7 +14,7 @@ def ejecutar_sistema_completo():
     print("🤖   INICIANDO BOT INTELIGENTE: SURVIVOR Y PRONÓSTICOS LIGA MX   🤖")
     print("🚀 ======================================================= 🚀\n")
     
-    # Paso 1: Obtener Momios del Casino
+    # Paso 1: Obtener estado de mercado / momios
     obtener_datos_casino()
     print("\n------------------------------------------------------------")
     
