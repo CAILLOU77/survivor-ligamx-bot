@@ -101,6 +101,51 @@ def parsear_avances_desde_log(log_text: str) -> Dict[str, float]:
     return avances
 
 
+def mercado_real_disponible(partido: Dict[str, Any]) -> bool:
+    """
+    True solo si hay mercado real. El fallback técnico NO cuenta como mercado real.
+    """
+    momios = partido.get("momios", {})
+    if isinstance(momios, dict):
+        estado = str(momios.get("estado", "")).lower()
+        if any(x in estado for x in ["mercado_no_publicado", "cerrado", "pendiente", "no_publicado"]):
+            return False
+
+    bookmakers = partido.get("bookmakers", [])
+    if not isinstance(bookmakers, list) or not bookmakers:
+        return False
+
+    for bookmaker in bookmakers:
+        if not isinstance(bookmaker, dict):
+            continue
+
+        key = str(bookmaker.get("key", "")).lower()
+        title = str(bookmaker.get("title", "")).lower()
+
+        if "fallback" in key or "fallback" in title:
+            return False
+
+    return True
+
+
+def fecha_hora_confirmada(partido: Dict[str, Any]) -> bool:
+    fecha = str(partido.get("fecha", "")).upper()
+    hora = str(partido.get("hora", "")).upper()
+
+    if not fecha or not hora:
+        return False
+
+    if "PENDIENTE" in fecha or "PENDIENTE" in hora:
+        return False
+
+    return True
+
+
+def datos_reales_completos(partido: Dict[str, Any]) -> bool:
+    return mercado_real_disponible(partido) and fecha_hora_confirmada(partido)
+
+
+
 def construir_candidatos(data: Any, log_text: str) -> List[Dict[str, Any]]:
     partidos = extraer_partidos(data)
     avances = parsear_avances_desde_log(log_text)
@@ -119,6 +164,9 @@ def construir_candidatos(data: Any, log_text: str) -> List[Dict[str, Any]]:
         riesgo_score = float(riesgo.get("score", 50))
         riesgo_etiqueta = str(riesgo.get("etiqueta", "No calculado"))
         riesgo_recomendacion = str(riesgo.get("recomendacion", ""))
+        mercado_real = mercado_real_disponible(partido)
+        fecha_confirmada = fecha_hora_confirmada(partido)
+        datos_completos = datos_reales_completos(partido)
 
         for equipo, rival, condicion in [
             (local, visitante, "Local"),
@@ -169,6 +217,9 @@ def construir_candidatos(data: Any, log_text: str) -> List[Dict[str, Any]]:
                     "riesgo_recomendacion": riesgo_recomendacion,
                     "score_ajustado": round(score_ajustado, 2),
                     "decision_candidato": decision_candidato,
+                    "mercado_real": mercado_real,
+                    "fecha_hora_confirmada": fecha_confirmada,
+                    "datos_reales_completos": datos_completos,
                 }
             )
 
@@ -185,6 +236,26 @@ def construir_decision(candidatos: List[Dict[str, Any]]) -> Dict[str, Any]:
         }
 
     mejor = candidatos[0]
+
+    if not mejor.get("datos_reales_completos", False):
+        faltantes = []
+
+        if not mejor.get("mercado_real", False):
+            faltantes.append("mercado real / momios reales")
+
+        if not mejor.get("fecha_hora_confirmada", False):
+            faltantes.append("fecha y hora confirmadas")
+
+        return {
+            "decision": "ESPERAR / NO ENVIAR",
+            "pick": mejor,
+            "mensaje": (
+                f"El mejor candidato técnico es {mejor['equipo']}, "
+                "pero todavía faltan datos reales para cerrar: "
+                + ", ".join(faltantes)
+                + ". No usar CERRAR con fallback técnico."
+            ),
+        }
 
     if mejor["riesgo_score"] >= 65:
         decision = "ESPERAR / NO ENVIAR"
@@ -226,6 +297,9 @@ def escribir_texto(decision: Dict[str, Any], candidatos: List[Dict[str, Any]], o
         lines.append(f"Avance no perder: {pick['avance_no_perder']}%")
         lines.append(f"Riesgo: {pick['riesgo_etiqueta']} | Score {pick['riesgo_score']}/100")
         lines.append(f"Score ajustado: {pick['score_ajustado']}")
+        lines.append(f"Mercado real: {'Sí' if pick.get('mercado_real') else 'No'}")
+        lines.append(f"Fecha/hora confirmada: {'Sí' if pick.get('fecha_hora_confirmada') else 'No'}")
+        lines.append(f"Datos reales completos: {'Sí' if pick.get('datos_reales_completos') else 'No'}")
         lines.append("")
 
     lines.append("Ranking ajustado:")
@@ -234,7 +308,8 @@ def escribir_texto(decision: Dict[str, Any], candidatos: List[Dict[str, Any]], o
             f"{idx}. {c['equipo']} vs {c['rival']} | "
             f"No perder {c['avance_no_perder']}% | "
             f"Riesgo {c['riesgo_score']}/100 | "
-            f"Ajustado {c['score_ajustado']}"
+            f"Ajustado {c['score_ajustado']} | "
+            f"Datos reales {'OK' if c.get('datos_reales_completos') else 'NO'}"
         )
 
     output.write_text("\n".join(lines) + "\n", encoding="utf-8")
