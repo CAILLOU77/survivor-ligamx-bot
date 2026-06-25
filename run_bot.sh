@@ -55,6 +55,15 @@ else
 fi
 
 run_step "Sincronizar momios reales API" python3 src/sync_odds_api.py
+
+if [ -f "src/alineaciones.py" ]; then
+  run_step "API-Football alineaciones y lesiones Liga MX" python3 src/alineaciones.py || {
+    echo "⚠️ API-Football alineaciones/lesiones falló; se continúa porque no decide picks." | tee -a "$LOG"
+  }
+else
+  echo "⚠️ No existe src/alineaciones.py; se continúa sin módulo de alineaciones/lesiones." | tee -a "$LOG"
+fi
+
 run_step "Buscar noticias web Liga MX" python3 src/actualizador_noticias_web.py
 
 if [ -f "src/limitar_noticias.py" ]; then
