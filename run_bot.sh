@@ -70,6 +70,7 @@ run_step "Correr bot principal" python3 -u main.py || exit 1
 run_step "Ajustar pick anti-tumba" python3 src/ajustar_pick_survivor.py --main-log "$LOG" --output-json "data/pick_ajustado_survivor.json" --output-text "reports/pick_ajustado_ultimo.txt"
 run_step "Auditor pre-cierre real" python3 src/auditor_pre_cierre.py
 run_step "Lectura de mercado" python3 src/lectura_mercado.py
+run_step "Reporte presupuesto APIs" python3 src/api_budget.py report
 run_step "Generar reporte final" python3 src/generar_reporte.py --main-log "$LOG" --output "$REPORTE"
 
 echo "" | tee -a "$LOG"

@@ -189,6 +189,13 @@ def main() -> int:
         salida.extend(reglas_ligamx_path.read_text(encoding="utf-8", errors="ignore").strip().splitlines())
         salida.append("")
 
+    api_budget_path = BASE_DIR / "reports" / "api_budget_ultimo.txt"
+    if api_budget_path.exists():
+        salida.append("API BUDGET")
+        salida.append("-" * 60)
+        salida.extend(api_budget_path.read_text(encoding="utf-8", errors="ignore").strip().splitlines())
+        salida.append("")
+
     salida.append("SURVIVOR")
     salida.append("-" * 60)
     salida.append(f"Equipos bloqueados: {', '.join(bloqueados) if bloqueados else 'No detectados'}")

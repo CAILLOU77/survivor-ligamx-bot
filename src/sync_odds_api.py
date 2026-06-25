@@ -10,6 +10,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+try:
+    from api_budget import can_call as budget_can_call
+    from api_budget import record_call as budget_record_call
+    from api_budget import write_report as budget_write_report
+except Exception:
+    budget_can_call = None
+    budget_record_call = None
+    budget_write_report = None
+
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 JORNADAS_PATH = BASE_DIR / "data" / "jornadas.json"
@@ -351,11 +360,47 @@ def main() -> int:
     print("🎰 AUTO ODDS SYNC — THE ODDS API")
     print("=" * 60)
 
+    min_interval = int(os.getenv("ODDS_SYNC_MIN_INTERVAL_MINUTES", "360"))
+
+    if budget_can_call is not None:
+        permitido, mensaje_budget = budget_can_call(
+            "the_odds_api",
+            units=1,
+            min_interval_minutes=min_interval,
+        )
+
+        if not permitido:
+            print(f"⏸️ {mensaje_budget}")
+            print("➡️ No se consulta The Odds API en esta corrida para ahorrar saldo.")
+            print("➡️ Se mantiene data actual. Real Data Gate decide si puede CERRAR o no.")
+
+            if budget_write_report is not None:
+                budget_write_report()
+
+            return 0
+
+        print(f"✅ Budget OK: {mensaje_budget}")
+
     try:
         eventos = fetch_odds()
+
+        if budget_record_call is not None:
+            budget_record_call(
+                "the_odds_api",
+                units=1,
+                note=f"sync_odds_api eventos={len(eventos)}",
+            )
+
+        if budget_write_report is not None:
+            budget_write_report()
+
     except Exception as exc:
         print(f"⚠️ No se pudieron traer momios reales: {exc}")
         print("➡️ Se mantiene fallback/local. Real Data Gate debe bloquear CERRAR.")
+
+        if budget_write_report is not None:
+            budget_write_report()
+
         return 0
 
     print(f"✅ Eventos recibidos desde The Odds API: {len(eventos)}")
