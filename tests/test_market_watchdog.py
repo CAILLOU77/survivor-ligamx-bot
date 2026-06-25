@@ -122,5 +122,195 @@ class TestMensajeTelegram(unittest.TestCase):
         self.assertNotIn("CERRAR automá", msg)
 
 
+# ---------------------------------------------------------------------------
+# v1.33.0 — Movimiento de momios
+# ---------------------------------------------------------------------------
+def snap(home, draw, away, partido="A vs B"):
+    """Construye un snapshot de partido a partir de momios decimales."""
+    prob = wd.odds_a_prob_implicita(home, draw, away)
+    return {
+        "partido": partido,
+        "odds": {"home": home, "draw": draw, "away": away},
+        "prob": prob,
+        "favorito": wd.favorito_de_prob(prob),
+    }
+
+
+class TestProbabilidadImplicita(unittest.TestCase):
+    def test_conversion_y_normalizacion(self):
+        prob = wd.odds_a_prob_implicita(2.0, 4.0, 4.0)
+        self.assertIsNotNone(prob)
+        # 1/2 : 1/4 : 1/4 -> 50/25/25 tras normalizar (sin vig).
+        self.assertAlmostEqual(prob["home"], 50.0, places=4)
+        self.assertAlmostEqual(prob["draw"], 25.0, places=4)
+        self.assertAlmostEqual(prob["away"], 25.0, places=4)
+
+    def test_suma_100(self):
+        prob = wd.odds_a_prob_implicita(1.91, 3.5, 4.2)
+        self.assertAlmostEqual(sum(prob.values()), 100.0, places=4)
+
+    def test_favorito_local(self):
+        prob = wd.odds_a_prob_implicita(1.5, 4.0, 6.0)
+        self.assertEqual(wd.favorito_de_prob(prob), "home")
+
+    def test_momios_invalidos(self):
+        self.assertIsNone(wd.odds_a_prob_implicita(0, 3.0, 3.0))
+        self.assertIsNone(wd.odds_a_prob_implicita("x", 3.0, 3.0))
+
+
+class TestClasificarMovimiento(unittest.TestCase):
+    def test_normal(self):
+        self.assertEqual(wd.clasificar_movimiento(0.0), wd.MOV_NORMAL)
+        self.assertEqual(wd.clasificar_movimiento(4.9), wd.MOV_NORMAL)
+
+    def test_importante(self):
+        self.assertEqual(wd.clasificar_movimiento(5.0), wd.MOV_IMPORTANTE)
+        self.assertEqual(wd.clasificar_movimiento(7.99), wd.MOV_IMPORTANTE)
+
+    def test_drastico(self):
+        self.assertEqual(wd.clasificar_movimiento(8.0), wd.MOV_DRASTICO)
+        self.assertEqual(wd.clasificar_movimiento(15.0), wd.MOV_DRASTICO)
+
+
+class TestExtraer1x2(unittest.TestCase):
+    def test_extrae_y_promedia(self):
+        bookmakers = [
+            {"key": "a", "markets": [{"key": "h2h", "outcomes": [
+                {"name": "America", "price": 2.0},
+                {"name": "Draw", "price": 3.0},
+                {"name": "Juarez", "price": 4.0},
+            ]}]},
+            {"key": "b", "markets": [{"key": "h2h", "outcomes": [
+                {"name": "America", "price": 2.2},
+                {"name": "Draw", "price": 3.2},
+                {"name": "Juarez", "price": 4.4},
+            ]}]},
+        ]
+        odds = wd.extraer_1x2_de_bookmakers(bookmakers, "America", "Juarez")
+        self.assertIsNotNone(odds)
+        self.assertAlmostEqual(odds["home"], 2.1, places=4)
+        self.assertAlmostEqual(odds["draw"], 3.1, places=4)
+        self.assertAlmostEqual(odds["away"], 4.2, places=4)
+
+    def test_sin_mercado_completo(self):
+        bookmakers = [{"key": "a", "markets": [{"key": "h2h", "outcomes": [
+            {"name": "America", "price": 2.0},
+            {"name": "Draw", "price": 3.0},
+        ]}]}]
+        self.assertIsNone(wd.extraer_1x2_de_bookmakers(bookmakers, "America", "Juarez"))
+
+
+class TestFavoritoFlip(unittest.TestCase):
+    def test_flip_local_a_visitante(self):
+        base = snap(1.6, 4.0, 5.5)   # favorito home
+        cur = snap(5.5, 4.0, 1.6)    # favorito away
+        mov = wd.evaluar_movimiento_partido(base, cur)
+        self.assertTrue(mov["favorito_flip"])
+        self.assertEqual(mov["favorito_prev"], "home")
+        self.assertEqual(mov["favorito_cur"], "away")
+
+    def test_sin_flip(self):
+        base = snap(1.8, 3.5, 4.5)
+        cur = snap(1.85, 3.5, 4.3)
+        mov = wd.evaluar_movimiento_partido(base, cur)
+        self.assertFalse(mov["favorito_flip"])
+
+
+class TestDecidirAlertaMovimiento(unittest.TestCase):
+    def test_menos_de_5_no_telegram(self):
+        base = snap(2.0, 3.4, 3.8)
+        cur = snap(2.05, 3.4, 3.7)  # movimiento pequeño
+        mov = wd.evaluar_movimiento_partido(base, cur)
+        self.assertEqual(mov["clasificacion"], wd.MOV_NORMAL)
+        enviar, tipo = wd.decidir_alerta_movimiento(mov, None)
+        self.assertFalse(enviar)
+        self.assertIsNone(tipo)
+
+    def test_8_o_mas_dispara_telegram(self):
+        base = snap(2.5, 3.3, 2.8)
+        cur = snap(1.6, 3.6, 6.0)  # gran salto de probabilidad
+        mov = wd.evaluar_movimiento_partido(base, cur)
+        self.assertGreaterEqual(mov["max_delta_pts"], 8.0)
+        enviar, tipo = wd.decidir_alerta_movimiento(mov, None)
+        self.assertTrue(enviar)
+
+    def test_flip_es_alerta_fuerte(self):
+        base = snap(1.6, 4.0, 5.5)
+        cur = snap(5.5, 4.0, 1.6)
+        mov = wd.evaluar_movimiento_partido(base, cur)
+        enviar, tipo = wd.decidir_alerta_movimiento(mov, None)
+        self.assertTrue(enviar)
+        self.assertEqual(tipo, "FLIP")
+
+    def test_duplicado_no_reenvia(self):
+        mov = {
+            "clasificacion": wd.MOV_DRASTICO,
+            "max_delta_pts": 10.0,
+            "favorito_prev": "home",
+            "favorito_cur": "home",
+            "favorito_flip": False,
+        }
+        prev_alerta = {"clasificacion": wd.MOV_DRASTICO, "max_delta_pts": 10.0, "favorito_cur": "home"}
+        enviar, tipo = wd.decidir_alerta_movimiento(mov, prev_alerta)
+        self.assertFalse(enviar)  # mismo movimiento -> sin duplicado
+
+    def test_duplicado_reenvia_si_empeora(self):
+        mov = {
+            "clasificacion": wd.MOV_DRASTICO,
+            "max_delta_pts": 14.0,  # empeoró >= 3 pts
+            "favorito_prev": "home",
+            "favorito_cur": "home",
+            "favorito_flip": False,
+        }
+        prev_alerta = {"clasificacion": wd.MOV_DRASTICO, "max_delta_pts": 10.0, "favorito_cur": "home"}
+        enviar, tipo = wd.decidir_alerta_movimiento(mov, prev_alerta)
+        self.assertTrue(enviar)
+
+    def test_importante_opcional(self):
+        base = snap(2.0, 3.4, 3.8)
+        cur = snap(1.75, 3.5, 4.4)  # ~5-8 pts
+        mov = wd.evaluar_movimiento_partido(base, cur)
+        self.assertEqual(mov["clasificacion"], wd.MOV_IMPORTANTE)
+        # Por defecto, IMPORTANTE no envía Telegram.
+        enviar_def, _ = wd.decidir_alerta_movimiento(mov, None, incluir_importante=False)
+        self.assertFalse(enviar_def)
+        # Con opt-in, sí.
+        enviar_opt, _ = wd.decidir_alerta_movimiento(mov, None, incluir_importante=True)
+        self.assertTrue(enviar_opt)
+
+
+class TestEvaluarMovimientos(unittest.TestCase):
+    def test_primer_snapshot_sin_movimiento(self):
+        cur = {"a|b": snap(2.0, 3.3, 3.6, "A vs B")}
+        baseline, alertas, movimientos = wd.evaluar_movimientos({}, {}, cur)
+        self.assertEqual(movimientos, [])
+        self.assertIn("a|b", baseline)
+
+    def test_segunda_corrida_drastica_alerta(self):
+        base = {"a|b": snap(2.5, 3.3, 2.8, "A vs B")}
+        cur = {"a|b": snap(1.6, 3.6, 6.0, "A vs B")}
+        baseline, alertas, movimientos = wd.evaluar_movimientos(base, {}, cur)
+        self.assertEqual(len(movimientos), 1)
+        self.assertTrue(movimientos[0]["telegram"])
+        self.assertIn("a|b", alertas)
+
+
+class TestMensajeMovimiento(unittest.TestCase):
+    def test_mensaje_usa_auditar_no_cerrar(self):
+        movs = [{
+            "partido": "America vs Juarez",
+            "clasificacion": wd.MOV_DRASTICO,
+            "max_delta_pts": 12.0,
+            "favorito_prev": "home",
+            "favorito_cur": "away",
+            "favorito_flip": True,
+        }]
+        msg = wd.construir_mensaje_movimiento(movs, hay_flip=True)
+        self.assertIn(wd.OP_AUDITAR, msg)
+        self.assertIn("AUDITAR", msg)
+        self.assertNotIn("CERRAR\n", msg)
+        self.assertNotIn("Etiqueta operativa: CERRAR", msg)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
