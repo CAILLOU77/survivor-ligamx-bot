@@ -141,6 +141,49 @@ def detectar_bloqueados_survivor(data: Any) -> List[str]:
     return []
 
 
+def es_mercado_real(partido: Dict[str, Any]) -> bool:
+    """
+    True solo cuando el partido tiene mercado real confirmado.
+    Fallback técnico, mercado pendiente o mercado no publicado NO cuentan como real.
+    """
+    momios = partido.get("momios", {})
+    if not isinstance(momios, dict):
+        return False
+
+    estado = str(momios.get("estado", "")).strip().lower()
+
+    if estado == "mercado_real_api":
+        return True
+
+    estados_no_reales = {
+        "mercado_no_publicado_api",
+        "pendiente_odds_api",
+        "pendiente",
+        "no_publicado",
+        "mercado_cerrado",
+        "fallback",
+        "fallback_tecnico",
+    }
+
+    if estado in estados_no_reales:
+        return False
+
+    bookmakers = partido.get("bookmakers", [])
+    if isinstance(bookmakers, list):
+        for book in bookmakers:
+            if not isinstance(book, dict):
+                continue
+
+            key = str(book.get("key", "")).lower()
+            title = str(book.get("title", "")).lower()
+
+            if "fallback" in key or "fallback" in title:
+                return False
+
+    # Si no viene marcado explícitamente como real, no se considera real.
+    return False
+
+
 def auditar_partido(data: Any, partido: Dict[str, Any], idx: int) -> Dict[str, Any]:
     local = buscar_valor(partido, LOCAL_KEYS)
     visitante = buscar_valor(partido, VISITANTE_KEYS)
@@ -150,6 +193,7 @@ def auditar_partido(data: Any, partido: Dict[str, Any], idx: int) -> Dict[str, A
     hora = buscar_valor(partido, HORA_KEYS)
     clima = buscar_valor(partido, CLIMA_KEYS)
     momios = buscar_valor(partido, MOMIOS_KEYS)
+    mercado_real = es_mercado_real(partido)
     bajas = contar_bajas(data, partido)
     bajas_revisadas = bool(partido.get("bajas_revisadas", False))
 
@@ -173,6 +217,8 @@ def auditar_partido(data: Any, partido: Dict[str, Any], idx: int) -> Dict[str, A
         avisos.append("Falta clima o temperatura")
     if not momios:
         avisos.append("Faltan momios / mercado")
+    elif not mercado_real:
+        avisos.append("Momios presentes, pero no son mercado real API")
     if bajas == 0 and not bajas_revisadas:
         avisos.append("No hay lesiones/suspensiones registradas para este partido")
 
@@ -189,6 +235,7 @@ def auditar_partido(data: Any, partido: Dict[str, Any], idx: int) -> Dict[str, A
         "hora": hora,
         "clima": clima,
         "momios": bool(momios),
+        "mercado_real": mercado_real,
         "bajas_detectadas": bajas,
         "bajas_revisadas": bajas_revisadas,
         "errores": errores,
@@ -227,6 +274,7 @@ def main() -> int:
 
     total_errores = 0
     total_avisos = 0
+    total_sin_mercado_real = 0
 
     for idx, partido in enumerate(partidos, start=1):
         reporte = auditar_partido(data, partido, idx)
@@ -260,8 +308,10 @@ def main() -> int:
         else:
             print("   ⚠️ Clima: faltante o fallback")
 
-        if reporte["momios"]:
-            print("   🎰 Momios: detectados")
+        if reporte.get("mercado_real"):
+            print("   🎰 Momios: mercado real API detectado")
+        elif reporte["momios"]:
+            print("   ⚠️ Momios: fallback técnico / no reales")
         else:
             print("   ⚠️ Momios: no detectados")
 
@@ -273,6 +323,8 @@ def main() -> int:
             print("   ⚠️ Lesiones/suspensiones: ninguna registrada")
 
         total_avisos += len(reporte["avisos"])
+        if not reporte.get("mercado_real"):
+            total_sin_mercado_real += 1
 
     print("\n" + "=" * 60)
     print("📋 RESUMEN FINAL")
@@ -287,8 +339,16 @@ def main() -> int:
     else:
         print(f"⚠️ Avisos pendientes: {total_avisos}")
 
-    if total_errores == 0 and total_avisos == 0:
-        print("🏁 ESTADO: LISTO PARA USO REAL")
+    if total_sin_mercado_real > 0:
+        print(f"⚠️ Partidos sin mercado real API: {total_sin_mercado_real}")
+
+    if total_errores == 0 and total_avisos == 0 and total_sin_mercado_real == 0:
+        print("🏁 ESTADO: ESTRUCTURA OK / POSIBLEMENTE LISTO PARA PRE-CIERRE")
+        return 0
+
+    if total_errores == 0 and total_sin_mercado_real > 0:
+        print("🏁 ESTADO: ESTRUCTURA OK / NO LISTO PARA CERRAR PICK")
+        print("⚠️ Motivo: calendario cargado, pero faltan momios reales / mercado real API.")
         return 0
 
     if total_errores == 0:
