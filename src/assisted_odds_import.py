@@ -29,6 +29,11 @@ import unicodedata
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
+try:
+    from team_normalizer import clean_team_name, strip_accents
+except ImportError:  # pragma: no cover
+    from src.team_normalizer import clean_team_name, strip_accents
+
 
 # ---------------------------------------------------------------------------
 # Constantes
@@ -120,15 +125,12 @@ _FUTURO_KEYWORDS = re.compile(
 # Helpers de normalización / validación
 # ---------------------------------------------------------------------------
 def _quitar_acentos(texto: str) -> str:
-    nfkd = unicodedata.normalize("NFKD", texto)
-    return "".join(c for c in nfkd if not unicodedata.combining(c))
+    return strip_accents(str(texto or ""))
 
 
 def _norm_equipo(nombre: str) -> str:
     """Normaliza nombre de equipo SOLO para comparar/deduplicar (no para mostrar)."""
-    base = _quitar_acentos(str(nombre or "")).lower()
-    base = re.sub(r"[^a-z0-9 ]+", " ", base)
-    return re.sub(r"\s+", " ", base).strip()
+    return clean_team_name(str(nombre or ""))
 
 
 def es_momio_americano_valido(momio: Any) -> bool:

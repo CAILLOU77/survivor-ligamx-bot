@@ -34,6 +34,22 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+try:
+    from team_normalizer import (
+        canonical_team_key as _team_canonical_key,
+        clean_team_name as _team_clean_name,
+        display_team_name as _team_display_name,
+        strip_accents as _team_strip_accents,
+    )
+except ImportError:  # pragma: no cover
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+    from team_normalizer import (
+        canonical_team_key as _team_canonical_key,
+        clean_team_name as _team_clean_name,
+        display_team_name as _team_display_name,
+        strip_accents as _team_strip_accents,
+    )
+
 
 # ---------------------------------------------------------------------------
 # Errores
@@ -93,16 +109,12 @@ PREFIJOS_EQUIPO = ("club ", "cf ", "fc ", "cd ", "deportivo ")
 
 
 def quitar_acentos(texto: str) -> str:
-    texto = unicodedata.normalize("NFD", texto or "")
-    return "".join(c for c in texto if unicodedata.category(c) != "Mn")
+    return _team_strip_accents(str(texto or ""))
 
 
 def limpiar_nombre(texto: str) -> str:
     """Minúsculas, sin acentos, sin puntuación, espacios colapsados."""
-    t = quitar_acentos(str(texto or "")).lower()
-    t = re.sub(r"[._\-/]", " ", t)
-    t = re.sub(r"[^a-z0-9 ]", " ", t)
-    return " ".join(t.split())
+    return _team_clean_name(str(texto or ""))
 
 
 # Lookup variante_limpia -> token canónico.
@@ -117,25 +129,12 @@ def canonical_key(nombre: str) -> str:
     Clave canónica para COMPARACIÓN interna (sin acentos, normalizada por alias).
     No se usa para el output visible.
     """
-    limpio = limpiar_nombre(nombre)
-    if limpio in _ALIAS_LOOKUP:
-        return _ALIAS_LOOKUP[limpio]
-
-    # Reintento quitando prefijos comunes (club/cf/fc/cd/deportivo).
-    for pref in PREFIJOS_EQUIPO:
-        if limpio.startswith(pref):
-            sin_pref = limpio[len(pref):].strip()
-            if sin_pref in _ALIAS_LOOKUP:
-                return _ALIAS_LOOKUP[sin_pref]
-            return sin_pref
-
-    return limpio
+    return _team_canonical_key(nombre)
 
 
 def normalizar_nombre_equipo(nombre: str) -> str:
     """Nombre visible canónico. Si no hay alias conocido, regresa el original."""
-    key = canonical_key(nombre)
-    return DISPLAY.get(key, str(nombre or "").strip())
+    return _team_display_name(nombre)
 
 
 # ---------------------------------------------------------------------------

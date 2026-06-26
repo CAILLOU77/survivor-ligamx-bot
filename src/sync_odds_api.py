@@ -12,6 +12,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 try:
+    from team_normalizer import team_aliases, clean_team_name, teams_match
+except ImportError:  # pragma: no cover
+    from src.team_normalizer import team_aliases, clean_team_name, teams_match
+
+try:
     from api_budget import can_call as budget_can_call
     from api_budget import record_call as budget_record_call
     from api_budget import write_report as budget_write_report
@@ -53,54 +58,19 @@ ALIASES = {
 
 
 def normalizar(texto: str) -> str:
-    texto = texto or ""
-    texto = unicodedata.normalize("NFD", texto)
-    texto = "".join(c for c in texto if unicodedata.category(c) != "Mn")
-    texto = texto.lower().strip()
-
-    reemplazos = {
-        ".": "",
-        ",": "",
-        "-": " ",
-        "_": " ",
-        "  ": " ",
-        "club ": "",
-        "cf ": "",
-        "fc ": "",
-    }
-
-    for old, new in reemplazos.items():
-        texto = texto.replace(old, new)
-
+    texto = clean_team_name(texto)
+    for prefijo in ("club ", "cf ", "fc "):
+        if texto.startswith(prefijo):
+            texto = texto[len(prefijo):].strip()
     return " ".join(texto.split())
 
 
 def expandir_alias(nombre: str) -> set[str]:
-    n = normalizar(nombre)
-    opciones = {n}
-
-    for clave, alias_list in ALIASES.items():
-        alias_norm = {normalizar(x) for x in alias_list}
-        if n == normalizar(clave) or n in alias_norm:
-            opciones.update(alias_norm)
-            opciones.add(normalizar(clave))
-
-    return opciones
+    return team_aliases(nombre)
 
 
 def equipos_coinciden(a: str, b: str) -> bool:
-    aliases_a = expandir_alias(a)
-    aliases_b = expandir_alias(b)
-
-    if aliases_a & aliases_b:
-        return True
-
-    for x in aliases_a:
-        for y in aliases_b:
-            if x and y and (x in y or y in x):
-                return True
-
-    return False
+    return teams_match(a, b)
 
 
 def cargar_json(path: Path, default: Any) -> Any:
