@@ -28,3 +28,11 @@ env/
 
 # Reportes locales generados por el bot
 reports/
+results/
+
+# v1.35.0 — FBref import audit (datos locales, nunca se commitean)
+data/fbref/
+data/fbref/raw/
+data/cache/
+data/*.csv
+*.html

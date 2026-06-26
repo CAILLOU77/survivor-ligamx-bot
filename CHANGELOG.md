@@ -1,5 +1,46 @@
 # Changelog — Survivor Liga MX Bot
 
+## v1.35.0 — FBref Schedule Import Audit
+
+### Añadido
+- `scripts/import_fbref_schedule.py`: importador/auditor **local** del calendario
+  (Scores & Fixtures) de FBref Liga MX.
+  - Lee un HTML guardado **manualmente** (Chrome → "Página web, solo HTML") desde
+    `data/fbref/raw/fbref_ligamx_schedule.html`. **No hace scraping ni red**, no
+    usa `requests`/`curl`, no requiere login ni cookies.
+  - Flags: `--html`, `--jornada`, `--jornadas-json`, `--out-dir`, `--reports-dir`.
+  - Genera (solo local, ignorado por git):
+    - `data/fbref/fbref_ligamx_schedule_full.csv`
+    - `data/fbref/fbref_ligamx_schedule_jornada1.csv`
+    - `reports/fbref_schedule_import_preview.txt`
+    - `reports/fbref_vs_jornadas_compare.txt`
+  - Normaliza nombres de equipos (UANL→Tigres UANL, UNAM→Pumas UNAM, Santos
+    Laguna→Santos, FC Juárez→FC Juarez, Atlético San Luis→Atlético de San Luis,
+    America/Club America→América, etc.). Quita acentos solo para comparar.
+  - Compara contra `data/jornadas.json` por local/visitante normalizados:
+    reporta `matched`, `missing` y `partidos_con_diferencias`; compara fecha/hora
+    y estadio de forma flexible (ignora cambios de artículo/acento como
+    "Estadio La Corregidora" vs "Estadio Corregidora"; sí reporta hora y estadios
+    realmente distintos).
+  - El reporte termina con la `DECISIÓN`: **no sobrescribir automáticamente**,
+    revisar primero hora/estadio y mantener `ESPERAR / NO ENVIAR` mientras no haya
+    momios reales.
+  - Errores claros si falta el HTML (explica cómo guardarlo) o si faltan columnas.
+- `scripts/run_market_watchdog_local.sh`: lanzador local (cron/launchd) que usa
+  `$HOME/Projects/survivor-ligamx-bot` (no Desktop), carga `.env` si existe (sin
+  imprimir secretos) y escribe a `reports/market_watchdog_launchd.log`.
+- `tests/test_import_fbref_schedule.py`: tests con fixture HTML mínimo embebido
+  (extracción de tabla, normalización, filtro de jornada, comparación, diferencia
+  de hora, estadio menor ignorado, error por HTML faltante y por columnas faltantes).
+- `README.md`.
+
+### Sin cambios (restricciones respetadas)
+- FBref es fuente de auditoría manual, **no** verdad automática.
+- No sobrescribe `jornadas.json`, no cambia picks, no manda Telegram, no cambia el
+  estado operativo a `CERRAR`.
+- `.gitignore` ampliado para nunca commitear `data/fbref/`, CSV, HTML, `reports/`,
+  `results/`, `data/cache/`, `.env` ni logs.
+
 ## v1.34.0 — Multi-Market Watchdog
 
 ### Añadido
