@@ -2,7 +2,7 @@
 """
 assisted_odds_import.py — Assisted Sportsbook Odds Import (Survivor Liga MX).
 
-v1.39.0.
+v1.39.1.
 
 Lógica PURA de parseo/validación/reporte para una importación ASISTIDA POR
 USUARIO de momios 1X2 desde un sportsbook (ej. Caliente Liga MX).
@@ -27,13 +27,13 @@ import json
 import re
 import unicodedata
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 
 # ---------------------------------------------------------------------------
 # Constantes
 # ---------------------------------------------------------------------------
-VERSION = "v1.39.0"
+VERSION = "v1.39.1"
 
 # Decisión operativa: este flujo asistido NUNCA cierra ni envía un pick.
 DEC_ESPERAR = "ESPERAR / NO ENVIAR"
@@ -41,6 +41,8 @@ DEC_ESPERAR = "ESPERAR / NO ENVIAR"
 # Estados de resultado del parseo.
 STATUS_OK = "OK"
 STATUS_NO_MATCHES = "NO_MATCHES_FOUND"
+# Se detectaron momios en el texto pero no se pudieron formar partidos completos.
+STATUS_PARSER_NEEDS_REVIEW = "PARSER_NEEDS_REVIEW"
 
 LIGA = "Liga MX"
 FUENTE = "assisted_manual_sportsbook"
@@ -70,18 +72,18 @@ _RE_MOMIO = re.compile(r"^[+-]\d{2,4}$")
 # Magnitud mínima válida de un momio americano (even money = ±100).
 _MOMIO_MIN_ABS = 100
 
-# Patrón de un evento 1X2 dentro del texto visible.
+
+# ---------------------------------------------------------------------------
+# Patrón de evento SINGLE-LINE (formato original v1.39.0)
 #
 #   HH:MM  DD  Mon  EquipoLocal  MOMIO  Empate  MOMIO  EquipoVisitante  MOMIO
 #   19:00  16  Jul  Necaxa       -125   Empate  +260   Atlante          +275
 #
-# Notas de diseño anti-mezcla (bloque gigante de DOM):
-# - Los nombres de equipo se capturan con una clase que EXCLUYE dígitos y los
-#   signos +/-; así un nombre nunca puede "tragarse" un momio ni cruzar al
-#   siguiente evento. Cada coincidencia arranca en un token de hora HH:MM.
-# - La clase de equipo NO incluye saltos de línea; usamos finditer, por lo que
-#   los eventos se extraen de forma independiente y no se combinan partidos.
-_EQUIPO = r"[A-Za-zÁÉÍÓÚÜÑáéíóúüñ.'’/ ]+?"
+# Notas de diseño anti-mezcla: la clase de nombre de equipo excluye dígitos y
+# signos +/-; no cruza saltos de línea. finditer extrae cada evento de forma
+# independiente, sin combinar partidos de un bloque gigante de DOM.
+# ---------------------------------------------------------------------------
+_EQUIPO = r"[A-Za-zÁÉÍÓÚÜÑáéíóúüñ.''/ ]+?"
 _MOMIO_G = r"[+-]\d{2,4}"
 
 _RE_EVENTO = re.compile(
@@ -96,6 +98,22 @@ _RE_EVENTO = re.compile(
     r"(?P<momio_visitante>" + _MOMIO_G + r")",
     re.IGNORECASE,
 )
+
+# ---------------------------------------------------------------------------
+# Patrón de momio suelto — para detectar si hay momios en texto multiline.
+# ---------------------------------------------------------------------------
+_RE_MOMIO_SUELTO = re.compile(r"(?:^|[ \t])([+-]\d{2,4})(?:[ \t]|$)", re.MULTILINE)
+
+# ---------------------------------------------------------------------------
+# Palabras clave que identifican mercados de CAMPEÓN / FUTURO (no 1X2).
+# Un bloque que contenga estas palabras se salta para evitar mezcla de mercados.
+# ---------------------------------------------------------------------------
+_FUTURO_KEYWORDS = re.compile(
+    r"\b(campe[oó]n|champion|liga campeona|ganador|winner|futuro|futures|"
+    r"titulo|t[ií]tulo|ascenso|descenso|relegation)\b",
+    re.IGNORECASE,
+)
+
 
 
 # ---------------------------------------------------------------------------
@@ -141,8 +159,9 @@ def evento_momios_validos(evento: Dict[str, Any]) -> bool:
     )
 
 
+
 # ---------------------------------------------------------------------------
-# Parseo de eventos desde texto visible
+# Parseo SINGLE-LINE (formato original v1.39.0)
 # ---------------------------------------------------------------------------
 def _construir_evento(m: "re.Match[str]") -> Dict[str, Any]:
     dia = m.group("dia").strip()
@@ -164,7 +183,7 @@ def _construir_evento(m: "re.Match[str]") -> Dict[str, Any]:
 
 def extraer_eventos_crudos(texto: str) -> List[Dict[str, Any]]:
     """
-    Extrae todos los eventos candidatos del texto visible.
+    Extrae todos los eventos candidatos del texto visible (formato single-line).
 
     Filtra coincidencias con mes no reconocido o día fuera de rango (1-31),
     lo que evita falsos positivos cuando el DOM trae un bloque gigante.
@@ -182,6 +201,185 @@ def extraer_eventos_crudos(texto: str) -> List[Dict[str, Any]]:
     return eventos
 
 
+
+# ---------------------------------------------------------------------------
+# Parseo MULTILINE (nuevo en v1.39.1)
+#
+# Caliente cuando se copia desde Chrome normal produce bloques como:
+#
+#   Necaxa
+#   -125
+#   Empate
+#   +260
+#   Atlante
+#   +275
+#
+# La estrategia:
+# 1. Dividir el texto en líneas, eliminar líneas vacías y espacios laterales.
+# 2. Detectar si hay palabras clave de mercados futuros/campeón y saltarlas.
+# 3. Construir una máquina de estados que avanza token a token buscando la
+#    secuencia: EQUIPO → MOMIO → "Empate"/"Draw"/"X" → MOMIO → EQUIPO → MOMIO.
+#    - Un EQUIPO es una línea que NO es momio y NO es etiqueta Empate/Draw/X.
+#    - Un MOMIO es una línea que cumple es_momio_americano_valido().
+#    - "Empate/Draw/X" es una línea que coincide con _DRAW_LABELS.
+# 4. Ignorar bloques donde se detecte keyword de campeón/futuro.
+# 5. Si se completa la secuencia de 6 tokens, guardar el evento. Resetear
+#    máquina de estados ante cualquier token que rompa la secuencia.
+# ---------------------------------------------------------------------------
+
+# Tokens de la máquina de estados multiline.
+_ML_WAIT_LOCAL = 0       # esperando nombre equipo local
+_ML_WAIT_ML = 1          # esperando momio local
+_ML_WAIT_DRAW_LBL = 2    # esperando etiqueta Empate/Draw/X
+_ML_WAIT_MD = 3          # esperando momio empate
+_ML_WAIT_VISIT = 4       # esperando nombre equipo visitante
+_ML_WAIT_MV = 5          # esperando momio visitante
+
+
+def _es_etiqueta_empate(linea: str) -> bool:
+    return linea.strip().lower() in _DRAW_LABELS
+
+
+def _es_linea_equipo(linea: str) -> bool:
+    """
+    Una línea candidata a nombre de equipo:
+    - No es un momio americano.
+    - No es etiqueta de empate.
+    - No tiene solo dígitos.
+    - Tiene al menos 2 caracteres.
+    - No contiene palabras clave de campeón/futuro (evitar mezcla de mercados).
+    """
+    s = linea.strip()
+    if len(s) < 2:
+        return False
+    if es_momio_americano_valido(s):
+        return False
+    if _es_etiqueta_empate(s):
+        return False
+    if s.isdigit():
+        return False
+    if _FUTURO_KEYWORDS.search(s):
+        return False
+    return True
+
+
+def extraer_eventos_multiline(texto: str) -> List[Dict[str, Any]]:
+    """
+    Extrae eventos 1X2 de texto multiline copiado desde Caliente en Chrome.
+
+    Formato esperado (una línea por token):
+        Necaxa
+        -125
+        Empate
+        +260
+        Atlante
+        +275
+
+    La máquina de estados avanza por 6 pasos:
+        WAIT_LOCAL → WAIT_ML → WAIT_DRAW_LBL → WAIT_MD → WAIT_VISIT → WAIT_MV
+
+    - Líneas de campeón/futuro resetean el estado para no mezclar mercados.
+    - Si un token no encaja en el estado actual, se retrocede y se reclasifica
+      el token desde el estado inicial donde corresponda.
+    """
+    lineas = [ln.strip() for ln in str(texto or "").splitlines()]
+    lineas = [ln for ln in lineas if ln]  # eliminar vacías
+
+    eventos: List[Dict[str, Any]] = []
+
+    # Variables de estado
+    estado: int = _ML_WAIT_LOCAL
+    local: str = ""
+    momio_local: str = ""
+    momio_empate: str = ""
+    visitante: str = ""
+
+    def _reset() -> None:
+        nonlocal estado, local, momio_local, momio_empate, visitante
+        estado = _ML_WAIT_LOCAL
+        local = momio_local = momio_empate = visitante = ""
+
+    for linea in lineas:
+        # Mercado de campeón/futuro → reset total para evitar mezcla.
+        if _FUTURO_KEYWORDS.search(linea):
+            _reset()
+            continue
+
+        if estado == _ML_WAIT_LOCAL:
+            if _es_linea_equipo(linea):
+                local = linea
+                estado = _ML_WAIT_ML
+            # Cualquier otra línea (momios sueltos, cabeceras) se ignora.
+
+        elif estado == _ML_WAIT_ML:
+            if es_momio_americano_valido(linea):
+                momio_local = linea
+                estado = _ML_WAIT_DRAW_LBL
+            elif _es_linea_equipo(linea):
+                # La línea anterior era ruido; esta podría ser el verdadero local.
+                local = linea
+                # estado permanece _ML_WAIT_ML
+            else:
+                _reset()
+
+        elif estado == _ML_WAIT_DRAW_LBL:
+            if _es_etiqueta_empate(linea):
+                estado = _ML_WAIT_MD
+            elif _es_linea_equipo(linea):
+                # Secuencia rota; esta línea puede ser un nuevo local.
+                _reset()
+                local = linea
+                estado = _ML_WAIT_ML
+            else:
+                _reset()
+
+        elif estado == _ML_WAIT_MD:
+            if es_momio_americano_valido(linea):
+                momio_empate = linea
+                estado = _ML_WAIT_VISIT
+            else:
+                _reset()
+
+        elif estado == _ML_WAIT_VISIT:
+            if _es_linea_equipo(linea):
+                visitante = linea
+                estado = _ML_WAIT_MV
+            else:
+                _reset()
+
+        elif estado == _ML_WAIT_MV:
+            if es_momio_americano_valido(linea):
+                momio_visitante = linea
+                # Evento completo — fecha/hora ausentes en multiline puro.
+                ev: Dict[str, Any] = {
+                    "hora": "",
+                    "dia": 0,
+                    "mes_texto": "",
+                    "mes": 0,
+                    "fecha": "",
+                    "equipo_local": local,
+                    "equipo_visitante": visitante,
+                    "momio_local": momio_local,
+                    "momio_empate": momio_empate,
+                    "momio_visitante": momio_visitante,
+                }
+                eventos.append(ev)
+                _reset()
+            elif _es_linea_equipo(linea):
+                # Ruido entre partidos; tratamos esta línea como nuevo local.
+                _reset()
+                local = linea
+                estado = _ML_WAIT_ML
+            else:
+                _reset()
+
+    return eventos
+
+
+
+# ---------------------------------------------------------------------------
+# Deduplicación
+# ---------------------------------------------------------------------------
 def deduplicar(eventos: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], int]:
     """
     Deduplica por (local, visitante, fecha, hora) usando nombres normalizados.
@@ -205,14 +403,46 @@ def deduplicar(eventos: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], int
     return unicos, duplicados
 
 
+# ---------------------------------------------------------------------------
+# Detección de momios sueltos (para PARSER_NEEDS_REVIEW)
+# ---------------------------------------------------------------------------
+def _hay_momios_sueltos(texto: str) -> bool:
+    """True si el texto contiene al menos un momio americano válido suelto."""
+    for m in _RE_MOMIO_SUELTO.finditer(str(texto or "")):
+        if es_momio_americano_valido(m.group(1)):
+            return True
+    return False
+
+
+# ---------------------------------------------------------------------------
+# Pipeline principal
+# ---------------------------------------------------------------------------
 def analizar_texto(texto: str, esperados: int = 9) -> Dict[str, Any]:
     """
     Pipeline completo de parseo sobre el texto visible.
 
+    Estrategia (v1.39.1):
+    1. Intenta el parser single-line (regex original).
+    2. Si no produce resultados, intenta el parser multiline.
+    3. Si ninguno produce resultados pero hay momios sueltos en el texto,
+       reporta PARSER_NEEDS_REVIEW en vez de NO_MATCHES_FOUND.
+
     Devuelve un dict con eventos válidos/deduplicados, conteos, eventos
-    inválidos, estado (OK / NO_MATCHES_FOUND) y la decisión operativa fija.
+    inválidos, estado (OK / NO_MATCHES_FOUND / PARSER_NEEDS_REVIEW) y la
+    decisión operativa fija.
     """
-    crudos = extraer_eventos_crudos(texto)
+    texto = str(texto or "")
+
+    # --- Paso 1: parser single-line ---
+    crudos_sl = extraer_eventos_crudos(texto)
+
+    # --- Paso 2: parser multiline (solo si single-line no encontró nada) ---
+    crudos_ml: List[Dict[str, Any]] = []
+    if not crudos_sl:
+        crudos_ml = extraer_eventos_multiline(texto)
+
+    crudos = crudos_sl if crudos_sl else crudos_ml
+    formato_detectado = "single-line" if crudos_sl else ("multiline" if crudos_ml else "ninguno")
 
     validos_pre: List[Dict[str, Any]] = []
     invalidos: List[Dict[str, Any]] = []
@@ -223,7 +453,15 @@ def analizar_texto(texto: str, esperados: int = 9) -> Dict[str, Any]:
             invalidos.append(ev)
 
     eventos, duplicados = deduplicar(validos_pre)
-    status = STATUS_OK if eventos else STATUS_NO_MATCHES
+
+    # --- Determinar status ---
+    if eventos:
+        status = STATUS_OK
+    elif _hay_momios_sueltos(texto):
+        # Hay momios en el texto pero no se pudieron armar partidos completos.
+        status = STATUS_PARSER_NEEDS_REVIEW
+    else:
+        status = STATUS_NO_MATCHES
 
     return {
         "liga": LIGA,
@@ -235,9 +473,11 @@ def analizar_texto(texto: str, esperados: int = 9) -> Dict[str, Any]:
         "invalidos": invalidos,
         "eventos": eventos,
         "status": status,
+        "formato_detectado": formato_detectado,
         "coincide_esperados": len(eventos) == esperados,
         "decision": DEC_ESPERAR,
     }
+
 
 
 # ---------------------------------------------------------------------------
@@ -284,6 +524,9 @@ def render_report(resultado: Dict[str, Any], *, url: str = "") -> str:
     solo el host de la URL (si se pasa), conteos y la decisión operativa.
     """
     eventos = resultado.get("eventos", [])
+    status = resultado.get("status", STATUS_NO_MATCHES)
+    fmt = resultado.get("formato_detectado", "")
+
     lineas: List[str] = [
         f"# ASSISTED SPORTSBOOK ODDS IMPORT — SURVIVOR LIGA MX ({VERSION})",
         "",
@@ -294,9 +537,11 @@ def render_report(resultado: Dict[str, Any], *, url: str = "") -> str:
     ]
     if url:
         lineas.append(f"Host: {_host_de_url(url)}")
+    if fmt and fmt != "ninguno":
+        lineas.append(f"Formato detectado: {fmt}")
     lineas += [
         "",
-        f"Status: {resultado.get('status', STATUS_NO_MATCHES)}",
+        f"Status: {status}",
         f"Eventos esperados: {resultado.get('esperados', '?')}",
         f"Eventos detectados (crudos): {resultado.get('total_detectados', 0)}",
         f"Eventos válidos (deduplicados): {resultado.get('total_validos', 0)}",
@@ -306,18 +551,32 @@ def render_report(resultado: Dict[str, Any], *, url: str = "") -> str:
         "",
     ]
 
-    if resultado.get("status") == STATUS_NO_MATCHES:
+    if status == STATUS_NO_MATCHES:
         lineas += [
             "AVISO: NO_MATCHES_FOUND — no se detectaron eventos 1X2 válidos en el",
             "texto visible. Revisar manualmente la página y volver a capturar.",
+            "",
+        ]
+    elif status == STATUS_PARSER_NEEDS_REVIEW:
+        lineas += [
+            "AVISO: PARSER_NEEDS_REVIEW — se detectaron momios en el texto pero no",
+            "se pudieron formar partidos 1X2 completos. Revisar el formato del texto",
+            "capturado y volver a ejecutar. El formato multiline esperado es:",
+            "  Equipo Local",
+            "  -125",
+            "  Empate",
+            "  +260",
+            "  Equipo Visitante",
+            "  +275",
             "",
         ]
 
     if eventos:
         lineas.append("Eventos Liga MX (1X2):")
         for ev in eventos:
+            fecha_hora = f"{ev['fecha']} {ev['hora']}".strip()
             lineas.append(
-                f"- {ev['fecha']} {ev['hora']} | "
+                f"- {fecha_hora + ' | ' if fecha_hora else ''}"
                 f"{ev['equipo_local']} ({ev['momio_local']}) | "
                 f"Empate ({ev['momio_empate']}) | "
                 f"{ev['equipo_visitante']} ({ev['momio_visitante']})"

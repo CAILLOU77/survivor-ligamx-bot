@@ -2,7 +2,7 @@
 """
 assisted_caliente_odds.py — CLI de importación ASISTIDA de momios (Survivor Liga MX).
 
-v1.39.0 — Assisted Sportsbook Odds Import.
+v1.39.1 — Caliente Multiline Parser Fix + Chrome Capture Prep.
 
 Flujo asistido por usuario (NO automatizado, NO stealth, NO bypass):
     1. Abre un navegador VISIBLE con Playwright (persistent context).
