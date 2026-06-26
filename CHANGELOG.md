@@ -24,8 +24,9 @@
     Puebla, Pumas UNAM vs Pachuca, Chivas Guadalajara vs Toluca, Monterrey vs
     Santos Laguna, Querétaro FC vs América.
 - `scripts/assisted_caliente_odds.py`: bump de referencia a v1.39.1.
-- `reports/caliente_debug_text.txt`: fixture de texto multiline con los 9
-  partidos reales de Liga MX (formato Chrome normal de Caliente).
+- `tests/fixtures/caliente_debug_text_multiline.txt`: fixture de texto multiline
+  con los 9 partidos reales de Liga MX (formato Chrome normal de Caliente).
+  Movido desde `reports/` para respetar que `reports/` permanece ignorado.
 - `tests/test_assisted_odds_import.py`: tests nuevos para:
   - Parser multiline con 1 partido (Necaxa/-125/Empate/+260/Atlante/+275).
   - Parser multiline con 9 partidos reales (verifica pares y momios).
