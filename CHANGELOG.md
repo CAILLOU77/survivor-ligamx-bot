@@ -1,5 +1,32 @@
 # Changelog — Survivor Liga MX Bot
 
+## v1.37.0 — Data Confidence Score / Final Audit Readiness
+
+### Añadido
+- `src/data_confidence.py` + `scripts/final_audit_readiness.py`: sistema **local**
+  que mide si el bot tiene suficiente información real para pasar a auditoría final.
+  - Combina entradas locales: API Health Matrix (`api_role_router.build_matrix`),
+    Market Watchdog (`data/watchdog_state.json`), FBref local (CSV/comparación) y
+    noticias locales (`data/noticias_ligamx.txt`). No hace llamadas externas.
+  - Genera/imprime `reports/data_confidence_ultimo.txt`.
+  - Scoring: mercado real 9/9 `+35` / 1–8 `+15` / 0/9 `-40`; movimiento `+10`;
+    API-Football `CONFIGURED_UNKNOWN +5` (RECHECK_BEFORE_MATCH) / `PLAN_BLOCKED_2026 -20`
+    (warning) / `MISSING_ENV -15`; FBref `+10`; noticias `+10`; Groq `+5`; Gemini `+5`;
+    Cerebras/OpenRouter/Fireworks `0` (DISABLED_BY_CONFIG).
+  - Clasificación: `<40` LOW, `40–69` MEDIUM, `>=70` HIGH.
+  - Decisión: `ESPERAR / NO ENVIAR` salvo score `>=70` **y** mercado real 9/9, que
+    marca `READY_FOR_FULL_AUDIT / NO ENVIAR AUTOMÁTICO`. **Nunca `CERRAR`** y nunca
+    `READY` si el mercado no es 9/9. Mercado 0/9 fuerza `ESPERAR / NO ENVIAR`.
+- `tests/test_data_confidence.py`: 0/9 fuerza ESPERAR; 9/9+score alto permite READY;
+  clasificación LOW/MEDIUM/HIGH; PLAN_BLOCKED_2026 resta y avisa; CONFIGURED_UNKNOWN
+  suma poco + RECHECK; FBref/Groq/Gemini suman; trío no activo; reporte sin secretos
+  ni `CERRAR`; tolerancia a archivos faltantes.
+
+### Sin cambios (restricciones respetadas)
+- No toma/cierra picks, no manda Telegram, no activa proveedores nuevos, no imprime
+  secretos, no hace llamadas externas obligatorias en tests.
+- No cambia `run_bot.sh`, `market_watchdog` ni la lógica de pick. No usa `CERRAR`.
+
 ## v1.36.0 — API Role Router & Health Matrix
 
 ### Añadido

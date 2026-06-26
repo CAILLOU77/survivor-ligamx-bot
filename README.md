@@ -29,7 +29,23 @@ cuenta.**
   Health Matrix** (v1.36.0). Inventario local que ordena todas las APIs por
   función, estado y uso operativo. No toma picks, no manda Telegram, no activa
   proveedores nuevos y no imprime secretos.
+- `scripts/final_audit_readiness.py` + `src/data_confidence.py`: **Data Confidence
+  Score / Final Audit Readiness** (v1.37.0). Mide localmente si hay suficiente
+  información real para auditoría final. Nunca `CERRAR`; `READY_FOR_FULL_AUDIT`
+  solo con score `>=70` y mercado real `9/9` (y aun así `NO ENVIAR AUTOMÁTICO`).
 - `scripts/run_market_watchdog_local.sh`: lanzador local del watchdog (cron/launchd).
+
+## Data Confidence Score / Final Audit Readiness (v1.37.0)
+
+```bash
+python3 scripts/final_audit_readiness.py
+```
+
+Combina la API Health Matrix, el Market Watchdog (`data/watchdog_state.json`),
+salidas locales de FBref y noticias locales para calcular un score de confianza y
+escribe `reports/data_confidence_ultimo.txt`. Con mercado real `0/9` la decisión es
+`ESPERAR / NO ENVIAR`. No toma/cierra picks, no manda Telegram, no activa APIs, no
+hace llamadas externas, no imprime secretos y nunca usa `CERRAR`.
 
 ## API Role Router & Health Matrix (v1.36.0)
 

@@ -159,6 +159,31 @@ Imprime y guarda `reports/api_health_matrix_ultimo.txt`. Reglas clave:
 
 El reporte termina con `DECISIÓN` y mantiene `ESPERAR / NO ENVIAR`.
 
+## Data Confidence Score / Final Audit Readiness (v1.37.0)
+
+Mide localmente si el bot tiene suficiente información real para pasar a auditoría
+final. Combina la API Health Matrix, el estado del Market Watchdog
+(`data/watchdog_state.json`), salidas locales de FBref y noticias locales.
+**No toma/cierra picks, no manda Telegram, no activa APIs, no hace llamadas
+externas, no imprime secretos y nunca usa `CERRAR`.**
+
+```bash
+python3 scripts/final_audit_readiness.py
+```
+
+Imprime y guarda `reports/data_confidence_ultimo.txt`. Scoring resumido:
+
+- Mercado real 9/9 `+35` · 1–8 `+15` · 0/9 `-40` (fuerza `ESPERAR / NO ENVIAR`).
+- Movimiento de mercado presente `+10`.
+- API-Football: `CONFIGURED_UNKNOWN` `+5` (con `RECHECK_BEFORE_MATCH`),
+  `PLAN_BLOCKED_2026` `-20` (warning), `MISSING_ENV` `-15`. Nunca cierra solo.
+- FBref local `+10` · Noticias locales `+10`.
+- Groq `+5` · Gemini `+5` · Cerebras/OpenRouter/Fireworks `0` (DISABLED_BY_CONFIG).
+
+Clasificación: `<40` LOW · `40–69` MEDIUM · `>=70` HIGH. Decisión:
+`ESPERAR / NO ENVIAR` salvo score `>=70` **y** mercado real `9/9`, donde marca
+`READY_FOR_FULL_AUDIT / NO ENVIAR AUTOMÁTICO`. Nunca `READY` si el mercado no es 9/9.
+
 ## Tests
 
 ```bash
@@ -167,4 +192,5 @@ python3 -m unittest discover -s tests
 python3 -m unittest tests.test_market_watchdog
 python3 -m unittest tests.test_import_fbref_schedule
 python3 -m unittest tests.test_api_role_router
+python3 -m unittest tests.test_data_confidence
 ```
