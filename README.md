@@ -33,6 +33,9 @@ cuenta.**
   Score / Final Audit Readiness** (v1.37.0). Mide localmente si hay suficiente
   información real para auditoría final. Nunca `CERRAR`; `READY_FOR_FULL_AUDIT`
   solo con score `>=70` y mercado real `9/9` (y aun así `NO ENVIAR AUTOMÁTICO`).
+- `scripts/prematch_recheck_scheduler.py` + `src/prematch_recheck.py`: **Pre-Match
+  Recheck Scheduler** (v1.38.0). Checklist local por ventana al kickoff (T-48h…T-60m).
+  No red, no Telegram, no picks, no cierre automático, no cron.
 - `scripts/run_market_watchdog_local.sh`: lanzador local del watchdog (cron/launchd).
 
 ## Data Confidence Score / Final Audit Readiness (v1.37.0)

@@ -1,5 +1,33 @@
 # Changelog — Survivor Liga MX Bot
 
+## v1.38.0 — Pre-Match Recheck Scheduler
+
+### Añadido
+- `src/prematch_recheck.py` + `scripts/prematch_recheck_scheduler.py`: programador/
+  checklist **local** de revisiones pre-partido según la distancia al kickoff.
+  - Ventanas por partido: `UPCOMING`, `DUE_T48`, `DUE_T24`, `DUE_T6`, `DUE_T2`,
+    `DUE_T60`, `LIVE_OR_LOCKED`, `UNKNOWN_TIME`.
+  - Checklist específico por ventana (T-48h, T-24h, T-6h, T-2h, T-60m).
+  - Entradas locales: `data/jornadas.json` (si falta, no rompe), API Health Matrix
+    (`api_role_router.build_matrix`) y, opcionalmente, Data Confidence como contexto.
+  - API-Football `PLAN_BLOCKED_2026` agrega warning de buscar alternativa de
+    alineaciones/noticias; `CONFIGURED_UNKNOWN` mantiene `RECHECK_BEFORE_MATCH`;
+    no rota llave por plan/temporada/quota/auth.
+  - CLI determinístico con `--now` para pruebas. Genera/imprime
+    `reports/prematch_recheck_ultimo.txt`.
+  - Decisión general: `ESPERAR / NO ENVIAR`. No marca `READY_FOR_FULL_AUDIT` aquí
+    (eso requiere mercado real 9/9 + Data Confidence HIGH en la auditoría final).
+- `tests/test_prematch_recheck.py`: clasificación de las 8 ventanas (incluyendo
+  bordes), parseo de kickoff, warning de PLAN_BLOCKED_2026, RECHECK en
+  CONFIGURED_UNKNOWN, tolerancia a `jornadas.json` faltante, trío no activo,
+  reporte sin secretos ni cierre automático, y generación del reporte vía CLI.
+
+### Sin cambios (restricciones respetadas)
+- No hace llamadas externas, no manda Telegram, no cambia/cierra picks, no activa
+  Cerebras/OpenRouter/Fireworks, no crea launchd/cron, no imprime secretos.
+- No cambia `run_bot.sh`, `market_watchdog` ni la lógica de pick. No usa cierre
+  operativo automático.
+
 ## v1.37.0 — Data Confidence Score / Final Audit Readiness
 
 ### Añadido

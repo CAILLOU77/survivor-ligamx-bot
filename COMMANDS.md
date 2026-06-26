@@ -184,6 +184,28 @@ Clasificación: `<40` LOW · `40–69` MEDIUM · `>=70` HIGH. Decisión:
 `ESPERAR / NO ENVIAR` salvo score `>=70` **y** mercado real `9/9`, donde marca
 `READY_FOR_FULL_AUDIT / NO ENVIAR AUTOMÁTICO`. Nunca `READY` si el mercado no es 9/9.
 
+## Pre-Match Recheck Scheduler (v1.38.0)
+
+Programador/checklist **local** para revisiones pre-partido. Según la distancia al
+kickoff indica qué ventana de revisión toca y qué checklist seguir.
+**No hace llamadas externas, no manda Telegram, no cambia/cierra picks, no activa
+APIs nuevas, no imprime secretos, no usa cierre automático y no crea launchd/cron.**
+
+```bash
+# Usa la hora actual
+python3 scripts/prematch_recheck_scheduler.py --jornada 1
+
+# Determinístico (pruebas)
+python3 scripts/prematch_recheck_scheduler.py --jornada 1 --now "2026-07-16T12:00:00"
+```
+
+Imprime y guarda `reports/prematch_recheck_ultimo.txt`. Ventanas por partido:
+`UPCOMING`, `DUE_T48`, `DUE_T24`, `DUE_T6`, `DUE_T2`, `DUE_T60`, `LIVE_OR_LOCKED`,
+`UNKNOWN_TIME` (falta fecha/hora usable). Si `data/jornadas.json` falta, no rompe.
+API-Football `PLAN_BLOCKED_2026` agrega warning de buscar alternativa de
+alineaciones/noticias; `CONFIGURED_UNKNOWN` mantiene `RECHECK_BEFORE_MATCH`. La
+decisión general se mantiene en `ESPERAR / NO ENVIAR`.
+
 ## Tests
 
 ```bash
@@ -193,4 +215,5 @@ python3 -m unittest tests.test_market_watchdog
 python3 -m unittest tests.test_import_fbref_schedule
 python3 -m unittest tests.test_api_role_router
 python3 -m unittest tests.test_data_confidence
+python3 -m unittest tests.test_prematch_recheck
 ```
