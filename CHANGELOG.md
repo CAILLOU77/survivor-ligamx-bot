@@ -1,5 +1,37 @@
 # Changelog — Survivor Liga MX Bot
 
+## v1.36.0 — API Role Router & Health Matrix
+
+### Añadido
+- `src/api_role_router.py` + `scripts/api_health_matrix.py`: inventario local que
+  ordena todas las APIs por **función (rol), estado y uso operativo**.
+  - Detecta presencia de variables de entorno (`SET`/`MISSING`) **sin imprimir el
+    valor** del secreto. No hace llamadas externas.
+  - Genera/imprime `reports/api_health_matrix_ultimo.txt`.
+  - Roles: The Odds API=`MARKET_TRUTH`, API-Football=`TEAM_NEWS_LINEUPS`,
+    FBref=`MANUAL_STATS_AUDIT`, TheSportsDB/ESPN=`SCHEDULE_FALLBACK`,
+    DuckDuckGo/Web=`NEWS_RISK`, Groq=`PRIMARY_AI_ANALYSIS`,
+    Gemini=`STABLE_AI_FALLBACK`, Cerebras=`FAST_SECOND_OPINION`,
+    OpenRouter=`EMERGENCY_MODEL_ROUTER`, Fireworks=`BACKUP_AI_CLASSIFIER`.
+  - The Odds API: `ODDS_MARKETS=h2h,totals,spreads` recomendado; BTTS/Draw No Bet
+    => `UNSUPPORTED_MARKET_CONFIG`; HTTP 422 clasificado como mercado no soportado
+    (no fallo de llave).
+  - API-Football: bloqueo por plan/temporada 2026 => `PLAN_BLOCKED_2026`; **no rota
+    llave** por plan/temporada/quota/auth (solo por fallo técnico real); marca
+    `RECHECK_BEFORE_MATCH` (T-48h, T-24h, T-6h, T-2h, T-60m).
+  - Cerebras/OpenRouter/Fireworks: `DISABLED_BY_CONFIG`; la matriz **nunca** los
+    activa, aunque exista llave o `*_ENABLED=true`. OpenRouter anota manejar
+    `content=None` de forma segura cuando se implemente.
+- `tests/test_api_role_router.py`: detección de env sin filtrar secretos, missing,
+  `DISABLED_BY_CONFIG`, ODDS_MARKETS recomendado vs `UNSUPPORTED_MARKET_CONFIG`,
+  `PLAN_BLOCKED_2026` sin rotación de llave, `RECHECK_BEFORE_MATCH`, trío no
+  activado, y reporte que termina en `ESPERAR / NO ENVIAR`.
+
+### Sin cambios (restricciones respetadas)
+- No toma picks, no manda Telegram, no activa proveedores nuevos, no imprime
+  secretos, no hace llamadas externas obligatorias.
+- No cambia `run_bot.sh`, `market_watchdog` ni la lógica de pick. No pone `CERRAR`.
+
 ## v1.35.0 — FBref Schedule Import Audit
 
 ### Añadido

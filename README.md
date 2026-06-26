@@ -25,7 +25,39 @@ cuenta.**
   `AUDITAR / NO ENVIAR AUTOMÁTICO`.
 - `scripts/import_fbref_schedule.py`: **FBref Schedule Import Audit** (v1.35.0).
   Importador/auditor **local** del calendario de FBref para revisión manual.
+- `scripts/api_health_matrix.py` + `src/api_role_router.py`: **API Role Router &
+  Health Matrix** (v1.36.0). Inventario local que ordena todas las APIs por
+  función, estado y uso operativo. No toma picks, no manda Telegram, no activa
+  proveedores nuevos y no imprime secretos.
 - `scripts/run_market_watchdog_local.sh`: lanzador local del watchdog (cron/launchd).
+
+## API Role Router & Health Matrix (v1.36.0)
+
+Genera un inventario local de roles/estado/uso de cada API (sin secretos, sin red,
+sin picks ni Telegram):
+
+```bash
+python3 scripts/api_health_matrix.py
+```
+
+Escribe `reports/api_health_matrix_ultimo.txt`. Resumen de roles:
+
+| API | Rol | Notas |
+|---|---|---|
+| The Odds API | `MARKET_TRUTH` | mercado real / momios / movimiento. `ODDS_MARKETS=h2h,totals,spreads`. HTTP 422 = `UNSUPPORTED_MARKET_CONFIG` (no fallo de llave). |
+| API-Football | `TEAM_NEWS_LINEUPS` | alineaciones/lesiones/suspendidos. Temporada 2026 por plan = `PLAN_BLOCKED_2026`. No rota llave por plan/temporada/quota/auth. `RECHECK_BEFORE_MATCH` (T-48h…T-60m). |
+| FBref / Stathead | `MANUAL_STATS_AUDIT` | manual, sin scraping, sin overwrite. |
+| TheSportsDB / ESPN | `SCHEDULE_FALLBACK` | fuente secundaria de calendario. |
+| DuckDuckGo / Web News | `NEWS_RISK` | bajas/lesiones/DT/crisis. |
+| Groq | `PRIMARY_AI_ANALYSIS` | análisis principal. |
+| Gemini | `STABLE_AI_FALLBACK` | respaldo técnico de Groq. |
+| Cerebras | `FAST_SECOND_OPINION` | `DISABLED_BY_CONFIG`. |
+| OpenRouter | `EMERGENCY_MODEL_ROUTER` | `DISABLED_BY_CONFIG`. |
+| Fireworks | `BACKUP_AI_CLASSIFIER` | `DISABLED_BY_CONFIG`. |
+
+Cerebras/OpenRouter/Fireworks permanecen desactivados
+(`CEREBRAS_ENABLED=false`, `OPENROUTER_ENABLED=false`, `FIREWORKS_ENABLED=false`)
+hasta que el código los soporte; la matriz nunca los activa.
 
 ## FBref Schedule Import Audit (v1.35.0)
 
