@@ -137,6 +137,28 @@ sobrescribir automáticamente y mantener `ESPERAR / NO ENVIAR` mientras no exist
 momios reales. Si falta el HTML o faltan columnas, el script falla con un mensaje
 claro (no rompe nada más).
 
+## API Health Matrix (v1.36.0)
+
+Inventario local que ordena todas las APIs por función (rol), estado y uso
+operativo. **No toma picks, no manda Telegram, no activa proveedores nuevos, no
+imprime secretos y no hace llamadas externas.**
+
+```bash
+python3 scripts/api_health_matrix.py
+```
+
+Imprime y guarda `reports/api_health_matrix_ultimo.txt`. Reglas clave:
+
+- The Odds API (`MARKET_TRUTH`): `ODDS_MARKETS=h2h,totals,spreads`; BTTS/Draw No
+  Bet solo si el endpoint los soporta; HTTP 422 = `UNSUPPORTED_MARKET_CONFIG`
+  (no es fallo de llave).
+- API-Football (`TEAM_NEWS_LINEUPS`): bloqueo de temporada 2026 por plan =
+  `PLAN_BLOCKED_2026`; **no** rota llave por plan/temporada/quota/auth (solo por
+  fallo técnico real); marca `RECHECK_BEFORE_MATCH` (T-48h, T-24h, T-6h, T-2h, T-60m).
+- Cerebras/OpenRouter/Fireworks: `DISABLED_BY_CONFIG` (no se activan).
+
+El reporte termina con `DECISIÓN` y mantiene `ESPERAR / NO ENVIAR`.
+
 ## Tests
 
 ```bash
@@ -144,4 +166,5 @@ python3 -m unittest discover -s tests
 # o por módulo:
 python3 -m unittest tests.test_market_watchdog
 python3 -m unittest tests.test_import_fbref_schedule
+python3 -m unittest tests.test_api_role_router
 ```
