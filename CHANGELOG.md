@@ -1,5 +1,75 @@
 # Changelog — Survivor Liga MX Bot
 
+## v1.43.1 — Fireworks Client Tests (mock)
+
+### Añadido
+- `tests/test_fireworks_client.py`: pruebas unitarias para `fireworks_client`
+  con `requests.post` mockeado (sin llamadas reales a la red):
+  - `FIREWORKS_ENABLED` por defecto es `false`.
+  - Clasificación devuelve datos y agrega `decision_operativa = ESPERAR / NO ENVIAR`.
+  - JSON inválido del proveedor se guarda como `raw`.
+  - HTTP de error lanza `RuntimeError`.
+  - Falta de `FIREWORKS_API_KEY` lanza `RuntimeError`.
+- Suite total: **232 tests OK**.
+
+## v1.43.0 — Fireworks AI como clasificador de riesgo opcional
+
+### Añadido
+- `src/fireworks_client.py`: clasificador de riesgo opcional vía Fireworks AI
+  (rol `BACKUP_AI_CLASSIFIER`). Solo resume noticias, clasifica lesiones,
+  detecta cambios de alineación y extrae señales de riesgo.
+  - **Desactivado por defecto** (`FIREWORKS_ENABLED=false`).
+  - NUNCA genera, cierra ni envía picks. La decisión operativa sigue siendo
+    `ESPERAR / NO ENVIAR`.
+- `requirements.txt`: se agrega `requests` (dependencia del cliente HTTP).
+
+## v1.42.0 — Team Name Normalizer
+
+### Añadido / Mejorado
+- `src/team_normalizer.py`: fuente única de verdad para limpiar, comparar y
+  mostrar nombres de equipos Liga MX (alias → forma canónica → display).
+  Ej.: `Club América` → `America` → `América`; `Atlético de San Luis` →
+  `San Luis`; `Tijuana Xolos de Caliente` → `Tijuana`.
+  - Corrige el bug de regex (`bad character range`) reportado previamente.
+  - No cambia picks, no envía Telegram, no toca `.env`/`data`/`reports`.
+- Integrado en `scripts/import_fbref_schedule.py`, `src/assisted_odds_import.py`
+  y `src/sync_odds_api.py` para evitar duplicación de lógica de nombres.
+- `tests/test_team_normalizer.py`: cobertura de alias, display y normalización.
+
+## v1.41.1 — Telegram Report Safety Guard
+
+### Añadido / Mejorado
+- `src/telegram_notifier.py`: guard de seguridad antes de enviar. Bloquea el
+  envío si el reporte no contiene una etiqueta segura permitida o si detecta
+  señales operativas prohibidas (`CERRAR`, `ENVIAR PICK`, `APOSTAR`, etc.).
+- `scripts/final_security_gate.py`: refuerzo de detección con manejo de
+  negaciones (ej. `NO CERRAR` no dispara falso positivo).
+- `tests/test_final_security_gate.py` y `tests/test_telegram_notifier_safety.py`:
+  nuevas pruebas de la doble capa de seguridad.
+
+## v1.41.0 — Final Operational Safety Gate
+
+### Añadido
+- `scripts/final_security_gate.py`: guardia final que valida el reporte antes
+  de cualquier salida. Solo permite continuar si conserva una etiqueta segura
+  (`ESPERAR / NO ENVIAR` o `READY_FOR_FULL_AUDIT / NO ENVIAR AUTOMÁTICO`) y no
+  contiene señales operativas peligrosas. Exit codes: 0 OK, 1 error, 2 sin
+  etiqueta segura, 3 señal prohibida.
+- `run_bot.sh`: integra el safety gate como paso final del pipeline antes de
+  notificar.
+- `tests/test_final_security_gate.py`: pruebas del gate.
+
+## v1.40.0 — Liga MX RSS News / Search Monitor
+
+### Añadido
+- `scripts/rss_lesiones_ligamx.py`: monitor de actualidad Liga MX vía Google
+  News RSS filtrado por sitio (Mediotiempo, ESPN México). Busca lesiones,
+  bajas, suspendidos, dudas y boletines médicos; filtra ruido y notas viejas,
+  deduplica por similitud y clasifica impacto operativo.
+  - Exporta `reports/lesiones_noticias_ligamx.json` (local, no commiteado).
+  - No usa credenciales, no scrapea HTML, no hace bypass.
+  - Decisión operativa: `ESPERAR / NO ENVIAR`.
+
 ## v1.39.2 — Real Caliente Layout Token Parser Fix
 
 ### Corregido / Mejorado
