@@ -43,6 +43,9 @@ def get_picks():
         refresh_cache()
     return PICKS_CACHE
 
+
+from src.routers.analizar_1x2 import router as analizar_router
+app.include_router(analizar_router)
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("src.api:app", host="0.0.0.0", port=8000, reload=True)
