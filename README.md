@@ -8,6 +8,47 @@ cuenta.**
 
 > Proyecto local: `~/Projects/survivor-ligamx-bot`.
 
+## Instalación y puesta en marcha
+
+Requiere **Python 3.9+**.
+
+```bash
+# 1. Clonar el repositorio
+git clone https://github.com/BRUCEWAYNE0180/survivor-ligamx-bot.git
+cd survivor-ligamx-bot
+
+# 2. (Recomendado) crear y activar un entorno virtual
+python3 -m venv .venv
+source .venv/bin/activate        # en Windows: .venv\Scripts\activate
+
+# 3. Instalar dependencias
+pip install -r requirements.txt
+
+# 4. Configurar variables de entorno
+cp .env.example .env
+#    edita .env y rellena tus claves reales (Odds API, API-Football, Groq, etc.)
+
+# 5. Verificar que todo está sano
+python3 -m unittest discover -s tests
+```
+
+### Cómo correr el bot
+
+```bash
+# Pipeline completo (normalización → momios → IA → riesgo → auditoría →
+# reporte → safety gate → Telegram opcional):
+bash run_bot.sh
+
+# O solo el orquestador de pronósticos:
+python3 main.py
+```
+
+> **Notas de seguridad:** todas las claves en `.env` son opcionales; las que
+> dejes vacías hacen que ese proveedor quede `DISABLED_BY_CONFIG` y el bot
+> degrada sin romperse. El bot **nunca** cierra ni envía picks automáticamente:
+> toda salida termina en `ESPERAR / NO ENVIAR` o
+> `READY_FOR_FULL_AUDIT / NO ENVIAR AUTOMÁTICO`. Telegram es solo informativo.
+
 ## Estado operativo actual
 
 - Sin momios reales Liga MX todavía: **0/9**.
