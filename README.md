@@ -43,6 +43,22 @@ bash run_bot.sh
 python3 main.py
 ```
 
+### Telegram (opcional)
+
+```bash
+# 1. Configurar una sola vez (detecta tu chat_id automáticamente):
+python3 src/configurar_telegram.py
+
+# 2. Previsualizar lo que se enviaría, SIN enviar nada (recomendado para probar):
+python3 src/telegram_notifier.py --report reports/reporte_survivor_ultimo.txt --dry-run
+
+# 3. Envío real (cuando ya configuraste token y chat_id):
+python3 src/telegram_notifier.py --report reports/reporte_survivor_ultimo.txt
+```
+
+Telegram es solo informativo y pasa por el safety gate: el bot nunca envía picks
+automáticos. Más detalle en [`COMMANDS.md`](COMMANDS.md).
+
 > **Notas de seguridad:** todas las claves en `.env` son opcionales; las que
 > dejes vacías hacen que ese proveedor quede `DISABLED_BY_CONFIG` y el bot
 > degrada sin romperse. El bot **nunca** cierra ni envía picks automáticamente:

@@ -206,6 +206,42 @@ API-Football `PLAN_BLOCKED_2026` agrega warning de buscar alternativa de
 alineaciones/noticias; `CONFIGURED_UNKNOWN` mantiene `RECHECK_BEFORE_MATCH`. La
 decisión general se mantiene en `ESPERAR / NO ENVIAR`.
 
+## Telegram (configuración y envío)
+
+Telegram es **opcional e informativo**: el bot **nunca** envía picks automáticos.
+Todo mensaje pasa antes por el safety gate; si el reporte no conserva una etiqueta
+segura (`ESPERAR / NO ENVIAR` / `READY_FOR_FULL_AUDIT / NO ENVIAR AUTOMÁTICO`) o
+contiene señales prohibidas (`CERRAR`, `ENVIAR PICK`, `APOSTAR`…), el envío se
+**bloquea**.
+
+### Configuración inicial (una sola vez)
+
+```bash
+python3 src/configurar_telegram.py
+```
+
+Pide tu `TELEGRAM_BOT_TOKEN` (créalo con @BotFather), detecta automáticamente tu
+`TELEGRAM_CHAT_ID` cuando le mandas `/start` al bot, y los guarda en `.env` sin
+tocar tus otras llaves. **Pega el token solo en tu Terminal, nunca en un chat.**
+
+### Enviar el reporte
+
+```bash
+# Envío real (requiere TELEGRAM_BOT_TOKEN y TELEGRAM_CHAT_ID en .env)
+python3 src/telegram_notifier.py --report reports/reporte_survivor_ultimo.txt
+```
+
+### Previsualizar sin enviar (`--dry-run`)
+
+```bash
+# Valida con el safety gate y muestra lo que se ENVIARÍA, sin enviar nada.
+# Funciona incluso sin credenciales: ideal para probar.
+python3 src/telegram_notifier.py --report reports/reporte_survivor_ultimo.txt --dry-run
+```
+
+El `--dry-run` respeta el safety gate: si el reporte trae una señal prohibida,
+igual devuelve el código de bloqueo (exit 3) y **no envía nada**, solo lo muestra.
+
 ## Tests
 
 ```bash
@@ -216,4 +252,5 @@ python3 -m unittest tests.test_import_fbref_schedule
 python3 -m unittest tests.test_api_role_router
 python3 -m unittest tests.test_data_confidence
 python3 -m unittest tests.test_prematch_recheck
+python3 -m unittest tests.test_telegram_notifier
 ```
