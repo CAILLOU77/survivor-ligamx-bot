@@ -20,7 +20,13 @@ import os
 from pathlib import Path
 from typing import Any, Dict
 
-import requests
+try:
+    import requests
+except ImportError:  # pragma: no cover - entorno sin la dependencia opcional
+    # `requests` es una dependencia de esta función opcional (off por defecto).
+    # No debe romper la importación del módulo si no está instalada; la
+    # ausencia se reporta con un error claro solo si alguien la invoca.
+    requests = None  # type: ignore[assignment]
 
 
 def _cargar_env() -> None:
@@ -44,6 +50,11 @@ def fireworks_habilitado() -> bool:
 def clasificar_riesgo_fireworks(texto_noticias: str, system_prompt: str = "") -> Dict[str, Any]:
     """Clasifica señales de riesgo. No produce decisiones de apuesta."""
     _cargar_env()
+    if requests is None:
+        raise RuntimeError(
+            "La dependencia 'requests' no está instalada; Fireworks no disponible. "
+            "Instala requirements.txt para usar este clasificador opcional."
+        )
     api_key = os.getenv("FIREWORKS_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("No hay FIREWORKS_API_KEY.")

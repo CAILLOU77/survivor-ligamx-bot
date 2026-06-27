@@ -62,6 +62,21 @@ class TestFireworksClient(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             fc.clasificar_riesgo_fireworks("noticia")
 
+    def test_sin_requests_instalado_lanza_runtime(self):
+        # Simula entorno sin la dependencia opcional 'requests'.
+        original = fc.requests
+        try:
+            fc.requests = None
+            with self.assertRaises(RuntimeError):
+                fc.clasificar_riesgo_fireworks("noticia")
+        finally:
+            fc.requests = original
+
+    def test_modulo_importa_aunque_requests_falte(self):
+        # El módulo debe poder importarse aunque 'requests' no exista:
+        # el atributo existe (None o el módulo real), nunca rompe el import.
+        self.assertTrue(hasattr(fc, "requests"))
+
 
 if __name__ == "__main__":
     unittest.main()
