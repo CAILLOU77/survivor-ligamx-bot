@@ -4,17 +4,14 @@ import pandas as pd
 from datetime import datetime, timedelta
 from src.poisson_model import calibrate_and_predict
 from src.routers.analizar_1x2 import router as analizar_router
+from src.history_tracker import init_db, get_roi_history
 
 app = FastAPI(title="Survivor LigaMX API")
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["GET"],
-    allow_headers=["*"],
-)
-
-# Registrar el router de tu otra API
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET"], allow_headers=["*"])
 app.include_router(analizar_router)
+
+# Inicializar base de datos al arrancar
+init_db()
 
 PICKS_CACHE = {"status": "inactive", "picks": [], "last_update": None}
 
@@ -49,6 +46,10 @@ def get_picks():
     if not PICKS_CACHE["last_update"] or datetime.fromisoformat(PICKS_CACHE["last_update"].replace("Z","")) < datetime.utcnow() - timedelta(minutes=15):
         refresh_cache()
     return PICKS_CACHE
+
+@app.get("/history")
+def history():
+    return get_roi_history()
 
 if __name__ == "__main__":
     import uvicorn
