@@ -190,3 +190,13 @@ cualquier mercado que no llegue, sin romper.
 
 Más comandos en [`COMMANDS.md`](COMMANDS.md) y el historial en
 [`CHANGELOG.md`](CHANGELOG.md).
+# 🏆 Survivor Liga MX Bot
+> Pipeline educativo autónomo para análisis de cuotas deportivas, cálculo 
+de valor esperado (EV) y generación de señales matemáticas para la Liga 
+MX.
+
+![Python](https://img.shields.io/badge/Python-3.9%2B-blue)
+![License](https://img.shields.io/badge/License-Educational%20Only-green)
+![Status](https://img.shields.io/badge/Status-Production%20Ready-brightgreen)
+
+## 📡 Arquitectura del Sistema
