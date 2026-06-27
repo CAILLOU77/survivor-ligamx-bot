@@ -121,12 +121,21 @@ def main() -> int:
         default="reports/reporte_survivor_ultimo.txt",
         help="Ruta del reporte final a enviar.",
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help=(
+            "Valida el reporte con el safety gate y muestra lo que se ENVIARÍA, "
+            "sin enviar nada a Telegram. No requiere credenciales."
+        ),
+    )
     args = parser.parse_args()
 
     token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 
-    if not token or not chat_id:
+    # En modo normal se requieren credenciales; en dry-run no (no se envía nada).
+    if not args.dry_run and (not token or not chat_id):
         print("⚠️ Telegram no configurado. Faltan TELEGRAM_BOT_TOKEN o TELEGRAM_CHAT_ID.")
         return 2
 
@@ -135,13 +144,25 @@ def main() -> int:
 
     if not safety_result.ok:
         advertencia = construir_advertencia_bloqueo(report_path, safety_result)
-        enviar_mensaje(token, chat_id, advertencia)
-        print("🚫 Telegram bloqueado por safety guard interno.")
+        if args.dry_run:
+            print("🧪 DRY-RUN — no se envió nada. Mensaje de BLOQUEO que se enviaría:")
+            print(advertencia)
+        else:
+            enviar_mensaje(token, chat_id, advertencia)
+            print("🚫 Telegram bloqueado por safety guard interno.")
         print(safety_result.message)
         return safety_result.exit_code
 
     mensaje = construir_mensaje_desde_reporte(report_path)
     partes = dividir_texto(mensaje)
+
+    if args.dry_run:
+        print(f"🧪 DRY-RUN — no se envió nada. Se enviarían {len(partes)} mensaje(s):")
+        for idx, parte in enumerate(partes, start=1):
+            print(f"----- Parte {idx}/{len(partes)} -----")
+            print(parte)
+        print("✅ DRY-RUN completado. Decisión: NO ENVIAR (simulación).")
+        return 0
 
     for idx, parte in enumerate(partes, start=1):
         if len(partes) > 1:
