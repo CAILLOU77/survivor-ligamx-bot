@@ -5,3 +5,4 @@ pyarrow
 python-dotenv
 requests
 scipy
+psycopg2-binary
