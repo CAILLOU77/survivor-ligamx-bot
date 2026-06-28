@@ -23,6 +23,21 @@ from __future__ import annotations
 import math
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+# ---------------------------------------------------------------------------
+# Parámetros calibrados del modelo (validados por walk-forward sobre Liga MX,
+# ~500 partidos reales de ESPN). Ver src/validacion_modelo.py para medirlos.
+#   - RECENCIA_HALF_LIFE_DIAS: vida media del peso por recencia. Cada ~1 año el
+#     peso de un partido se reduce a la mitad (los recientes pesan más).
+#   - SHRINK_PRIOR: regularización (shrinkage) hacia el promedio de la liga,
+#     en "partidos efectivos" de prior. Estabiliza a equipos con pocos juegos.
+#   - RHO_DIXON_COLES: corrección Dixon-Coles para marcadores bajos.
+# Estos valores mejoran calibración (Brier) y mantienen el accuracy por encima
+# del baseline 'siempre local'. Se pueden sobreescribir por argumento.
+# ---------------------------------------------------------------------------
+RECENCIA_HALF_LIFE_DIAS: float = 365.0
+SHRINK_PRIOR: float = 4.0
+RHO_DIXON_COLES: float = -0.10
+
 
 def _pois_pmf(k: int, lam: float) -> float:
     """Probabilidad Poisson P(X=k) para media lam."""
@@ -50,7 +65,7 @@ def matriz_marcadores(
     lam_local: float,
     lam_visita: float,
     max_goles: int = 10,
-    rho: float = -0.05,
+    rho: float = RHO_DIXON_COLES,
 ) -> List[List[float]]:
     """
     Matriz de probabilidad de marcadores [local][visita], normalizada a sumar 1.
@@ -126,11 +141,50 @@ def _norm(nombre: str) -> str:
     return " ".join(str(nombre or "").strip().lower().split())
 
 
-def calcular_fuerzas(partidos: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+def _fecha_ordinal(fecha: Any) -> Optional[int]:
+    """Convierte 'YYYY-MM-DD' (o ISO) a número de día (ordinal). None si no parsea."""
+    s = str(fecha or "")[:10]
+    if not s:
+        return None
+    try:
+        from datetime import date
+        y, m, d = s.split("-")
+        return date(int(y), int(m), int(d)).toordinal()
+    except (ValueError, TypeError):
+        return None
+
+
+def _peso_recencia(orden: Optional[int], ref: Optional[int], half_life_dias: Optional[float]) -> float:
+    """
+    Peso por recencia: 0.5 ** (antigüedad_en_días / half_life_dias).
+    El partido más reciente pesa 1.0 y el peso decae con la antigüedad.
+    Sin half_life (o sin fechas) => peso uniforme 1.0.
+    """
+    if not half_life_dias or half_life_dias <= 0 or orden is None or ref is None:
+        return 1.0
+    antiguedad = max(0, ref - orden)
+    return 0.5 ** (antiguedad / float(half_life_dias))
+
+
+def calcular_fuerzas(
+    partidos: Sequence[Dict[str, Any]],
+    *,
+    half_life_dias: Optional[float] = RECENCIA_HALF_LIFE_DIAS,
+    shrink: float = SHRINK_PRIOR,
+) -> Dict[str, Any]:
     """
     Estima fuerzas de ataque/defensa (local y visitante) por equipo a partir
     de resultados históricos. Cada partido debe tener:
         home_team, away_team, home_goals, away_goals
+    y, opcionalmente, `fecha` ('YYYY-MM-DD') para ponderar por recencia.
+
+    Parámetros (opcionales, mejoran la calidad de la estimación):
+    - half_life_dias: vida media (en días) del peso por recencia. Los partidos
+      recientes pesan más; cada `half_life_dias` el peso se reduce a la mitad.
+      None => todos los partidos pesan igual (comportamiento clásico).
+    - shrink: regularización (shrinkage) hacia el promedio de la liga, medida en
+      "partidos efectivos" de prior. Estabiliza a equipos con pocos juegos
+      arrastrando su fuerza hacia 1.0. 0 => sin regularización (clásico).
 
     Devuelve un dict con promedios de liga y, por equipo, factores relativos
     (1.0 = promedio de la liga; >1 mejor ataque / peor defensa según el caso).
@@ -140,10 +194,16 @@ def calcular_fuerzas(partidos: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     def _team(t: str) -> Dict[str, float]:
         return acc.setdefault(
             t,
-            {"gf_h": 0.0, "gc_h": 0.0, "n_h": 0.0, "gf_a": 0.0, "gc_a": 0.0, "n_a": 0.0},
+            {"gf_h": 0.0, "gc_h": 0.0, "w_h": 0.0, "gf_a": 0.0, "gc_a": 0.0, "w_a": 0.0},
         )
 
-    tot_home_goals = tot_away_goals = n_matches = 0.0
+    # Referencia de recencia = partido más reciente del set.
+    ref_ord: Optional[int] = None
+    if half_life_dias:
+        ords = [o for o in (_fecha_ordinal(p.get("fecha")) for p in partidos) if o is not None]
+        ref_ord = max(ords) if ords else None
+
+    tot_home_goals = tot_away_goals = peso_total = 0.0
 
     for p in partidos:
         try:
@@ -155,28 +215,37 @@ def calcular_fuerzas(partidos: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
         a = _norm(p.get("away_team"))
         if not h or not a:
             continue
+        w = _peso_recencia(_fecha_ordinal(p.get("fecha")), ref_ord, half_life_dias)
         th, ta = _team(h), _team(a)
-        th["gf_h"] += hg; th["gc_h"] += ag; th["n_h"] += 1
-        ta["gf_a"] += ag; ta["gc_a"] += hg; ta["n_a"] += 1
-        tot_home_goals += hg; tot_away_goals += ag; n_matches += 1
+        th["gf_h"] += w * hg; th["gc_h"] += w * ag; th["w_h"] += w
+        ta["gf_a"] += w * ag; ta["gc_a"] += w * hg; ta["w_a"] += w
+        tot_home_goals += w * hg; tot_away_goals += w * ag; peso_total += w
 
-    if n_matches == 0:
+    if peso_total == 0:
         raise ValueError("No hay partidos históricos válidos para estimar fuerzas.")
 
-    avg_home = tot_home_goals / n_matches
-    avg_away = tot_away_goals / n_matches
+    avg_home = tot_home_goals / peso_total
+    avg_away = tot_away_goals / peso_total
     avg_home = avg_home or 0.1
     avg_away = avg_away or 0.1
 
+    k = max(0.0, float(shrink))
+
+    def _fuerza(suma_goles: float, peso: float, base: float) -> float:
+        # Tasa regularizada hacia la media de liga (`base`), luego normalizada.
+        # (suma_goles + k*base) / (peso + k)  ->  /base  => shrink hacia 1.0.
+        if peso <= 0 and k <= 0:
+            return 1.0
+        tasa = (suma_goles + k * base) / (peso + k)
+        return tasa / base
+
     fuerzas: Dict[str, Dict[str, float]] = {}
     for t, s in acc.items():
-        n_h = s["n_h"] or 1.0
-        n_a = s["n_a"] or 1.0
         fuerzas[t] = {
-            "ataque_local": (s["gf_h"] / n_h) / avg_home if s["n_h"] else 1.0,
-            "defensa_local": (s["gc_h"] / n_h) / avg_away if s["n_h"] else 1.0,
-            "ataque_visita": (s["gf_a"] / n_a) / avg_away if s["n_a"] else 1.0,
-            "defensa_visita": (s["gc_a"] / n_a) / avg_home if s["n_a"] else 1.0,
+            "ataque_local": _fuerza(s["gf_h"], s["w_h"], avg_home),
+            "defensa_local": _fuerza(s["gc_h"], s["w_h"], avg_away),
+            "ataque_visita": _fuerza(s["gf_a"], s["w_a"], avg_away),
+            "defensa_visita": _fuerza(s["gc_a"], s["w_a"], avg_home),
         }
 
     return {"avg_home": avg_home, "avg_away": avg_away, "equipos": fuerzas}
@@ -198,7 +267,7 @@ def pronostico(
     fuerzas: Dict[str, Any],
     *,
     linea_goles: float = 2.5,
-    rho: float = -0.05,
+    rho: float = RHO_DIXON_COLES,
 ) -> Dict[str, Any]:
     """Pronóstico completo (1X2 + Over/Under + BTTS + marcador) para un partido."""
     lam_l, lam_v = goles_esperados(local, visitante, fuerzas)

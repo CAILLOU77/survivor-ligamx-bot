@@ -73,7 +73,7 @@ def pronosticar_partido(
 
 
 def generar_pronosticos(
-    meses: int = 6,
+    meses: int = 18,
     fixtures: Optional[Sequence[Dict[str, Any]]] = None,
     resultados: Optional[Sequence[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:

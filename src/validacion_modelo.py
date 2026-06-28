@@ -107,7 +107,7 @@ def main() -> int:
     except ImportError:  # pragma: no cover
         from src import fuentes_datos  # type: ignore
     print("📏 Validando modelo contra resultados reales de ESPN...")
-    datos = fuentes_datos.obtener_resultados(meses=8)
+    datos = fuentes_datos.obtener_resultados(meses=18)
     r = evaluar_modelo(datos["resultados"])
     if r.get("n_evaluados", 0) == 0:
         print(f"⚠️ {r.get('mensaje')}")
