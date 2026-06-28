@@ -213,6 +213,42 @@ def update_data(request: Request, api_key: str = Depends(verify_api_key)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@app.get("/analyze/advanced", summary="Análisis avanzado de mercados", tags=["Analysis"])
+@limiter.limit("10/minute")
+def analyze_advanced(request: Request, api_key: str = Depends(verify_api_key)):
+    """Analiza Handicap Asiático, Goles por Equipo, Marcador Exacto"""
+    import subprocess
+    import sys
+    try:
+        result = subprocess.run(
+            [sys.executable, "src/advanced_markets.py"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        )
+        
+        if result.returncode == 0:
+            lines = result.stdout.strip().split('
+')
+            json_start = None
+            for i, line in enumerate(lines):
+                if line.strip().startswith('['):
+                    json_start = i
+                    break
+            
+            if json_start is not None:
+                json_output = '
+'.join(lines[json_start:])
+                import json
+                data = json.loads(json_output)
+                return {"status": "success", "matches": data}
+        
+        return {"status": "error", "message": "Error en análisis", "details": result.stderr}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("src.api:app", host="0.0.0.0", port=8000, reload=True)
