@@ -37,10 +37,15 @@ def ejecutar(excluir=None, enviar_telegram=False) -> int:
               f"| {p['pick_ou']} 2.5 | marcador {p['marcador_mas_probable']}")
 
     usados = [e.strip() for e in (excluir or "").split(",") if e.strip()]
-    pick = motor.mejor_pick_survivor(resultado["pronosticos"], usados)
+    try:
+        motivacion = motor.motivacion_por_equipo()
+    except Exception:
+        motivacion = {}
+    pick = motor.mejor_pick_survivor(resultado["pronosticos"], usados, motivacion)
     if pick:
+        extra = f" · rival motivación: {pick['rival_motivacion']}" if pick.get("rival_motivacion") else ""
         print(f"\n🎯 Survivor sugerido: {pick['equipo']} "
-              f"({pick['condicion']} vs {pick['rival']}) — no perder {pick['no_perder_pct']}%")
+              f"({pick['condicion']} vs {pick['rival']}) — no perder {pick['no_perder_pct']}%{extra}")
     else:
         print("\nℹ️ Sin pick de Survivor (faltan fixtures o datos).")
 
