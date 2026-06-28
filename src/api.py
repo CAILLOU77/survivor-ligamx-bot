@@ -4,6 +4,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from fastapi import HTTPException, Header, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 import pandas as pd
 import os
 from datetime import datetime, timedelta
