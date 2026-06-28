@@ -1,40 +1,38 @@
-import random
-from src.database import get_db
+#!/usr/bin/env python3
+"""
+backtest_engine.py — Validación HONESTA del modelo (NO inventa resultados).
 
-def get_unsettled_picks():
-    with get_db() as conn:
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM picks WHERE status='pending' AND created_at < NOW() - INTERVAL '3 hours'")
-        picks = [dict(zip([col[0] for col in cur.description], row)) for row in cur.fetchall()]
-    return picks
+ANTES: liquidaba los picks con un volado aleatorio (60% win simulado), lo que
+contaminaba /stats y /dashboard con métricas FALSAS de win-rate y profit.
 
-def settle_pick(pick_id, result, profit_loss):
-    with get_db() as conn:
-        cur = conn.cursor()
-        cur.execute("UPDATE picks SET status='settled', result=%s, profit_loss=%s WHERE id=%s", 
-                   (result, profit_loss, pick_id))
-        conn.commit()
+AHORA: corre la validación real del modelo Poisson contra resultados REALES de
+ESPN (accuracy / Brier / baseline), vía validacion_modelo. No simula apuestas,
+no fabrica nada. Informativo / revisión humana.
+"""
+from __future__ import annotations
 
-def run_backtest():
-    picks = get_unsettled_picks()
-    settled_count = 0
-    
-    for pick in picks:
-        # Simulación: 60% win rate basado en EV > 4%
-        win_prob = 0.6 if pick['ev'] > 0.04 else 0.5
-        
-        if random.random() < win_prob:
-            result = 1
-            profit_loss = pick['kelly_pct'] * (pick['momio'] - 1)
-        else:
-            result = 0
-            profit_loss = -pick['kelly_pct']
-        
-        settle_pick(pick['id'], result, profit_loss)
-        settled_count += 1
-    
-    print(f"✅ Settled {settled_count} picks")
-    return settled_count
+from typing import Any, Dict
+
+try:
+    import fuentes_datos
+    import validacion_modelo
+except ImportError:  # pragma: no cover - contexto de paquete (web)
+    from src import fuentes_datos, validacion_modelo  # type: ignore
+
+
+def run_backtest(meses: int = 18) -> Dict[str, Any]:
+    """
+    Evalúa el modelo contra resultados reales de ESPN (train/test por fecha).
+    Devuelve accuracy, Brier, baseline y si supera al baseline. NO inventa
+    resultados ni liquida apuestas.
+    """
+    datos = fuentes_datos.obtener_resultados(meses=meses)
+    resultado = validacion_modelo.evaluar_modelo(datos.get("resultados", []))
+    resultado["fuente_datos"] = datos.get("fuente")
+    resultado["nota"] = "Validación real del modelo vs ESPN (sin simular apuestas)."
+    return resultado
+
 
 if __name__ == "__main__":
-    run_backtest()
+    import json
+    print(json.dumps(run_backtest(), ensure_ascii=False, indent=2))
