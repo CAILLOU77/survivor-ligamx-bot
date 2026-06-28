@@ -14,6 +14,8 @@ privadas. Devuelve resultados en el formato del modelo Poisson
 from __future__ import annotations
 
 import json
+import os
+import time
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -139,6 +141,45 @@ def _combinar(a: List[Dict[str, Any]], b: List[Dict[str, Any]]) -> List[Dict[str
             vistos.add(clave)
             out.append(r)
     return out
+
+
+# ---------------------------------------------------------------------------
+# Healthcheck de fuentes (para detectar caídas antes de la jornada).
+# ---------------------------------------------------------------------------
+def _ping(url: str, params: Dict[str, Any] = None, timeout: int = 8) -> Dict[str, Any]:
+    """Hace un GET ligero y reporta {ok, http, ms} o {ok:False, error}."""
+    if requests is None:
+        return {"ok": False, "error": "requests no instalado"}
+    try:
+        t0 = time.monotonic()
+        resp = requests.get(url, params=params or {}, timeout=timeout)
+        ms = int((time.monotonic() - t0) * 1000)
+        return {"ok": resp.status_code == 200, "http": resp.status_code, "ms": ms}
+    except Exception as exc:  # pragma: no cover - depende de red
+        return {"ok": False, "error": str(exc)[:100]}
+
+
+def estado_fuentes() -> Dict[str, Any]:
+    """
+    Estado de las fuentes de datos (ESPN, TheSportsDB, odds-api.io).
+    odds-api.io solo se prueba si hay ODDS_API_IO_KEY. Devuelve un dict con el
+    estado por fuente y `ok_global` (True si al menos una de datos responde).
+    """
+    espn = _ping(espn_data.SCOREBOARD_URL)
+    tsdb = _ping(TSDB_URL, {"id": TSDB_LIGAMX_ID})
+
+    odds_key = os.getenv("ODDS_API_IO_KEY", "").strip()
+    if odds_key:
+        base = os.getenv("ODDS_API_IO_URL", "https://api.odds-api.io/v3")
+        odds = _ping(f"{base}/sports", {"apiKey": odds_key})
+    else:
+        odds = {"ok": None, "estado": "deshabilitado (sin ODDS_API_IO_KEY)"}
+
+    return {
+        "fuentes": {"espn": espn, "thesportsdb": tsdb, "odds_api_io": odds},
+        "ok_global": bool(espn.get("ok") or tsdb.get("ok")),
+        "decision": "INFORMATIVO / REVISIÓN HUMANA",
+    }
 
 
 if __name__ == "__main__":

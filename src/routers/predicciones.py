@@ -31,6 +31,11 @@ try:
 except ImportError:  # pragma: no cover
     from src import comparador_mercado as mercado_mod  # type: ignore
 
+try:
+    import fuentes_datos as fuentes_mod
+except ImportError:  # pragma: no cover
+    from src import fuentes_datos as fuentes_mod  # type: ignore
+
 router = APIRouter(tags=["Predicciones"])
 
 _CACHE: Dict[str, Any] = {"data": None, "ts": None}
@@ -117,3 +122,9 @@ def valor() -> Dict[str, Any]:
 def valor_diagnostico() -> Dict[str, Any]:
     """Muestra qué devuelve odds-api.io (eventos/casas/mercados) sin exponer la key."""
     return mercado_mod.diagnostico_mercado()
+
+
+@router.get("/health/fuentes", summary="Salud de las fuentes de datos (ESPN/TheSportsDB/odds)")
+def health_fuentes() -> Dict[str, Any]:
+    """Ping a cada fuente para detectar caídas antes de la jornada."""
+    return fuentes_mod.estado_fuentes()

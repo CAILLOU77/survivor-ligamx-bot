@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -76,6 +77,30 @@ class TestRedundancia(unittest.TestCase):
                     res = fd.obtener_resultados(minimo=10)
         self.assertEqual(res["total"], 2)  # dedup quitó el repetido
         self.assertIn("TheSportsDB", res["fuente"])
+
+
+class TestEstadoFuentes(unittest.TestCase):
+    def _resp(self, code=200):
+        class R:
+            status_code = code
+        return R()
+
+    def test_ok_global_si_espn_responde(self):
+        with mock.patch.object(fd, "requests") as mreq:
+            mreq.get.return_value = self._resp(200)
+            with mock.patch.dict(os.environ, {}, clear=True):
+                r = fd.estado_fuentes()
+        self.assertTrue(r["ok_global"])
+        self.assertTrue(r["fuentes"]["espn"]["ok"])
+        # Sin key, odds-api queda deshabilitado (ok=None).
+        self.assertIsNone(r["fuentes"]["odds_api_io"]["ok"])
+
+    def test_odds_se_prueba_con_key(self):
+        with mock.patch.object(fd, "requests") as mreq:
+            mreq.get.return_value = self._resp(200)
+            with mock.patch.dict(os.environ, {"ODDS_API_IO_KEY": "x"}, clear=True):
+                r = fd.estado_fuentes()
+        self.assertTrue(r["fuentes"]["odds_api_io"]["ok"])
 
 
 class TestCache(unittest.TestCase):

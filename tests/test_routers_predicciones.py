@@ -81,6 +81,13 @@ class TestEndpoints(unittest.TestCase):
         self.assertEqual(r["fuente_datos"], "ESPN")
         self.assertIsNone(r["pronosticos"][0]["mercado"])
 
+    def test_health_fuentes(self):
+        fake = {"fuentes": {"espn": {"ok": True}}, "ok_global": True}
+        with mock.patch.object(pred.fuentes_mod, "estado_fuentes", return_value=fake):
+            r = pred.health_fuentes()
+        self.assertTrue(r["ok_global"])
+        self.assertTrue(r["fuentes"]["espn"]["ok"])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
