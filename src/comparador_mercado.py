@@ -54,6 +54,14 @@ BOOKMAKERS_PRIORIDAD = [
 _BOOKMAKERS_OVERRIDE = os.getenv("ODDS_API_IO_BOOKMAKERS", "").strip()
 # Máximo de casas por request. El tier gratis de odds-api.io permite 2.
 MAX_CASAS = int(os.getenv("ODDS_API_IO_MAX_CASAS", "2"))
+# Candidatas a sondear para AUTO-seleccionar las casas con odds de Liga MX
+# (LATAM/México primero, luego globales). Se intersecta con las activas.
+CANDIDATOS_AUTO = [
+    "Caliente", "Betcris", "Codere", "Betano", "Bet365", "1xBet", "Betsson",
+    "Bwin", "Pinnacle", "Stake", "Betway", "William Hill", "Unibet", "bet-at-home",
+]
+# Cada cuánto se re-sondea qué casas tienen odds de Liga MX (horas).
+CASAS_AUTO_TTL_HORAS = float(os.getenv("ODDS_API_IO_CASAS_TTL_HORAS", "6"))
 
 # Diferencia mínima (proporción) para marcar "valor" del modelo vs mercado.
 UMBRAL_VALOR = 0.05
@@ -391,26 +399,35 @@ def _get(url: str, params: Dict[str, Any]) -> Any:
 
 
 _BOOKMAKERS_CACHE: Optional[str] = None
+_ACTIVAS_CACHE: Optional[List[str]] = None
+
+
+def _casas_activas() -> List[str]:
+    """Lista de nombres de casas ACTIVAS (endpoint /bookmakers, sin auth). Cacheada."""
+    global _ACTIVAS_CACHE
+    if _ACTIVAS_CACHE is not None:
+        return _ACTIVAS_CACHE
+    try:
+        data = _get(f"{BASE_URL}/bookmakers", {})
+        _ACTIVAS_CACHE = [b.get("name") for b in data
+                          if isinstance(b, dict) and b.get("active") and b.get("name")]
+    except RuntimeError:
+        _ACTIVAS_CACHE = []
+    return _ACTIVAS_CACHE
 
 
 def _bookmakers_consulta() -> str:
     """
-    Cadena de casas (máx 30) para el parámetro `bookmakers` de /odds.
-    Si hay override por env, se usa tal cual. Si no, se intersecta la lista de
-    prioridad con las casas ACTIVAS reales (endpoint /bookmakers, sin auth) y se
-    rellena hasta 30 con otras activas. Cacheado.
+    Cadena de casas (máx MAX_CASAS) para el parámetro `bookmakers` de /odds.
+    Override por env > intersección de la lista de prioridad con casas activas >
+    relleno con otras activas. Cacheado.
     """
     global _BOOKMAKERS_CACHE
     if _BOOKMAKERS_OVERRIDE:
         return ",".join([b.strip() for b in _BOOKMAKERS_OVERRIDE.split(",") if b.strip()][:MAX_CASAS])
     if _BOOKMAKERS_CACHE is not None:
         return _BOOKMAKERS_CACHE
-    try:
-        data = _get(f"{BASE_URL}/bookmakers", {})
-        activas = [b.get("name") for b in data
-                   if isinstance(b, dict) and b.get("active") and b.get("name")]
-    except RuntimeError:
-        activas = []
+    activas = _casas_activas()
     if not activas:
         _BOOKMAKERS_CACHE = ",".join(BOOKMAKERS_PRIORIDAD[:MAX_CASAS])
         return _BOOKMAKERS_CACHE
@@ -470,6 +487,60 @@ def _odds_multi(key: str, ids: List[Any], bookmakers: str) -> List[Dict[str, Any
     return data if isinstance(data, list) else []
 
 
+_CASAS_AUTO_CACHE: Dict[str, Any] = {"casas": None, "ts": None}
+
+
+def casas_con_odds_liga(key: str) -> List[str]:
+    """
+    Auto-selecciona hasta MAX_CASAS casas que SÍ tienen odds de Liga MX ahora,
+    sondeando /events?bookmaker= por cada candidata (intersectada con activas).
+    Cacheado CASAS_AUTO_TTL_HORAS. Devuelve [] si ninguna tiene odds (p. ej.
+    pretemporada).
+    """
+    ahora = datetime.now(timezone.utc)
+    ts = _CASAS_AUTO_CACHE["ts"]
+    if _CASAS_AUTO_CACHE["casas"] is not None and ts is not None and (
+        (ahora - ts).total_seconds() < CASAS_AUTO_TTL_HORAS * 3600
+    ):
+        return _CASAS_AUTO_CACHE["casas"]
+
+    activas_norm = {_norm(n): n for n in _casas_activas()}
+    candidatas = []
+    for c in CANDIDATOS_AUTO:
+        real = activas_norm.get(_norm(c))
+        if real and real not in candidatas:
+            candidatas.append(real)
+
+    hasta = (ahora + timedelta(days=VENTANA_DIAS)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    conteo: Dict[str, int] = {}
+    for casa in candidatas:
+        try:
+            evs = _get(f"{BASE_URL}/events", {
+                "apiKey": key, "sport": SPORT_SLUG, "league": LIGA_SLUG,
+                "bookmaker": casa, "to": hasta,
+            })
+            n = len(evs) if isinstance(evs, list) else 0
+        except RuntimeError:
+            n = 0
+        if n > 0:
+            conteo[casa] = n
+
+    casas = sorted(conteo, key=lambda c: conteo[c], reverse=True)[:MAX_CASAS]
+    _CASAS_AUTO_CACHE["casas"] = casas
+    _CASAS_AUTO_CACHE["ts"] = ahora
+    return casas
+
+
+def _casas_objetivo(key: str) -> str:
+    """Cadena de casas a consultar: override > auto-selección > fallback prioridad."""
+    if _BOOKMAKERS_OVERRIDE:
+        return _bookmakers_consulta()
+    auto = casas_con_odds_liga(key)
+    if auto:
+        return ",".join(auto)
+    return _bookmakers_consulta()  # fallback (probablemente sin datos aún)
+
+
 def obtener_momios_liga_mx() -> Dict[str, Dict[str, Any]]:
     """
     Baja momios de Liga MX desde odds-api.io. Devuelve
@@ -485,7 +556,7 @@ def obtener_momios_liga_mx() -> Dict[str, Dict[str, Any]]:
         eventos = _listar_eventos(key)[:MAX_EVENTOS]
         if not eventos:
             return {}
-        bookmakers = _bookmakers_consulta()
+        bookmakers = _casas_objetivo(key)
         for ev in eventos:
             try:
                 odds = _odds_evento(key, ev["id"], bookmakers)
@@ -576,6 +647,8 @@ def diagnostico_mercado() -> Dict[str, Any]:
                 except RuntimeError as exc:
                     con_odds[b] = f"err {str(exc)[-24:]}"
             info["eventos_con_odds_por_casa"] = con_odds
+            # Casas que el bot AUTO-seleccionara para consultar momios.
+            info["casas_auto_seleccionadas"] = casas_con_odds_liga(key)
     except RuntimeError as exc:
         info["error"] = str(exc)
     return info
