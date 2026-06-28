@@ -11,9 +11,16 @@ from typing import Optional
 from src.routers.analizar_1x2 import router as analizar_router
 from src.database import init_db, get_metrics, get_history, settle_pick
 
-API_KEY = os.getenv("API_KEY", "survivor-ligamx-premium-2026")
+# Sin default público: la clave DEBE venir del entorno (Render / GitHub secret).
+# Si no está configurada, los endpoints protegidos fallan en cerrado (503).
+API_KEY = os.getenv("API_KEY", "").strip()
 
 def verify_api_key(x_api_key: Optional[str] = Header(None)):
+    if not API_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="API_KEY no configurada en el servidor",
+        )
     if not x_api_key or x_api_key != API_KEY:
         raise HTTPException(status_code=403, detail="Clave API inválida o faltante")
     return x_api_key
