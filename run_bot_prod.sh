@@ -1,16 +1,20 @@
 #!/usr/bin/env bash
-set -euo pipefail
-cd /Users/mac/projects/survivor-ligamx-bot
-source .venv/bin/activate
+# run_bot_prod.sh — Ejecución programada (cron) del bot, con log y Telegram.
+# Portable: usa la carpeta del script (sin rutas absolutas).
+set -uo pipefail
 
-LOG="logs/cron.log"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$PROJECT_DIR"
 mkdir -p logs
 
+# Activar venv si existe (opcional).
+if [ -f ".venv/bin/activate" ]; then
+  # shellcheck disable=SC1091
+  source .venv/bin/activate
+fi
+
+LOG="logs/cron.log"
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] 🔄 Inicio ciclo" >> "$LOG"
-./run_bot.sh >> "$LOG" 2>&1 || echo "[$(date '+%Y-%m-%d %H:%M:%S')] ⚠️ Error en run_bot" >> "$LOG"
-
-# Notificar según lógica del PASO 1
-python3 src/telegram_notifier.py >> "$LOG" 2>&1
-
+./run_bot.sh --telegram >> "$LOG" 2>&1 || echo "[$(date '+%Y-%m-%d %H:%M:%S')] ⚠️ Error en run_bot" >> "$LOG"
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] ✅ Fin ciclo" >> "$LOG"
 echo "---" >> "$LOG"
