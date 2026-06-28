@@ -5,6 +5,7 @@ Auto-Update System - Mantener datos frescos automáticamente
 import subprocess
 import sys
 import os
+import json
 from datetime import datetime
 from pathlib import Path
 
@@ -14,11 +15,28 @@ def log(message):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"[{timestamp}] {message}")
 
-def run_script(script_name, description):
+def ensure_jornadas_file():
+    """Asegura que exista jornadas.json con estructura válida"""
+    jornadas_path = BASE_DIR / "data" / "jornadas.json"
+    if not jornadas_path.exists():
+        jornadas_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(jornadas_path, 'w') as f:
+            json.dump({
+                "jornadas": [],
+                "partidos": [],
+                "ultima_actualizacion": None
+            }, f, indent=2)
+        log("📝 Archivo jornadas.json creado")
+
+def run_script(script_name, description, args=None):
     log(f"🔄 {description}")
     try:
+        cmd = [sys.executable, f"src/{script_name}"]
+        if args:
+            cmd.extend(args)
+        
         result = subprocess.run(
-            [sys.executable, f"src/{script_name}"],
+            cmd,
             cwd=BASE_DIR,
             capture_output=True,
             text=True,
@@ -27,31 +45,35 @@ def run_script(script_name, description):
         
         if result.returncode == 0:
             log(f"✅ {description} - OK")
-            return True
+            return True, result.stdout
         else:
             log(f"❌ {description} - Error: {result.stderr[:200]}")
-            return False
+            return False, result.stderr
     except subprocess.TimeoutExpired:
         log(f"⏱️ {description} - Timeout")
-        return False
+        return False, "Timeout"
     except Exception as e:
         log(f"❌ {description} - Exception: {e}")
-        return False
+        return False, str(e)
 
 def main():
     log("=" * 60)
     log("INICIANDO ACTUALIZACIÓN AUTOMÁTICA DE DATOS")
     log("=" * 60)
     
+    # Asegurar que existe el archivo
+    ensure_jornadas_file()
+    
     results = {}
     
-    # 1. Sincronizar fixtures desde API-Football
+    # 1. Sincronizar fixtures desde API-Football con --apply para escribir a jornadas.json
     results['fixtures'] = run_script(
         "api_football_fixtures_sync.py",
-        "Sincronizando fixtures API-Football"
+        "Sincronizando fixtures API-Football",
+        args=["--apply"]
     )
     
-    # 2. Sincronizar cuotas desde The Odds API
+    # 2. Sincronizar cuotas desde The Odds API (ahora tiene datos en jornadas.json)
     results['odds'] = run_script(
         "sync_odds_api.py",
         "Sincronizando cuotas The Odds API"
@@ -64,7 +86,7 @@ def main():
     )
     
     log("=" * 60)
-    success_count = sum(results.values())
+    success_count = sum(1 for r in results.values() if r[0])
     total_count = len(results)
     
     if success_count == total_count:
