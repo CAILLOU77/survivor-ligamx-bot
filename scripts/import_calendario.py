@@ -33,7 +33,7 @@ CALENDARIO_PATH = BASE_DIR / "data" / "calendario.json"
 
 
 def _semana_iso(fecha: Any) -> str:
-    """'YYYY-Www' (año-semana ISO) para agrupar partidos del mismo fin de semana."""
+    """'YYYY-Www' (año-semana ISO). Se conserva como referencia/etiqueta."""
     from datetime import date
     s = str(fecha or "")[:10]
     try:
@@ -44,23 +44,60 @@ def _semana_iso(fecha: Any) -> str:
         return ""
 
 
-def construir_calendario(fixtures: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _a_fecha(fecha: Any):
+    """'YYYY-MM-DD' -> date, o None si no parsea."""
+    from datetime import date
+    s = str(fecha or "")[:10]
+    try:
+        y, m, d = s.split("-")
+        return date(int(y), int(m), int(d))
+    except (ValueError, TypeError):
+        return None
+
+
+def construir_calendario(
+    fixtures: Sequence[Dict[str, Any]],
+    gap_dias: int = 3,
+    max_por_jornada: int = 9,
+) -> List[Dict[str, Any]]:
     """
-    Agrupa fixtures (con `fecha`, `home_team`, `away_team`) por semana ISO y
-    numera las jornadas 1..N en orden cronológico. Función pura (sin red).
+    Agrupa fixtures en jornadas y las numera 1..N en orden cronológico.
+    Función pura (sin red).
+
+    Una nueva jornada empieza cuando, recorriendo los partidos por fecha:
+      - un equipo se REPITE (nadie juega dos veces en la misma jornada), o
+      - hay un hueco de fechas mayor a `gap_dias` (cambio de fin de semana), o
+      - la jornada ya está llena (`max_por_jornada`, 9 en Liga MX de 18 equipos).
+
+    Esto evita los errores del agrupado por semana ISO (partidos entre semana o
+    que cruzan el límite Sáb-Dom-Lun caían en jornadas equivocadas).
     """
-    grupos: Dict[str, List[Dict[str, Any]]] = {}
+    validos = []
     for fx in fixtures:
-        semana = _semana_iso(fx.get("fecha"))
-        if not semana or not fx.get("home_team") or not fx.get("away_team"):
-            continue
-        grupos.setdefault(semana, []).append(
-            {"home_team": fx["home_team"], "away_team": fx["away_team"]}
-        )
-    calendario: List[Dict[str, Any]] = []
-    for i, semana in enumerate(sorted(grupos), start=1):
-        calendario.append({"jornada": i, "semana_iso": semana, "partidos": grupos[semana]})
-    return calendario
+        f = _a_fecha(fx.get("fecha"))
+        if f and fx.get("home_team") and fx.get("away_team"):
+            validos.append((f, fx))
+    validos.sort(key=lambda t: t[0])
+
+    grupos: List[Dict[str, Any]] = []
+    actual: List[Dict[str, str]] = []
+    equipos: set = set()
+    fecha_prev = None
+    for f, fx in validos:
+        h, a = fx["home_team"], fx["away_team"]
+        repite = h.lower() in equipos or a.lower() in equipos
+        hueco = fecha_prev is not None and (f - fecha_prev).days > gap_dias
+        lleno = len(actual) >= max_por_jornada
+        if actual and (repite or hueco or lleno):
+            grupos.append({"partidos": actual, "_equipos": equipos})
+            actual, equipos = [], set()
+        actual.append({"home_team": h, "away_team": a})
+        equipos |= {h.lower(), a.lower()}
+        fecha_prev = f
+    if actual:
+        grupos.append({"partidos": actual, "_equipos": equipos})
+
+    return [{"jornada": i, "partidos": g["partidos"]} for i, g in enumerate(grupos, start=1)]
 
 
 def main() -> int:
@@ -87,7 +124,7 @@ def main() -> int:
               "en la ventana. Reintenta cerca del arranque, ~17-jul.)")
         return 0
     for j in calendario:
-        print(f"  J{j['jornada']:>2} ({j.get('semana_iso')}): {len(j['partidos'])} partidos")
+        print(f"  J{j['jornada']:>2}: {len(j['partidos'])} partidos")
 
     if args.dry_run:
         print("(dry-run: no se escribió nada)")

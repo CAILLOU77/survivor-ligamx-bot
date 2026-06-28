@@ -289,6 +289,13 @@ def _buscar_mercado(
     return None
 
 
+def buscar_mercado_partido(
+    home: str, away: str, momios: Dict[str, Dict[str, Any]]
+) -> Optional[Dict[str, Any]]:
+    """API pública: mercado de un partido (match flexible de nombres). None si no hay."""
+    return _buscar_mercado(home, away, momios)
+
+
 def anotar_pronosticos(
     pronosticos: Sequence[Dict[str, Any]],
     momios_por_partido: Optional[Dict[str, Dict[str, Any]]] = None,

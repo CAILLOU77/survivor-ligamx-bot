@@ -201,7 +201,7 @@ def analisis_riesgo() -> Dict[str, Any]:
 
 
 @router.get("/plan-survivor", summary="Estrategia de temporada: qué equipo usar en cada jornada")
-def plan_survivor(excluir: str = "", peso_victoria: float = 0.5) -> Dict[str, Any]:
+def plan_survivor(excluir: str = "", peso_victoria: float = 0.5, usar_momios: bool = True) -> Dict[str, Any]:
     """
     Plan ÓPTIMO de Survivor para toda la temporada (PlayDoit): asigna 1 equipo por
     jornada, sin repetir, maximizando supervivencia (no perder) y victorias.
@@ -209,10 +209,11 @@ def plan_survivor(excluir: str = "", peso_victoria: float = 0.5) -> Dict[str, An
     Requiere `data/calendario.json` con el calendario completo de las 17 jornadas
     (se publica cerca del arranque). Sin él, responde `calendario_incompleto`.
     `excluir`: equipos ya gastados (coma). `peso_victoria`: 0 = solo sobrevivir.
-    Análisis pesado => caché de 6 horas (sin filtros).
+    `usar_momios`: mezcla momios reales (odds-api.io) si hay key y cobertura.
+    Análisis pesado => caché de 6 horas (con filtros por defecto).
     """
     usados = [e.strip() for e in excluir.split(",") if e.strip()]
-    usar_cache = not usados and abs(peso_victoria - 0.5) < 1e-9
+    usar_cache = not usados and abs(peso_victoria - 0.5) < 1e-9 and usar_momios
     if usar_cache:
         fresco = bool(_CACHE_PLAN["data"]) and bool(_CACHE_PLAN["ts"]) and (
             datetime.utcnow() - _CACHE_PLAN["ts"] < timedelta(minutes=_TTL_RIESGO_MIN)
@@ -231,9 +232,11 @@ def plan_survivor(excluir: str = "", peso_victoria: float = 0.5) -> Dict[str, An
     try:
         datos = fuentes_mod.obtener_resultados(meses=18)
         fuerzas = pm.calcular_fuerzas(datos["resultados"])
+        odds = plan_mod.construir_odds_por_partido(calendario) if usar_momios else None
         resultado = plan_mod.planificar(calendario, fuerzas, equipos_usados=usados,
-                                        peso_victoria=peso_victoria)
+                                        peso_victoria=peso_victoria, odds_por_partido=odds)
         resultado["fuente_datos"] = datos.get("fuente")
+        resultado["momios_integrados"] = len(odds) if odds else 0
     except Exception as exc:  # pragma: no cover - fallback defensivo
         return {"plan": [], "error": str(exc),
                 "decision": "INFORMATIVO / REVISIÓN HUMANA"}

@@ -87,5 +87,34 @@ class TestCargarCalendario(unittest.TestCase):
         self.assertEqual(ps.cargar_calendario(Path("/no/existe/x.json")), [])
 
 
+class TestOddsPorPartido(unittest.TestCase):
+    def test_construir_desde_momios_inyectados(self):
+        import comparador_mercado as cm
+        cal = [{"jornada": 1, "partidos": [{"home_team": "América", "away_team": "Toluca"}]}]
+        clave = cm._clave_partido("América", "Toluca")
+        # Local muy favorito (momio bajo) => prob_local mayor.
+        momios = {clave: {"ml": {"local": 1.5, "empate": 4.0, "visita": 6.0}}}
+        odds = ps.construir_odds_por_partido(cal, momios_crudos=momios)
+        key = (ps._norm("América"), ps._norm("Toluca"))
+        self.assertIn(key, odds)
+        pl, pe, pv = odds[key]
+        self.assertAlmostEqual(pl + pe + pv, 1.0, places=6)
+        self.assertGreater(pl, pv)
+
+    def test_sin_momios_devuelve_vacio(self):
+        cal = [{"jornada": 1, "partidos": [{"home_team": "A", "away_team": "B"}]}]
+        self.assertEqual(ps.construir_odds_por_partido(cal, momios_crudos={}), {})
+
+    def test_planificar_con_odds_no_rompe(self):
+        import comparador_mercado as cm
+        fuerzas = pm.calcular_fuerzas(_historico())
+        cal = _calendario()
+        clave = cm._clave_partido("A", "D")
+        momios = {clave: {"ml": {"local": 1.4, "empate": 4.5, "visita": 7.0}}}
+        odds = ps.construir_odds_por_partido(cal, momios_crudos=momios)
+        r = ps.planificar(cal, fuerzas, odds_por_partido=odds)
+        self.assertEqual(len(r["plan"]), 2)
+
+
 if __name__ == "__main__":
     unittest.main()

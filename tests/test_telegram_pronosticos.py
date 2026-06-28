@@ -98,5 +98,46 @@ class TestMercadoYMotivacion(unittest.TestCase):
         self.assertIn("rival mot.: baja", msg)
 
 
+class TestNivelRiesgoYPlan(unittest.TestCase):
+    def test_top3_incluye_nivel_y_ganar(self):
+        msg = tp.construir_mensaje(_resultado())
+        self.assertIn("gana ", msg)      # probabilidad de victoria visible
+        self.assertIn("no-perder", msg)
+        # nivel entre corchetes (ALTA/MEDIA/RIESGOSA)
+        self.assertTrue(any(n in msg for n in ("[ALTA]", "[MEDIA]", "[RIESGOSA]")))
+
+    def test_mensaje_plan_con_datos(self):
+        plan = {
+            "prob_supervivencia_total_pct": 66.8, "victorias_esperadas": 2.05,
+            "jornadas_riesgosas": [2],
+            "plan": [
+                {"jornada": 1, "equipo": "Tigres UANL", "rival": "Mazatlán FC",
+                 "condicion": "Local", "prob_ganar_pct": 78.8, "no_perder_pct": 94.0, "nivel": "ALTA"},
+                {"jornada": 2, "equipo": "Cruz Azul", "rival": "Querétaro",
+                 "condicion": "Visitante", "prob_ganar_pct": 50.0, "no_perder_pct": 62.0, "nivel": "RIESGOSA"},
+            ],
+        }
+        msg = tp.construir_mensaje_plan(plan)
+        self.assertIn("PLAN SURVIVOR", msg)
+        self.assertIn("Tigres UANL", msg)
+        self.assertIn("J1", msg)
+        self.assertIn("⚠️ Jornadas riesgosas", msg)
+        self.assertIn("No es consejo de apuesta", msg)
+
+    def test_mensaje_plan_sin_calendario(self):
+        msg = tp.construir_mensaje_plan({"calendario_incompleto": True, "plan": []})
+        self.assertIn("calendario", msg.lower())
+        self.assertIn("No es consejo de apuesta", msg)
+
+    def test_enviar_plan_sin_calendario(self):
+        import planificador_survivor as ps
+        with mock.patch.object(ps, "cargar_calendario", return_value=[]):
+            with mock.patch.object(tp, "enviar_mensaje", return_value=True) as menv:
+                r = tp.enviar_plan()
+        self.assertTrue(r["calendario_incompleto"])
+        self.assertEqual(r["jornadas"], 0)
+        menv.assert_called_once()
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

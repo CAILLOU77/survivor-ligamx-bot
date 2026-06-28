@@ -41,6 +41,30 @@ class TestConstruirCalendario(unittest.TestCase):
         self.assertTrue(ic._semana_iso("2026-07-18").startswith("2026-W"))
         self.assertEqual(ic._semana_iso("basura"), "")
 
+    def test_split_por_equipo_repetido(self):
+        # Mismo fin de semana, pero un equipo se repite => debe abrir otra jornada.
+        fixtures = [
+            {"home_team": "América", "away_team": "Toluca", "fecha": "2026-07-18"},
+            {"home_team": "Cruz Azul", "away_team": "Pumas UNAM", "fecha": "2026-07-18"},
+            {"home_team": "América", "away_team": "Cruz Azul", "fecha": "2026-07-19"},
+        ]
+        cal = ic.construir_calendario(fixtures)
+        self.assertEqual(len(cal), 2)  # el 3er juego repite América y Cruz Azul
+        self.assertEqual(len(cal[0]["partidos"]), 2)
+        self.assertEqual(len(cal[1]["partidos"]), 1)
+        # ningún equipo aparece dos veces dentro de una jornada
+        for j in cal:
+            nombres = [p["home_team"] for p in j["partidos"]] + [p["away_team"] for p in j["partidos"]]
+            self.assertEqual(len(nombres), len(set(nombres)))
+
+    def test_cap_max_por_jornada(self):
+        # 10 partidos seguidos sin repetir equipo ni hueco => se parte a los 9.
+        fixtures = [{"home_team": f"H{i}", "away_team": f"A{i}", "fecha": "2026-07-18"}
+                    for i in range(10)]
+        cal = ic.construir_calendario(fixtures, max_por_jornada=9)
+        self.assertEqual(len(cal[0]["partidos"]), 9)
+        self.assertEqual(len(cal[1]["partidos"]), 1)
+
 
 class TestRangosAdelante(unittest.TestCase):
     def test_rangos_van_hacia_adelante(self):

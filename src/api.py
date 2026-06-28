@@ -96,6 +96,17 @@ def alerts_high_ev(request: Request, api_key: str = Depends(verify_api_key)):
     res["nota"] = "Endpoint deprecado: usa /alerts/pronosticos. Envía predicciones reales."
     return res
 
+
+@app.post("/alerts/plan", summary="Enviar el plan de temporada Survivor por Telegram", tags=["Alerts"])
+@limiter.limit("6/minute")
+def alerts_plan(request: Request, api_key: str = Depends(verify_api_key)):
+    """
+    Construye el plan ÓPTIMO de Survivor para la temporada (qué equipo usar en
+    cada jornada) y lo envía por Telegram. Requiere data/calendario.json.
+    """
+    from src import telegram_pronosticos
+    return telegram_pronosticos.enviar_plan()
+
 @limiter.limit("20/minute")
 @app.get("/stats", summary="Métricas de rendimiento", tags=["Analytics"])
 def premium_stats(request: Request, api_key: str = Depends(verify_api_key)):

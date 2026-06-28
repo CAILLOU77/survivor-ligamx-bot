@@ -245,6 +245,43 @@ def planificar(
 # ---------------------------------------------------------------------------
 # Carga de calendario + CLI
 # ---------------------------------------------------------------------------
+def construir_odds_por_partido(
+    calendario: Sequence[Dict[str, Any]],
+    momios_crudos: Optional[Dict[str, Dict[str, Any]]] = None,
+) -> Dict[Tuple[str, str], Tuple[float, float, float]]:
+    """
+    Construye {(home_norm, away_norm): (p_local, p_empate, p_visita)} sin vig,
+    a partir de los momios reales de odds-api.io (comparador_mercado), casando
+    cada partido del calendario con match flexible de nombres.
+
+    `momios_crudos` se puede inyectar (tests). Sin key/momios => {} (no-op).
+    """
+    try:
+        import comparador_mercado as cm
+    except ImportError:  # pragma: no cover
+        from src import comparador_mercado as cm  # type: ignore
+
+    momios = momios_crudos if momios_crudos is not None else cm.obtener_momios_liga_mx()
+    if not momios:
+        return {}
+    out: Dict[Tuple[str, str], Tuple[float, float, float]] = {}
+    for j in calendario:
+        for partido in j.get("partidos", []):
+            home, away = partido.get("home_team", ""), partido.get("away_team", "")
+            mercado = cm.buscar_mercado_partido(home, away, momios)
+            ml = (mercado or {}).get("ml")
+            if not ml:
+                continue
+            try:
+                dv = cm.quitar_vig(ml["local"], ml["empate"], ml["visita"])
+            except (ValueError, KeyError, TypeError):
+                continue
+            out[(_norm(home), _norm(away))] = (
+                dv["prob_local"], dv["prob_empate"], dv["prob_visita"]
+            )
+    return out
+
+
 def cargar_calendario(path: Path = CALENDARIO_PATH) -> List[Dict[str, Any]]:
     """
     Carga data/calendario.json con el esquema:

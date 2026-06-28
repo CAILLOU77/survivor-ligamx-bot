@@ -67,13 +67,17 @@ def construir_mensaje(
 
     tops = motor.mejores_picks_survivor(pronosticos, equipos_usados, motivacion, n=3)
     if tops:
-        lineas.append("🎯 <b>SURVIVOR — top 3 (no perder):</b>")
+        lineas.append("🎯 <b>SURVIVOR — top 3:</b>")
         medallas = ["🥇", "🥈", "🥉"]
         for i, pk in enumerate(tops):
             extra = f" · rival mot.: {pk['rival_motivacion']}" if pk.get("rival_motivacion") else ""
+            gana = pk.get("prob_victoria_pct")
+            g = f"gana {gana}% · " if gana is not None else ""
+            nivel = pk.get("nivel")
+            nv = f" [{nivel}]" if nivel else ""
             lineas.append(
                 f"{medallas[i] if i < 3 else '•'} {pk['equipo']} "
-                f"({pk['condicion']} vs {pk['rival']}) — {pk['no_perder_pct']}%{extra}"
+                f"({pk['condicion']} vs {pk['rival']}) — {g}no-perder {pk['no_perder_pct']}%{nv}{extra}"
             )
         lineas.append("")
 
@@ -154,6 +158,65 @@ def enviar_pronosticos(equipos_usados: Optional[List[str]] = None) -> Dict[str, 
         "partidos_con_momios": con_momios,
         "fuente": resultado.get("fuente_datos"),
     }
+
+
+def construir_mensaje_plan(plan: Dict[str, Any]) -> str:
+    """Mensaje (HTML) con el plan de temporada del Survivor."""
+    if plan.get("calendario_incompleto") or not plan.get("plan"):
+        return ("📅 <b>PLAN SURVIVOR</b>\n\n"
+                "Aún no hay calendario completo (data/calendario.json). "
+                "Córrelo de nuevo cuando se publique el calendario del torneo.\n\n"
+                f"{DISCLAIMER}")
+    lineas = [
+        "📅 <b>PLAN SURVIVOR — temporada</b> (modelo · datos ESPN)",
+        f"<i>Sobrevivir toda la temporada: {plan.get('prob_supervivencia_total_pct')}% · "
+        f"victorias esperadas: {plan.get('victorias_esperadas')}</i>",
+        "",
+    ]
+    for p in plan["plan"]:
+        lineas.append(
+            f"J{p['jornada']}: <b>{p['equipo']}</b> ({p['condicion']} vs {p['rival']}) "
+            f"— gana {p['prob_ganar_pct']}% / no-perder {p['no_perder_pct']}% [{p['nivel']}]"
+        )
+    riesgosas = plan.get("jornadas_riesgosas") or []
+    if riesgosas:
+        lineas.append("")
+        lineas.append(f"⚠️ Jornadas riesgosas: {', '.join('J'+str(j) for j in riesgosas)}")
+    lineas += ["", DISCLAIMER]
+    return "\n".join(lineas)
+
+
+def enviar_plan(equipos_usados: Optional[List[str]] = None,
+                peso_victoria: float = 0.5, usar_momios: bool = True) -> Dict[str, Any]:
+    """
+    Construye el plan de temporada (ESPN + Poisson, momios opcionales) y lo envía
+    por Telegram. Defensivo: si falta calendario/histórico, envía un aviso claro.
+    """
+    try:
+        import planificador_survivor as plan_mod
+        import fuentes_datos
+        import poisson_model as pm
+    except ImportError:  # pragma: no cover
+        from src import planificador_survivor as plan_mod  # type: ignore
+        from src import fuentes_datos, poisson_model as pm  # type: ignore
+
+    calendario = plan_mod.cargar_calendario()
+    if not calendario:
+        plan = {"calendario_incompleto": True, "plan": []}
+    else:
+        try:
+            datos = fuentes_datos.obtener_resultados(meses=18)
+            fuerzas = pm.calcular_fuerzas(datos["resultados"])
+            odds = plan_mod.construir_odds_por_partido(calendario) if usar_momios else None
+            plan = plan_mod.planificar(calendario, fuerzas, equipos_usados=equipos_usados,
+                                       peso_victoria=peso_victoria, odds_por_partido=odds)
+        except Exception as exc:  # pragma: no cover
+            plan = {"calendario_incompleto": True, "plan": [], "error": str(exc)}
+
+    mensaje = construir_mensaje_plan(plan)
+    enviado = enviar_mensaje(mensaje)
+    return {"enviado": enviado, "jornadas": len(plan.get("plan", [])),
+            "calendario_incompleto": bool(plan.get("calendario_incompleto"))}
 
 
 if __name__ == "__main__":

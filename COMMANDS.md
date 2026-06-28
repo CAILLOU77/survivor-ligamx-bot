@@ -87,7 +87,13 @@ python3 scripts/import_calendario.py --dry-run  # muestra sin escribir
 ```
 
 Agrupa los fixtures programados por fin de semana (jornada) y usa los nombres de
-ESPN, así que ya quedan listos para el planificador.
+ESPN, así que ya quedan listos para el planificador. El agrupado detecta el
+cambio de jornada cuando un equipo se repite o cambia el fin de semana (maneja
+partidos entre semana).
+
+Con momios reales: si `ODDS_API_IO_KEY` está activa, `/plan-survivor` mezcla los
+momios de odds-api.io para las jornadas con cobertura (`usar_momios=true` por
+defecto; `?usar_momios=false` para solo-modelo).
 
 ## Telegram
 
@@ -103,6 +109,10 @@ python3 src/telegram_notifier.py --report reports/reporte_survivor_ultimo.txt
 # Previsualizar sin enviar (respeta el safety gate; funciona sin credenciales)
 python3 src/telegram_notifier.py --report reports/reporte_survivor_ultimo.txt --dry-run
 ```
+
+En la web (requieren `API_KEY`): `POST /alerts/pronosticos` (pronósticos + top-3
+de Survivor con nivel de riesgo ALTA/MEDIA/RIESGOSA) y `POST /alerts/plan` (plan
+de temporada completo, requiere `data/calendario.json`).
 
 ## Momios reales (odds-api.io, opcional)
 
