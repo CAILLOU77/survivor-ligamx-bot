@@ -26,24 +26,51 @@ try:
 except Exception as e:
     st.error(f"Error cargando métricas: {e}")
 
-# Picks activos
-st.subheader("🎯 Picks Activos (EV > 4%)")
+# Pick de Survivor (modelo real)
+st.subheader("🎯 Pick de Survivor (mayor prob. de NO perder)")
 try:
-    picks = requests.get(f"{API_URL}/picks/latest", headers=headers, timeout=10).json()
-    
-    if picks["status"] == "active" and picks["picks"]:
-        df = pd.DataFrame(picks["picks"])
-        st.dataframe(df, use_container_width=True)
-        
-        # Gráfico de EV
-        fig = px.bar(df, x="match", y="expected_value", 
-                     title="Expected Value por Pick",
-                     labels={"expected_value": "EV", "match": "Partido"})
-        st.plotly_chart(fig, use_container_width=True)
+    surv = requests.get(f"{API_URL}/survivor", timeout=60).json()
+    pick = surv.get("pick_survivor")
+    if pick:
+        st.success(
+            f"**{pick['equipo']}** ({pick['condicion']} vs {pick['rival']}) — "
+            f"no perder **{pick['no_perder_pct']}%**"
+        )
+        st.caption(f"Fuente: {surv.get('fuente_datos')} · {surv.get('decision')}")
     else:
-        st.info("No hay picks activos actualmente")
+        st.info("No hay pick de Survivor disponible (faltan fixtures o datos).")
 except Exception as e:
-    st.error(f"Error cargando picks: {e}")
+    st.error(f"Error cargando pick de Survivor: {e}")
+
+# Predicciones del modelo (ESPN + Poisson)
+st.subheader("🔮 Predicciones del modelo (ESPN + Poisson)")
+try:
+    pred = requests.get(f"{API_URL}/predicciones", timeout=60).json()
+    pronos = pred.get("pronosticos", [])
+
+    if pronos:
+        df = pd.DataFrame(pronos)
+        cols = [c for c in [
+            "local", "visitante", "pick_1x2",
+            "prob_local_pct", "prob_empate_pct", "prob_visitante_pct",
+            "pick_ou", "pick_btts", "marcador_mas_probable",
+        ] if c in df.columns]
+        st.dataframe(df[cols] if cols else df, use_container_width=True)
+
+        # Gráfico: probabilidad del pick por partido
+        if {"prob_local_pct", "prob_visitante_pct"}.issubset(df.columns):
+            df["partido"] = df["local"] + " vs " + df["visitante"]
+            fig = px.bar(
+                df, x="partido", y="prob_local_pct",
+                title="Probabilidad de Local por partido (%)",
+                labels={"prob_local_pct": "P(Local) %", "partido": "Partido"},
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        st.caption(f"Fuente: {pred.get('fuente_datos')} · {pred.get('decision')}")
+    else:
+        st.info("No hay predicciones disponibles actualmente")
+except Exception as e:
+    st.error(f"Error cargando predicciones: {e}")
 
 # Historial
 st.subheader("📜 Historial de Picks")

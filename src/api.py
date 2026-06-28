@@ -12,7 +12,6 @@ from typing import Optional
 from src.poisson_model import calibrate_and_predict
 from src.routers.analizar_1x2 import router as analizar_router
 from src.market_analyzer import analyze_additional_markets
-from src.telegram_alerts import send_high_ev_alerts
 from src.database import init_db, save_pick, get_metrics
 
 API_KEY = os.getenv("API_KEY", "survivor-ligamx-premium-2026")
@@ -34,45 +33,64 @@ from src.routers.predicciones import router as predicciones_router
 app.include_router(predicciones_router)
 init_db()
 
-PICKS_CACHE = {"status": "inactive", "picks": [], "last_update": None}
+# NOTA: el viejo path de "picks de alto EV" leia un parquet de momios scrapeados
+# (data_kiro/ligamx_odds_clean.parquet) que NO existe en produccion (Render) y
+# dependia de momios. El proyecto pivoto a predicciones reales (ESPN + Poisson).
+# Los endpoints /predicciones y /survivor (src/routers/predicciones.py) son la
+# fuente real; /picks/latest queda como alias DEPRECADO que reexpone esa data.
 
-def refresh_cache():
-    global PICKS_CACHE
+
+def _predicciones_reales() -> dict:
+    """Obtiene las predicciones reales (ESPN + Poisson) usando la cache del router."""
     try:
-        if not os.path.exists("data_kiro/ligamx_odds_clean.parquet"):
-            PICKS_CACHE = {"status": "error", "message": "Data missing"}; return
-        df = pd.read_parquet("data_kiro/ligamx_odds_clean.parquet")
-        valid = df[df["vig_pct"] < 15].copy()
-        picks_out = []
-        for _, row in valid.iterrows():
-            pred = calibrate_and_predict(row["momio_1"], row["momio_2"], row["momio_3"])
-            if pred["expected_value"] > 0.04 and pred["kelly_stake"] > 0:
-                match_id = f"L{row['id_liga']}_M{row['id_mercado']}"
-                picks_out.append({
-                    "match_id": match_id, "match": match_id, "market": "1 (Local)",
-                    "true_prob": round(pred["true_prob"], 4),
-                    "expected_value": round(pred["expected_value"], 4),
-                    "kelly_stake": round(pred["kelly_stake"], 2),
-                    "momio": round(row["momio_1"], 2),
-                    "timestamp": str(row["timestamp"])
-                })
-                try: save_pick(match_id, "1 (Local)", pred["true_prob"], row["momio_1"], pred["expected_value"], pred["kelly_stake"])
-                except: pass
-        picks_out = sorted(picks_out, key=lambda x: x["expected_value"], reverse=True)[:10]
-        PICKS_CACHE = {"status": "active", "last_update": datetime.utcnow().isoformat() + "Z", "picks": picks_out}
-    except Exception as e:
-        PICKS_CACHE = {"status": "error", "message": str(e), "last_update": None}
+        from src.routers.predicciones import _obtener as _obtener_predicciones
+        return _obtener_predicciones()
+    except Exception as exc:  # pragma: no cover - fallback defensivo
+        return {"pronosticos": [], "fuente_datos": None, "generado_utc": None,
+                "decision": "INFORMATIVO / REVISIÓN HUMANA", "error": str(exc)}
 
 @app.get("/health", summary="Estado del sistema", tags=["Status"])
 def health():
     return {"status": "ok", "version": "2.1.0-premium", "timestamp": datetime.utcnow().isoformat()}
 
 @limiter.limit("10/minute")
-@app.get("/picks/latest", summary="Picks activos (EV>4%)", tags=["Picks"])
+@app.get("/picks/latest", summary="(Deprecado) Predicciones reales ESPN+Poisson", tags=["Picks"])
 def get_picks(request: Request, api_key: str = Depends(verify_api_key)):
-    if not PICKS_CACHE["last_update"] or datetime.fromisoformat(PICKS_CACHE["last_update"].replace("Z","")) < datetime.utcnow() - timedelta(minutes=15):
-        refresh_cache()
-    return PICKS_CACHE
+    """
+    DEPRECADO: el viejo path de 'picks de alto EV' dependia de momios scrapeados
+    inexistentes en produccion. Ahora reexpone las predicciones REALES del modelo
+    (ESPN + Poisson). Usa directamente /predicciones y /survivor.
+    """
+    data = _predicciones_reales()
+    return {
+        "status": "deprecated",
+        "message": "Usa /predicciones (1X2/OU/BTTS por partido) y /survivor (mejor no-perder). Datos reales de ESPN + modelo Poisson.",
+        "last_update": data.get("generado_utc"),
+        "fuente_datos": data.get("fuente_datos"),
+        "predicciones": data.get("pronosticos", []),
+        "decision": data.get("decision"),
+    }
+
+
+@app.post("/alerts/pronosticos", summary="Enviar pronósticos reales por Telegram", tags=["Alerts"])
+@limiter.limit("6/minute")
+def alerts_pronosticos(request: Request, api_key: str = Depends(verify_api_key)):
+    """Genera predicciones reales (ESPN + Poisson) y las envía por Telegram."""
+    from src import telegram_pronosticos
+    return telegram_pronosticos.enviar_pronosticos()
+
+
+@app.post("/alerts/high-ev", summary="(Deprecado) Alias → pronósticos reales", tags=["Alerts"])
+@limiter.limit("6/minute")
+def alerts_high_ev(request: Request, api_key: str = Depends(verify_api_key)):
+    """
+    Compatibilidad con el workflow auto-alerts. El viejo 'EV>5%' se basaba en
+    momios inventados; ahora envía PRONÓSTICOS REALES (ESPN + Poisson).
+    """
+    from src import telegram_pronosticos
+    res = telegram_pronosticos.enviar_pronosticos()
+    res["nota"] = "Endpoint deprecado: usa /alerts/pronosticos. Envía predicciones reales."
+    return res
 
 @limiter.limit("20/minute")
 @app.get("/stats", summary="Métricas de rendimiento", tags=["Analytics"])
@@ -303,51 +321,39 @@ def debug_jornadas(request: Request):
         return {"status": "error", "message": str(e)}
 
 
-@app.get("/debug/scraper", summary="Debug: ejecutar scraper con output completo", tags=["Debug"])
-@limiter.limit("2/minute")
+@app.get("/debug/scraper", summary="Debug: fixtures reales de ESPN", tags=["Debug"])
+@limiter.limit("5/minute")
 def debug_scraper(request: Request):
-    """Ejecuta el scraper y muestra output completo para debugging"""
-    import subprocess
-    import sys
-    import json
+    """Diagnóstico de la fuente real: próximos fixtures de Liga MX desde ESPN."""
     try:
-        result = subprocess.run(
-            [sys.executable, "src/debug_scraper.py"],
-            capture_output=True,
-            text=True,
-            timeout=300,
-            cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        )
-        
+        from src import espn_data
+        fixtures = espn_data.obtener_fixtures()
         return {
-            "status": "success" if result.returncode == 0 else "error",
-            "returncode": result.returncode,
-            "stdout": result.stdout,
-            "stderr": result.stderr
+            "status": "success",
+            "fuente": "ESPN (site.api.espn.com, mex.1)",
+            "total_fixtures": len(fixtures),
+            "sample": fixtures[:5],
         }
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
 
-@app.get("/debug/api-response", summary="Debug: Ver respuesta cruda de The Odds API", tags=["Debug"])
-@limiter.limit("2/minute")
+@app.get("/debug/api-response", summary="Debug: estado de fuentes de datos", tags=["Debug"])
+@limiter.limit("5/minute")
 def debug_api_response(request: Request):
-    """Muestra la respuesta cruda de The Odds API"""
-    import subprocess
-    import sys
+    """
+    The Odds API fue descartada (no cubre Liga MX de forma fiable). La fuente
+    real es ESPN. Este endpoint reporta cuántos resultados históricos se
+    obtienen de la cadena de fuentes (ESPN → TheSportsDB → caché).
+    """
     try:
-        result = subprocess.run(
-            [sys.executable, "src/debug_api_response.py"],
-            capture_output=True,
-            text=True,
-            timeout=60,
-            cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        )
-        
+        from src import fuentes_datos
+        datos = fuentes_datos.obtener_resultados(meses=2)
         return {
-            "status": "success" if result.returncode == 0 else "error",
-            "output": result.stdout,
-            "errors": result.stderr
+            "status": "success",
+            "nota": "The Odds API descartada; fuente real = ESPN. Ver /debug/scraper y /predicciones.",
+            "fuente_usada": datos.get("fuente"),
+            "total_resultados": datos.get("total"),
         }
     except Exception as e:
         return {"status": "error", "message": str(e)}

@@ -2,8 +2,13 @@ import requests
 import json
 from datetime import datetime
 
+# NOTA: este script SOLO obtiene fixtures reales (equipos, fecha, sede, estado)
+# de la API publica de ESPN. NO inventa momios: el proyecto pivoto a un modelo
+# estadistico (ESPN + Poisson) y las predicciones salen de resultados reales,
+# no de cuotas. Ver src/motor_pronosticos.py y src/poisson_model.py.
+
 def scrape_espn():
-    """ESPN API - Fuente principal"""
+    """ESPN API - Fuente principal de fixtures (sin momios)"""
     print("📡 Intentando ESPN...")
     base_url = "https://site.api.espn.com/apis/site/v2/sports/soccer/mex.1"
     
@@ -33,9 +38,6 @@ def scrape_espn():
                                 'date': event.get('date', ''),
                                 'status': event.get('status', {}).get('type', {}).get('description', 'scheduled'),
                                 'venue': comp.get('venue', {}).get('fullName', ''),
-                                'momio_1': 2.0,
-                                'momio_x': 3.5,
-                                'momio_2': 3.5,
                                 'source': 'ESPN'
                             })
                 
@@ -48,7 +50,7 @@ def scrape_espn():
     return None
 
 def scrape_espn_teams():
-    """ESPN Teams - Crear partidos con equipos reales"""
+    """ESPN Teams - Crear partidos con equipos reales (sin momios)"""
     print("📡 Intentando ESPN Teams...")
     base_url = "https://site.api.espn.com/apis/site/v2/sports/soccer/mex.1"
     
@@ -73,9 +75,6 @@ def scrape_espn_teams():
                             'date': datetime.now().isoformat(),
                             'status': 'scheduled',
                             'venue': '',
-                            'momio_1': 2.0,
-                            'momio_x': 3.5,
-                            'momio_2': 3.5,
                             'source': 'ESPN-Teams'
                         })
                 

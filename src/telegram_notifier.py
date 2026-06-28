@@ -1,69 +1,57 @@
-import httpx
+#!/usr/bin/env python3
+"""
+telegram_notifier.py — Notificador (cliente) de PRONÓSTICOS REALES por Telegram.
+
+Antes consultaba el viejo endpoint /picks/latest (picks de "alto EV" basados en
+momios inventados). Ahora consulta el endpoint REAL /predicciones (ESPN +
+Poisson) de la API desplegada y envía un resumen informativo, reutilizando el
+mismo constructor de mensaje que src/telegram_pronosticos.py (DRY).
+
+Informativo / revisión humana. No es consejo de apuesta.
+"""
 import asyncio
 import os
-from datetime import datetime, timedelta
+
+import httpx
 from dotenv import load_dotenv
+
+try:
+    import telegram_pronosticos
+except ImportError:  # pragma: no cover
+    from src import telegram_pronosticos  # type: ignore
 
 load_dotenv()
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-API_BASE = "https://survivor-ligamx-bot.onrender.com"
-SEEN_PICKS_FILE = "data/seen_picks.cache"
+API_BASE = os.getenv("API_BASE", "https://survivor-ligamx-bot.onrender.com")
 
-def load_seen():
-    if not os.path.exists(SEEN_PICKS_FILE): return set()
-    with open(SEEN_PICKS_FILE, "r") as f: return set(line.strip() for line in f if line.strip())
 
-def save_seen(seen_set):
-    os.makedirs(os.path.dirname(SEEN_PICKS_FILE), exist_ok=True)
-    with open(SEEN_PICKS_FILE, "w") as f: f.write("\n".join(seen_set))
-
-async def notify_new_picks():
+async def notify_predicciones():
+    """Consulta /predicciones (datos reales) y envía el resumen por Telegram."""
     if not TELEGRAM_TOKEN or not CHAT_ID:
-        print("⚠️ Faltan credenciales en .env"); return
+        print("⚠️ Faltan credenciales en .env (TELEGRAM_BOT_TOKEN/CHAT_ID).")
+        return
 
-    seen = load_seen()
-    print("📡 Consultando API pública...")
-
+    print("📡 Consultando predicciones reales (ESPN + Poisson)...")
     try:
-        async with httpx.AsyncClient(timeout=40.0) as client:
-            resp = await client.get(f"{API_BASE}/picks/latest")
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.get(f"{API_BASE}/predicciones")
             resp.raise_for_status()
             data = resp.json()
 
-        if data.get("status") != "active" or not data.get("picks"):
-            print("ℹ️ Sin picks válidos ahora."); return
+        if not data.get("pronosticos"):
+            print("ℹ️ Sin pronósticos disponibles ahora (faltan fixtures o datos).")
+            return
 
-        sent_count = 0
-        for p in data["picks"]:
-            if sent_count >= 3: break # Máx 3 alertas por ciclo
-
-            # Filtrar solo picks recientes (últimas 24h)
-            try:
-                pick_time = datetime.fromisoformat(str(p.get("timestamp", "")))
-                if datetime.utcnow() - pick_time > timedelta(hours=24): continue
-            except: pass
-
-            uid = f"{p.get('match','')}_{p.get('market','')}"
-            ev = p.get("expected_value", 0)
-
-            if uid not in seen and ev > 0.04:
-                msg = (f"🎯 *PICK DETECTADO*\n⚽ {p.get('match', 'N/A')}\n"
-                       f"📊 EV: `{ev:.2%}` | Prob: `{p.get('true_prob', 0):.1%}`\n"
-                       f"💰 Kelly: `{p.get('kelly_stake', 0):.1f}%`\n🕒 {str(p.get('timestamp', ''))[:19]}")
-                url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-                async with httpx.AsyncClient() as tg:
-                    await tg.post(url, json={"chat_id": CHAT_ID, "text": msg, "parse_mode": "Markdown"})
-                print(f"📤 Enviado: {p.get('match')}")
-                seen.add(uid)
-                sent_count += 1
-
-        save_seen(seen)
-        print(f"✅ Proceso completado ({sent_count} alertas enviadas).")
-
+        mensaje = telegram_pronosticos.construir_mensaje(data)
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+        async with httpx.AsyncClient(timeout=20.0) as tg:
+            await tg.post(url, json={"chat_id": CHAT_ID, "text": mensaje, "parse_mode": "HTML"})
+        print(f"✅ Enviado: {data.get('total_pronosticos', len(data['pronosticos']))} pronósticos.")
     except Exception as e:
         print(f"❌ Error: {e}")
 
+
 if __name__ == "__main__":
-    asyncio.run(notify_new_picks())
+    asyncio.run(notify_predicciones())
