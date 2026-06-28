@@ -5,6 +5,7 @@
 
 # Datos locales
 data/
+!data/jornadas.json
 
 # Python
 __pycache__/
