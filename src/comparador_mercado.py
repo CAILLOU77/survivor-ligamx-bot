@@ -523,21 +523,34 @@ def diagnostico_mercado() -> Dict[str, Any]:
             for e in eventos[:5]
         ]
         info["bookmakers_usadas"] = _bookmakers_consulta()[:300]
+        # ¿Qué casas tiene seleccionadas la cuenta? (plan gratis suele limitar)
+        try:
+            sel = _get(f"{BASE_URL}/bookmakers/selected", {"apiKey": key})
+            info["bookmakers_seleccionadas"] = sel
+        except RuntimeError as exc:
+            info["bookmakers_seleccionadas_error"] = str(exc)
         if eventos:
-            primera = _odds_evento(key, eventos[0]["id"], _bookmakers_consulta())
-            info["n_odds_respuestas"] = 1 if primera else 0
-            if primera:
-                casas = list((primera.get("bookmakers") or {}).keys())
-                mercados = []
-                if casas:
-                    mercados = [m.get("name") for m in (primera.get("bookmakers") or {})[casas[0]]
-                                if isinstance(m, dict)]
-                info["odds_muestra"] = {
-                    "evento": f"{primera.get('home')} vs {primera.get('away')}",
-                    "casas": casas[:10],
-                    "mercados_primera_casa": mercados,
-                    "parseado": parsear_mercado(primera),
+            ev_id = eventos[0]["id"]
+            # Prueba 1: /odds con UNA sola casa (para ver si el plan limita el nro de casas)
+            try:
+                una = _odds_evento(key, ev_id, "Bet365")
+                if una:
+                    casas1 = list((una.get("bookmakers") or {}).keys())
+                    info["prueba_odds_1_casa"] = {"ok": True, "casas": casas1,
+                                                  "parseado": parsear_mercado(una)}
+                else:
+                    info["prueba_odds_1_casa"] = {"ok": True, "casas": [], "nota": "sin bookmakers en respuesta"}
+            except RuntimeError as exc:
+                info["prueba_odds_1_casa"] = {"ok": False, "error": str(exc)}
+            # Prueba 2: /odds con la lista completa (lo que usa el bot)
+            try:
+                full = _odds_evento(key, ev_id, _bookmakers_consulta())
+                info["prueba_odds_full"] = {
+                    "ok": bool(full),
+                    "casas": list((full.get("bookmakers") or {}).keys())[:10] if full else [],
                 }
+            except RuntimeError as exc:
+                info["prueba_odds_full"] = {"ok": False, "error": str(exc)}
     except RuntimeError as exc:
         info["error"] = str(exc)
     return info
