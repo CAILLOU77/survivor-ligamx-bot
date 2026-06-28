@@ -6,3 +6,4 @@ python-dotenv
 requests
 scipy
 psycopg2-binary
+slowapi
