@@ -1,5 +1,33 @@
 # Changelog — Survivor Liga MX Bot
 
+## v2.0.0 — Pivote a ESPN + Modelo Poisson (datos reales y gratis)
+
+Tras descartar las APIs de momios (sin Liga MX o de pago caro), el proyecto
+pivota a **fuentes públicas gratuitas + modelo estadístico**.
+
+### Añadido
+- `src/espn_data.py`: ingesta desde la **API pública gratuita de ESPN**
+  (`site.api.espn.com`, liga `mex.1`) — fixtures, marcadores finales y tabla.
+  Sin key, sin scraping. Alimenta el modelo Poisson con resultados reales.
+- `src/fuentes_datos.py`: **redundancia multi-fuente** para no depender de una
+  sola. Cadena: ESPN → TheSportsDB (key gratis) → caché local.
+- `src/motor_pronosticos.py`: **cerebro** que ata fuentes + Poisson y produce,
+  por partido próximo: 1X2, Over/Under, BTTS, marcador probable y el
+  "no perder" de Survivor. Incluye `mejor_pick_survivor()`.
+- `src/poisson_model.py`: modelo **Poisson/Dixon-Coles** restaurado (calcula
+  fuerza ofensiva/defensiva desde resultados) + `calibrate_and_predict()` para
+  la web.
+- **Web** (`src/api.py`): endpoints nuevos `GET /predicciones` y `GET /survivor`
+  con predicciones reales (caché 30 min).
+
+### Corregido
+- Reparado el núcleo que se había roto (poisson_model, requirements numpy/
+  feedparser). Eliminada basura de scripts en la raíz.
+
+### Datos
+- Fuentes: **ESPN** (primaria) + **TheSportsDB** (respaldo), ambas gratuitas.
+- Las predicciones NO requieren momios: salen de resultados reales.
+
 ## v1.43.1 — Fireworks Client Tests (mock)
 
 ### Añadido

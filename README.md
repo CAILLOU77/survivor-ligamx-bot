@@ -1,10 +1,43 @@
 # Survivor Liga MX Bot
 
-Herramientas para asistir decisiones de **Survivor Liga MX**. El sistema recolecta
-datos (momios, calendario, contexto), audita la disponibilidad de mercado real y
-genera reportes. **La decisión final (CERRAR) la controla el auditor pre-cierre /
-Real Data Gate; las herramientas auxiliares no cierran ni envían picks por su
-cuenta.**
+Herramientas para asistir decisiones de **Survivor Liga MX**.
+
+## Arquitectura actual (v2 — ESPN + Poisson)
+
+Tras descartar las APIs de momios (no cubren Liga MX o son de pago caro), el
+sistema usa **datos públicos gratuitos + un modelo estadístico**:
+
+```
+ESPN API (gratis) ─┐
+TheSportsDB (gratis, respaldo) ─┤→ fuentes_datos (redundancia + caché)
+                                 │        │
+                                 │        ▼
+                                 │   poisson_model (Dixon-Coles): fuerza de equipos
+                                 │        │
+ESPN fixtures ───────────────────┘        ▼
+                                    motor_pronosticos
+                                          │
+                          ┌───────────────┼───────────────┐
+                          ▼               ▼               ▼
+                   Web /predicciones   /survivor      (Telegram/dashboard)
+                   1X2·O/U·BTTS·marcador   pick no-perder
+```
+
+- **No depende de momios** ni de scraping: las predicciones salen de
+  resultados reales de ESPN.
+- **Redundancia**: si ESPN falla → TheSportsDB → caché local.
+- Fuentes 100% gratuitas y públicas.
+
+### Endpoints clave de la web
+- `GET /predicciones` — 1X2 / Over-Under / BTTS / marcador por partido.
+- `GET /survivor?excluir=America,Toluca` — mejor equipo "no perder".
+- `GET /dashboard`, `GET /health`, `GET /docs`.
+
+### Generar datos/predicciones (local)
+```bash
+python3 src/espn_data.py            # baja resultados reales -> data/resultados_historicos.json
+python3 src/motor_pronosticos.py    # pronósticos + pick Survivor
+```
 
 > Proyecto local: `~/Projects/survivor-ligamx-bot`.
 
