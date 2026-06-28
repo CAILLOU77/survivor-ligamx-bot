@@ -12,7 +12,7 @@ from typing import Optional
 from src.poisson_model import calibrate_and_predict
 from src.routers.analizar_1x2 import router as analizar_router
 from src.market_analyzer import analyze_additional_markets
-from src.database import init_db, save_pick, get_metrics
+from src.database import init_db, save_pick, get_metrics, get_history, settle_pick
 
 API_KEY = os.getenv("API_KEY", "survivor-ligamx-premium-2026")
 
@@ -99,29 +99,17 @@ def premium_stats(request: Request, api_key: str = Depends(verify_api_key)):
 
 @limiter.limit("20/minute")
 @app.get("/history", summary="Historial paginado", tags=["Analytics"])
-def get_history(request: Request, limit: int = 20, offset: int = 0, api_key: str = Depends(verify_api_key)):
+def get_history_endpoint(request: Request, limit: int = 20, offset: int = 0, api_key: str = Depends(verify_api_key)):
     try:
-        import sqlite3
-        db_path = os.getenv("DATABASE_URL", "data/premium_history.db")
-        conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM picks ORDER BY id DESC LIMIT ? OFFSET ?", (limit, offset))
-        rows = [dict(row) for row in cur.fetchall()]
-        conn.close()
+        rows = get_history(limit, offset)
         return {"total": len(rows), "records": rows}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/backtest/settle/{pick_id}", summary="Validar resultado de pick", tags=["Analytics"])
-def settle_pick(pick_id: int, result: float = 0.0, profit_loss: float = 0.0, api_key: str = Depends(verify_api_key)):
+def settle_pick_endpoint(pick_id: int, result: float = 0.0, profit_loss: float = 0.0, api_key: str = Depends(verify_api_key)):
     try:
-        import sqlite3
-        db_path = os.getenv("DATABASE_URL", "data/premium_history.db")
-        conn = sqlite3.connect(db_path)
-        conn.execute("UPDATE picks SET status='settled', result=?, profit_loss=? WHERE id=?", (result, profit_loss, pick_id))
-        conn.commit()
-        conn.close()
+        settle_pick(pick_id, result, profit_loss)
         return {"status": "updated", "pick_id": pick_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
