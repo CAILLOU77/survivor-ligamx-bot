@@ -326,6 +326,30 @@ def debug_scraper(request: Request):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+
+@app.get("/debug/api-response", summary="Debug: Ver respuesta cruda de The Odds API", tags=["Debug"])
+@limiter.limit("2/minute")
+def debug_api_response(request: Request):
+    """Muestra la respuesta cruda de The Odds API"""
+    import subprocess
+    import sys
+    try:
+        result = subprocess.run(
+            [sys.executable, "src/debug_api_response.py"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        )
+        
+        return {
+            "status": "success" if result.returncode == 0 else "error",
+            "output": result.stdout,
+            "errors": result.stderr
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("src.api:app", host="0.0.0.0", port=8000, reload=True)
