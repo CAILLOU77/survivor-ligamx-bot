@@ -1,32 +1,51 @@
-# 📝 DOCUMENTO MAESTRO: RECOLECTOR DE DATOS SURVIVOR Y PRONÓSTICOS LIGA MX
+# 📝 DOCUMENTO MAESTRO — Survivor & Pronósticos Liga MX
 
-## 📌 Configuración Inicial del Sistema
-* **Sistema Operativo:** macOS (Mac nativo).
-* **Directorio Base:** `~/Desktop/survivor-ligamx-bot/`
-* **Librerías Core instaladas:** `pandas`, `numpy`, `requests`, `scipy`, `requests-html`, `beautifulsoup4`, `groq`.
+> Estado actual (v2): tras el **pivote**, el sistema NO depende de momios ni de
+> scraping. Las predicciones salen de **resultados reales de ESPN + un modelo
+> Poisson/Dixon-Coles**. Es **informativo**: nunca apuesta ni envía picks
+> automáticos.
 
-## ⚙️ Arquitectura del Bot Ultra-Actualizado
-1. **src/scraper.py (Fase Actual):** Conexión con los servidores de los casinos vía API para momios 1X2 actualizados al minuto.
-2. **src/contexto.py:** Recolector automatizado de Clima, Altitud del Estadio, Minutos de juego y Lesionados.
-3. **src/analizador_ia.py:** Conexión con Llama 3.3 en GroqCloud para procesar ruedas de prensa y rotaciones de plantilla.
-4. **src/predictor.py:** Modelo de Distribución de Poisson para calcular porcentajes, pick óptimo, marcador exacto y goleadores.
-5. **src/optimizer.py:** Algoritmo matemático para ganar el Survivor de Playdoit sin repetir equipos.
+## ⚙️ Arquitectura (v2 — ESPN + Poisson)
 
+1. **`src/fuentes_datos.py`** — capa de datos con redundancia: ESPN (primaria,
+   gratis, sin key) → TheSportsDB (respaldo) → caché local.
+2. **`src/espn_data.py`** — ingesta de resultados y fixtures de la API pública de
+   ESPN (`mex.1`).
+3. **`src/poisson_model.py`** — modelo Dixon-Coles: estima la fuerza de cada
+   equipo con **recencia** (los partidos recientes pesan más) y **shrinkage**
+   (regularización), y produce 1X2 / Over-Under / BTTS / marcador.
+4. **`src/motor_pronosticos.py`** — "cerebro": ata fuentes + modelo y calcula el
+   mejor pick de Survivor (mayor prob. de **no perder**).
+5. **`src/tabla_posiciones.py`** — tabla de ESPN + **motivación** por equipo
+   (zona de clasificación, vivo/eliminado), usada como contexto/desempate.
+6. **`src/dixon_coles_mle.py`** — variante por máxima verosimilitud (alternativa
+   opcional, validada; no es el default).
+7. **`src/comparador_mercado.py`** — capa **opcional** de comparación vs mercado
+   (odds-api.io); apagada sin `ODDS_API_IO_KEY`.
+8. **`src/api.py` + `src/routers/`** — web FastAPI (`/predicciones`, `/survivor`,
+   `/tabla`, `/valor`, …).
+9. **`src/telegram_pronosticos.py`** — alertas informativas por Telegram.
+10. **`src/validacion_modelo.py`** — backtest honesto del modelo vs resultados
+    reales (accuracy / Brier / baseline).
 
-## 🔧 Historial de Errores y Soluciones (Mac)
-* **Error:** `ModuleNotFoundError: No module named 'requests'` al ejecutar `python3`.
-* **Solución:** Se forzó la instalación de dependencias usando el puente directo del sistema: `python3 -m pip install [librerías]`.
+## 🚦 Reglas no negociables
 
-## 📦 Actualización de Módulos (Fase 2)
-* **Módulo:** `src/contexto.py` integrado con éxito.
-* **Funcionalidad:** Mapeo geográfico de estadios de la Liga MX y recolección automatizada de temperatura y estado del tiempo por medio de la API Open-Meteo.
+- **Informativo.** Toda salida termina en `INFORMATIVO / REVISIÓN HUMANA`.
+- **Cero scraping** a sitios con login/anti-bot. Solo APIs públicas/gratuitas.
+- **No inventar.** Sin métricas ni momios fabricados.
 
-* **Error:** `SyntaxError: invalid syntax` en `src/contexto.py` línea 46 por corchetes de códigos de clima vacíos.
-* **Solución:** Se insertaron los códigos numéricos de la Organización Meteorológica Mundial (`[1, 2, 3]` para nublado y rango `[45-99]` para tormentas).
+## 📦 Cómo correr
 
-* **Error:** `NewConnectionError` en la API de Clima debido a un formato de URL mal construido (`open-meteo.com19.3029...`).
-* **Solución:** Se corrigió el string de la URL inyectando correctamente la ruta del endpoint `/v1/forecast?latitude=`.
+```bash
+python3 src/espn_data.py            # baja resultados reales
+python3 main.py                     # pronósticos + pick Survivor (--telegram opcional)
+python3 src/validacion_modelo.py    # mide la precisión del modelo
+python3 -m pytest tests/            # suite completa
+```
 
-## 📊 Integración del Modelo Predictor (Fase 3)
-* **Módulo:** `src/predictor.py` desarrollado con éxito.
-* **Funcionalidad:** Implementación de la Distribución de Poisson cruzando cuotas limpias del casino y temperatura del estadio. Genera porcentajes de victoria, picks sugeridos, marcadores exactos y lista de goleadores o jugadores clave a seguir.
+## 🗂️ Historia
+
+Versión 1 (archivada): pipeline basado en momios/scraping
+(`scraper`/`contexto`/`predictor`/`optimizer`/`analizador_ia`). Se **descartó**
+porque las APIs de momios no cubrían Liga MX de forma fiable. El código viejo se
+retiró del repo (recuperable desde el historial de git).
