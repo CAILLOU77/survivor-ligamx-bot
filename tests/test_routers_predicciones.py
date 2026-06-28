@@ -62,6 +62,17 @@ class TestEndpoints(unittest.TestCase):
         # Excluido América, el mejor restante es Toluca (visitante, 40%).
         self.assertEqual(r["pick_survivor"]["equipo"], "Toluca")
 
+    def test_tabla_devuelve_datos_y_decision(self):
+        pred._CACHE_TABLA["data"] = None
+        pred._CACHE_TABLA["ts"] = None
+        fake = {"torneo": "2026 Torneo Apertura",
+                "tabla": [{"posicion": 1, "equipo": "América", "motivacion_nivel": "alta"}]}
+        with mock.patch.object(pred.tabla_mod, "obtener_tabla", return_value=fake):
+            r = pred.tabla()
+        self.assertEqual(r["torneo"], "2026 Torneo Apertura")
+        self.assertEqual(r["tabla"][0]["equipo"], "América")
+        self.assertEqual(r["decision"], "INFORMATIVO / REVISIÓN HUMANA")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

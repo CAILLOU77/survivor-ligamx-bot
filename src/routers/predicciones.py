@@ -21,9 +21,15 @@ try:
 except ImportError:  # pragma: no cover - contexto de paquete (web)
     from src import motor_pronosticos as motor  # type: ignore
 
+try:
+    import tabla_posiciones as tabla_mod
+except ImportError:  # pragma: no cover
+    from src import tabla_posiciones as tabla_mod  # type: ignore
+
 router = APIRouter(tags=["Predicciones"])
 
 _CACHE: Dict[str, Any] = {"data": None, "ts": None}
+_CACHE_TABLA: Dict[str, Any] = {"data": None, "ts": None}
 _TTL_MIN = 30
 
 
@@ -38,6 +44,16 @@ def _obtener() -> Dict[str, Any]:
         _CACHE["data"] = motor.generar_pronosticos()
         _CACHE["ts"] = datetime.utcnow()
     return _CACHE["data"]
+
+
+def _obtener_tabla() -> Dict[str, Any]:
+    fresco = bool(_CACHE_TABLA["data"]) and bool(_CACHE_TABLA["ts"]) and (
+        datetime.utcnow() - _CACHE_TABLA["ts"] < timedelta(minutes=_TTL_MIN)
+    )
+    if not fresco:
+        _CACHE_TABLA["data"] = tabla_mod.obtener_tabla()
+        _CACHE_TABLA["ts"] = datetime.utcnow()
+    return _CACHE_TABLA["data"]
 
 
 @router.get("/predicciones", summary="Predicciones reales (ESPN + Poisson)")
@@ -62,3 +78,14 @@ def survivor(excluir: str = "") -> Dict[str, Any]:
         "pick_survivor": pick,
         "decision": data.get("decision"),
     }
+
+
+@router.get("/tabla", summary="Tabla Liga MX (ESPN) + motivación por equipo")
+def tabla() -> Dict[str, Any]:
+    """Tabla general con zona de clasificación y motivación por equipo."""
+    try:
+        data = _obtener_tabla()
+    except Exception as exc:  # pragma: no cover - fallback defensivo de red
+        return {"torneo": "", "tabla": [], "error": str(exc),
+                "decision": "INFORMATIVO / REVISIÓN HUMANA"}
+    return {**data, "decision": "INFORMATIVO / REVISIÓN HUMANA"}

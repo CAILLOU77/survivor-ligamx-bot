@@ -107,6 +107,29 @@ def fuera_de_liguilla(posicion: int, torneo: str = "") -> bool:
     return True
 
 
+def zona_clasificacion(posicion: int, torneo: str = "") -> str:
+    """
+    Clasifica una posición de la tabla en su zona: 'directo', 'play_in' o 'fuera'.
+    Útil para derivar la motivación de cada equipo desde la tabla.
+    """
+    if clasifica_directo(posicion, torneo):
+        return "directo"
+    if va_play_in(posicion, torneo):
+        return "play_in"
+    return "fuera"
+
+
+def cupos_postemporada(torneo: str = "") -> int:
+    """
+    Número de equipos que llegan a la postemporada (incluyendo Play-In).
+    Formato normal: 10 (top 6 directo + Play-In 7–10). Excepción sin Play-In: 8.
+    """
+    f = formato_liguilla(torneo)
+    if f["play_in"]:
+        return int(f["play_in_rango"][1])
+    return int(f["clasificados_directo"])
+
+
 def descenso_activo() -> bool:
     """Descenso suspendido desde 2020 -> False."""
     return not DESCENSO_SUSPENDIDO

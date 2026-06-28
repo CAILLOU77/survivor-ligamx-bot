@@ -83,5 +83,23 @@ class TestResumen(unittest.TestCase):
         self.assertIn("8 directo", out)
 
 
+class TestZonaYCupos(unittest.TestCase):
+    def test_zona_clasificacion_normal(self):
+        self.assertEqual(rl.zona_clasificacion(1, "Apertura 2026"), "directo")
+        self.assertEqual(rl.zona_clasificacion(6, "Apertura 2026"), "directo")
+        self.assertEqual(rl.zona_clasificacion(7, "Apertura 2026"), "play_in")
+        self.assertEqual(rl.zona_clasificacion(10, "Apertura 2026"), "play_in")
+        self.assertEqual(rl.zona_clasificacion(11, "Apertura 2026"), "fuera")
+
+    def test_zona_clasificacion_excepcion(self):
+        # Sin Play-In: 1–8 directo, el resto fuera.
+        self.assertEqual(rl.zona_clasificacion(8, "Clausura 2026"), "directo")
+        self.assertEqual(rl.zona_clasificacion(9, "Clausura 2026"), "fuera")
+
+    def test_cupos_postemporada(self):
+        self.assertEqual(rl.cupos_postemporada("Apertura 2026"), 10)  # incluye Play-In
+        self.assertEqual(rl.cupos_postemporada("Clausura 2026"), 8)   # sin Play-In
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
