@@ -111,3 +111,9 @@ def valor() -> Dict[str, Any]:
         "fuente_datos": data.get("fuente_datos"),
         **comp,
     }
+
+
+@router.get("/valor/diagnostico", summary="Diagnóstico de la conexión a momios (debug)")
+def valor_diagnostico() -> Dict[str, Any]:
+    """Muestra qué devuelve odds-api.io (eventos/casas/mercados) sin exponer la key."""
+    return mercado_mod.diagnostico_mercado()

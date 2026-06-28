@@ -138,6 +138,21 @@ class TestAnotar(unittest.TestCase):
         out = cm.anotar_pronosticos([self._pron()], {clave: mercado})
         self.assertIsNotNone(out[0]["mercado"])
 
+    def test_empareja_nombres_flexibles(self):
+        # Modelo (ESPN) "Tigres UANL" vs momios (odds-api) "Tigres"; "Club Tijuana".
+        mercado = cm.parsear_mercado(_odds_response())
+        clave = cm._clave_partido("Club Tijuana", "Tigres")
+        pron = {"local": "Tijuana", "visitante": "Tigres UANL",
+                "prob_local_pct": 50.0, "prob_empate_pct": 28.0, "prob_visitante_pct": 22.0,
+                "prob_over_pct": 55.0}
+        out = cm.anotar_pronosticos([pron], {clave: mercado})
+        self.assertIsNotNone(out[0]["mercado"])
+
+    def test_no_empareja_equipos_distintos(self):
+        self.assertFalse(cm._equipos_coinciden("America", "Toluca"))
+        self.assertTrue(cm._equipos_coinciden("Tigres UANL", "Tigres"))
+        self.assertTrue(cm._equipos_coinciden("Club Tijuana", "Tijuana"))
+
 
 class TestGating(unittest.TestCase):
     def test_deshabilitado_sin_key(self):
@@ -157,6 +172,19 @@ class TestGating(unittest.TestCase):
         self.assertFalse(r["mercado_habilitado"])
         self.assertEqual(r["partidos_con_momios"], 0)
         self.assertIsNone(r["pronosticos"][0]["mercado"])
+
+    def test_diagnostico_sin_key(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            d = cm.diagnostico_mercado()
+        self.assertFalse(d["habilitado"])
+        self.assertIn("nota", d)
+
+    def test_bookmakers_override_por_env(self):
+        with mock.patch.dict(os.environ, {"ODDS_API_IO_BOOKMAKERS": "Bet365,Pinnacle"}, clear=True):
+            import importlib
+            importlib.reload(cm)
+            self.assertEqual(cm._bookmakers_consulta(), "Bet365,Pinnacle")
+        importlib.reload(cm)  # restaurar estado del módulo
 
 
 if __name__ == "__main__":

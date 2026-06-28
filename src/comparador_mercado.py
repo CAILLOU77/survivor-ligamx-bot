@@ -21,6 +21,7 @@ from __future__ import annotations
 import os
 import unicodedata
 from collections import defaultdict
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Sequence
 
 try:
@@ -35,7 +36,22 @@ BASE_URL = os.getenv("ODDS_API_IO_URL", "https://api.odds-api.io/v3")
 LIGA_SLUG = os.getenv("ODDS_API_IO_LIGA", "mexico-liga-mx-apertura")
 SPORT_SLUG = os.getenv("ODDS_API_IO_SPORT", "football")
 # Tope de partidos a consultar por ciclo (cuida el límite del tier gratis).
-MAX_EVENTOS = int(os.getenv("ODDS_API_IO_MAX_EVENTOS", "12"))
+MAX_EVENTOS = int(os.getenv("ODDS_API_IO_MAX_EVENTOS", "20"))
+# Ventana de fechas hacia adelante (días). Liga MX puede arrancar en >14 días
+# (el default de la API es 14), así que la ampliamos para captar la próxima
+# jornada en pretemporada.
+VENTANA_DIAS = int(os.getenv("ODDS_API_IO_VENTANA_DIAS", "120"))
+# Casas a consultar (la API exige el parámetro `bookmakers` en /odds, máx 30).
+# Lista de casas globales que suelen cubrir Liga MX; se intersecta con las
+# casas ACTIVAS reales de la API. Override con ODDS_API_IO_BOOKMAKERS.
+BOOKMAKERS_PRIORIDAD = [
+    "Bet365", "Pinnacle", "1xBet", "Unibet", "William Hill", "Betfair",
+    "Bwin", "888sport", "Betsson", "Marathonbet", "Betway", "Dafabet",
+    "Betano", "Codere", "Caliente", "Betcris", "Betsafe", "Sportingbet",
+    "10Bet", "22Bet", "Megapari", "1win", "Betobet", "Parimatch",
+    "Pinnacle Sports", "Stake", "BetWinner", "Melbet", "888", "Vbet",
+]
+_BOOKMAKERS_OVERRIDE = os.getenv("ODDS_API_IO_BOOKMAKERS", "").strip()
 
 # Diferencia mínima (proporción) para marcar "valor" del modelo vs mercado.
 UMBRAL_VALOR = 0.05
@@ -232,6 +248,37 @@ def _clave_partido(local: str, visitante: str) -> str:
     return f"{_norm(local)}|{_norm(visitante)}"
 
 
+_PALABRAS_COMUNES = {"club", "cf", "fc", "deportivo", "real", "atletico", "atletico", "de", "the"}
+
+
+def _token_significativo(nombre: str) -> set:
+    return {t for t in _norm(nombre).split() if len(t) >= 4 and t not in _PALABRAS_COMUNES}
+
+
+def _equipos_coinciden(a: str, b: str) -> bool:
+    """Empareja nombres de equipo de forma flexible (ESPN vs odds-api.io)."""
+    na, nb = _norm(a), _norm(b)
+    if not na or not nb:
+        return False
+    if na == nb or na in nb or nb in na:
+        return True
+    return bool(_token_significativo(a) & _token_significativo(b))
+
+
+def _buscar_mercado(
+    home: str, away: str, momios: Dict[str, Dict[str, Any]]
+) -> Optional[Dict[str, Any]]:
+    """Encuentra el mercado de un partido por clave exacta o por nombres flexibles."""
+    clave = _clave_partido(home, away)
+    if clave in momios:
+        return momios[clave]
+    for k, mercado in momios.items():
+        h_key, _, a_key = k.partition("|")
+        if _equipos_coinciden(home, h_key) and _equipos_coinciden(away, a_key):
+            return mercado
+    return None
+
+
 def anotar_pronosticos(
     pronosticos: Sequence[Dict[str, Any]],
     momios_por_partido: Optional[Dict[str, Dict[str, Any]]] = None,
@@ -240,8 +287,8 @@ def anotar_pronosticos(
     momios_por_partido = momios_por_partido or {}
     salida = []
     for p in pronosticos:
-        clave = _clave_partido(p.get("local", ""), p.get("visitante", ""))
-        salida.append(anotar_pronostico(p, momios_por_partido.get(clave)))
+        mercado = _buscar_mercado(p.get("local", ""), p.get("visitante", ""), momios_por_partido)
+        salida.append(anotar_pronostico(p, mercado))
     return salida
 
 
@@ -337,8 +384,80 @@ def _get(url: str, params: Dict[str, Any]) -> Any:
         raise RuntimeError("La dependencia 'requests' no está instalada.")
     resp = requests.get(url, params=params, timeout=20)
     if resp.status_code != 200:
-        raise RuntimeError(f"odds-api.io respondió HTTP {resp.status_code}.")
+        raise RuntimeError(f"odds-api.io respondió HTTP {resp.status_code} en {url}.")
     return resp.json()
+
+
+_BOOKMAKERS_CACHE: Optional[str] = None
+
+
+def _bookmakers_consulta() -> str:
+    """
+    Cadena de casas (máx 30) para el parámetro `bookmakers` de /odds.
+    Si hay override por env, se usa tal cual. Si no, se intersecta la lista de
+    prioridad con las casas ACTIVAS reales (endpoint /bookmakers, sin auth) y se
+    rellena hasta 30 con otras activas. Cacheado.
+    """
+    global _BOOKMAKERS_CACHE
+    if _BOOKMAKERS_OVERRIDE:
+        return _BOOKMAKERS_OVERRIDE
+    if _BOOKMAKERS_CACHE is not None:
+        return _BOOKMAKERS_CACHE
+    try:
+        data = _get(f"{BASE_URL}/bookmakers", {})
+        activas = [b.get("name") for b in data
+                   if isinstance(b, dict) and b.get("active") and b.get("name")]
+    except RuntimeError:
+        activas = []
+    if not activas:
+        _BOOKMAKERS_CACHE = ",".join(BOOKMAKERS_PRIORIDAD[:30])
+        return _BOOKMAKERS_CACHE
+    activas_norm = {_norm(n): n for n in activas}
+    elegidas: List[str] = []
+    for pref in BOOKMAKERS_PRIORIDAD:
+        real = activas_norm.get(_norm(pref))
+        if real and real not in elegidas:
+            elegidas.append(real)
+    for n in activas:  # rellenar hasta 30 con otras activas
+        if len(elegidas) >= 30:
+            break
+        if n not in elegidas:
+            elegidas.append(n)
+    _BOOKMAKERS_CACHE = ",".join(elegidas[:30])
+    return _BOOKMAKERS_CACHE
+
+
+def _listar_eventos(key: str) -> List[Dict[str, Any]]:
+    """Eventos próximos de Liga MX (ventana ampliada, solo no jugados)."""
+    hasta = (datetime.now(timezone.utc) + timedelta(days=VENTANA_DIAS)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    eventos = _get(f"{BASE_URL}/events", {
+        "apiKey": key, "sport": SPORT_SLUG, "league": LIGA_SLUG,
+        "status": "pending", "to": hasta,
+    })
+    if not isinstance(eventos, list):
+        return []
+    out = []
+    for ev in eventos:
+        if not isinstance(ev, dict):
+            continue
+        slug = _norm((ev.get("league") or {}).get("slug", ""))
+        if LIGA_SLUG and slug and _norm(LIGA_SLUG) not in slug:
+            continue
+        if ev.get("id") is not None and ev.get("home") and ev.get("away"):
+            out.append(ev)
+    return out
+
+
+def _odds_multi(key: str, ids: List[Any], bookmakers: str) -> List[Dict[str, Any]]:
+    """Odds para hasta 10 eventos en una sola llamada (/odds/multi)."""
+    if not ids:
+        return []
+    data = _get(f"{BASE_URL}/odds/multi", {
+        "apiKey": key,
+        "eventIds": ",".join(str(i) for i in ids[:10]),
+        "bookmakers": bookmakers,
+    })
+    return data if isinstance(data, list) else []
 
 
 def obtener_momios_liga_mx() -> Dict[str, Dict[str, Any]]:
@@ -352,36 +471,71 @@ def obtener_momios_liga_mx() -> Dict[str, Dict[str, Any]]:
     key = os.getenv(ENV_KEY, "").strip()
     out: Dict[str, Dict[str, Any]] = {}
     try:
-        eventos = _get(f"{BASE_URL}/events",
-                       {"apiKey": key, "sport": SPORT_SLUG, "league": LIGA_SLUG})
-        if not isinstance(eventos, list):
+        eventos = _listar_eventos(key)[:MAX_EVENTOS]
+        if not eventos:
             return {}
-        # Defensa extra: quedarnos con los de la liga objetivo y no jugados.
-        candidatos = []
-        for ev in eventos:
-            if not isinstance(ev, dict):
-                continue
-            slug = _norm((ev.get("league") or {}).get("slug", ""))
-            if LIGA_SLUG and _norm(LIGA_SLUG) not in slug and slug:
-                continue
-            if str(ev.get("status", "")).lower() in ("finished", "ended", "closed"):
-                continue
-            candidatos.append(ev)
-        for ev in candidatos[:MAX_EVENTOS]:
-            ev_id = ev.get("id")
-            home, away = ev.get("home", ""), ev.get("away", "")
-            if ev_id is None or not home or not away:
-                continue
+        bookmakers = _bookmakers_consulta()
+        for i in range(0, len(eventos), 10):
+            lote = eventos[i:i + 10]
+            ids = [e["id"] for e in lote]
             try:
-                odds = _get(f"{BASE_URL}/odds", {"apiKey": key, "eventId": ev_id})
+                respuestas = _odds_multi(key, ids, bookmakers)
             except RuntimeError:
                 continue
-            mercado = parsear_mercado(odds)
-            if mercado:
-                out[_clave_partido(home, away)] = mercado
+            for odds in respuestas:
+                home, away = odds.get("home", ""), odds.get("away", "")
+                if not home or not away:
+                    continue
+                mercado = parsear_mercado(odds)
+                if mercado:
+                    out[_clave_partido(home, away)] = mercado
     except RuntimeError:
         return {}
     return out
+
+
+def diagnostico_mercado() -> Dict[str, Any]:
+    """
+    Diagnóstico en vivo de la conexión a odds-api.io (para depurar). Devuelve
+    conteos y muestras SIN exponer la key. No lanza: captura errores.
+    """
+    info: Dict[str, Any] = {
+        "habilitado": mercado_habilitado(),
+        "liga_slug": LIGA_SLUG, "sport": SPORT_SLUG, "ventana_dias": VENTANA_DIAS,
+    }
+    if not info["habilitado"]:
+        info["nota"] = "Sin ODDS_API_IO_KEY: capa apagada (no-op)."
+        return info
+    key = os.getenv(ENV_KEY, "").strip()
+    try:
+        eventos = _listar_eventos(key)
+        info["n_eventos"] = len(eventos)
+        info["eventos_muestra"] = [
+            {"id": e.get("id"), "home": e.get("home"), "away": e.get("away"),
+             "date": e.get("date"), "liga": (e.get("league") or {}).get("slug")}
+            for e in eventos[:5]
+        ]
+        info["bookmakers_usadas"] = _bookmakers_consulta()[:300]
+        if eventos:
+            ids = [e["id"] for e in eventos[:3]]
+            respuestas = _odds_multi(key, ids, _bookmakers_consulta())
+            info["n_odds_respuestas"] = len(respuestas)
+            if respuestas:
+                primera = respuestas[0]
+                casas = list((primera.get("bookmakers") or {}).keys())
+                mercados = []
+                if casas:
+                    mercados = [m.get("name") for m in (primera.get("bookmakers") or {})[casas[0]]
+                                if isinstance(m, dict)]
+                info["odds_muestra"] = {
+                    "evento": f"{primera.get('home')} vs {primera.get('away')}",
+                    "casas": casas[:10],
+                    "mercados_primera_casa": mercados,
+                    "parseado": parsear_mercado(primera),
+                }
+    except RuntimeError as exc:
+        info["error"] = str(exc)
+    return info
 
 
 def comparar_pronosticos(pronosticos: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
