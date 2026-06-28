@@ -1,9 +1,14 @@
-from fastapi import APIRouter, Depends
-from src.backtest_engine import run_backtest
+from fastapi import APIRouter
+
+try:
+    from src.backtest_engine import run_backtest
+except ImportError:  # pragma: no cover
+    from backtest_engine import run_backtest  # type: ignore
 
 router = APIRouter()
 
-@router.post("/cron/backtest")
+
+@router.post("/cron/backtest", summary="Validación diaria del modelo (real, sin inventar)")
 def cron_backtest():
-    result = run_backtest()
-    return {"status": "success", "settled": result}
+    """Corre la validación real del modelo vs resultados de ESPN (cron diario)."""
+    return {"status": "success", "validacion": run_backtest()}
