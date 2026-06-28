@@ -271,6 +271,35 @@ def analyze_advanced(request: Request, api_key: str = Depends(verify_api_key)):
             "error": str(e)
         }
 
+
+@app.get("/debug/jornadas", summary="Debug: ver contenido de jornadas.json", tags=["Debug"])
+@limiter.limit("5/minute")
+def debug_jornadas(request: Request):
+    """Muestra el contenido de jornadas.json para debugging"""
+    import json
+    try:
+        jornadas_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "jornadas.json")
+        with open(jornadas_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        # Contar partidos
+        if isinstance(data, list):
+            count = len(data)
+            sample = data[:2] if data else []
+        else:
+            partidos = data.get('partidos', [])
+            count = len(partidos)
+            sample = partidos[:2] if partidos else []
+        
+        return {
+            "status": "success",
+            "total_partidos": count,
+            "sample": sample,
+            "structure": "list" if isinstance(data, list) else "dict"
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("src.api:app", host="0.0.0.0", port=8000, reload=True)
