@@ -44,3 +44,11 @@ data/playwright_assisted_profile/
 reports/caliente_debug_text.txt
 reports/momios_liga_mx.json
 reports/assisted_odds_import_ultimo.txt
+
+
+# Artefactos de datos locales (NO se commitean: salen de scrapers/exports viejos)
+datos_ligamx/
+datos_liga_mx/
+data_kiro/
+/*.csv
+/*.zip
