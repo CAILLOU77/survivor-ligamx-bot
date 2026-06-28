@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 from src.poisson_model import calibrate_and_predict
 from src.routers.analizar_1x2 import router as analizar_router
+from src.telegram_alerts import send_high_ev_alerts
 from src.database import init_db, save_pick, get_metrics
 
 API_KEY = os.getenv("API_KEY", "survivor-ligamx-premium-2026")
@@ -179,6 +180,12 @@ def dashboard():
     html_content = html_content.replace('STATS_WINS', str(stats['wins']))
     html_content = html_content.replace('STATS_TOTAL_PICKS - STATS_WINS', str(stats['total_picks'] - stats['wins']))
     return HTMLResponse(content=html_content)
+
+
+@app.post("/alerts/high-ev", summary="Enviar alertas de picks con EV > 5%", tags=["Alerts"])
+@limiter.limit("5/minute")
+def alerts_high_ev(request: Request):
+    return send_high_ev_alerts()
 
 if __name__ == "__main__":
     import uvicorn
