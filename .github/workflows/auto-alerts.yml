@@ -12,6 +12,6 @@ jobs:
     steps:
     - name: Trigger Telegram Alerts
       run: |
-        curl -X POST https://survivor-ligamx-bot.onrender.com/alerts/high-ev \
-          -H "X-API-Key: survivor-ligamx-premium-2026" \
+        curl -fsS -X POST https://survivor-ligamx-bot.onrender.com/alerts/pronosticos \
+          -H "X-API-Key: ${{ secrets.API_KEY }}" \
           -H "Content-Type: application/json"
