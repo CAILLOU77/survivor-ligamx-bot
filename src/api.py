@@ -11,7 +11,6 @@ from datetime import datetime, timedelta
 from typing import Optional
 from src.poisson_model import calibrate_and_predict
 from src.routers.analizar_1x2 import router as analizar_router
-from src.market_analyzer import analyze_additional_markets
 from src.database import init_db, save_pick, get_metrics, get_history, settle_pick
 
 API_KEY = os.getenv("API_KEY", "survivor-ligamx-premium-2026")
