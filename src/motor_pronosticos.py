@@ -130,35 +130,70 @@ def mejores_picks_survivor(
     n: int = 3,
 ) -> List[Dict[str, Any]]:
     """
-    Devuelve los `n` mejores candidatos de Survivor (mayor prob. de NO perder),
-    excluyendo los ya usados, ordenados de mejor a peor.
+    Devuelve los `n` mejores candidatos de Survivor, ordenados de mejor a peor,
+    excluyendo los ya usados.
 
-    `motivacion` ({equipo_norm: {motivacion_nivel, zona}}) se usa como CONTEXTO y
-    DESEMPATE: ante probabilidades parejas, se prefiere enfrentar a un rival con
-    MENOR motivación (p. ej. ya eliminado). El criterio principal es la
-    probabilidad del modelo (fuente de verdad).
+    Orden (alineado con las reglas PlayDoit):
+      1) mayor prob. de NO perder (sobrevivir es prioridad #1: derrota = eliminado),
+      2) mayor prob. de GANAR (desempate: ganar da puntos y es lo que se busca),
+      3) rival con MENOR motivación (contexto/desempate fino).
+
+    Cada candidato incluye `prob_victoria_pct`, `prob_empate_pct` (riesgo de
+    empate/push) y `nivel` (ALTA / MEDIA / RIESGOSA). `motivacion` es CONTEXTO.
+    El criterio principal es la probabilidad del modelo (fuente de verdad).
     """
     usados = {_norm(e) for e in (equipos_usados or [])}
     mot = motivacion or {}
     candidatos: List[Dict[str, Any]] = []
     for p in pronosticos:
-        for equipo, rival, cond, prob in (
-            (p["local"], p["visitante"], "Local", p["no_perder_local_pct"]),
-            (p["visitante"], p["local"], "Visitante", p["no_perder_visitante_pct"]),
+        empate = p.get("prob_empate_pct")
+        for equipo, rival, cond, prob, win in (
+            (p["local"], p["visitante"], "Local",
+             p["no_perder_local_pct"], p.get("prob_local_pct")),
+            (p["visitante"], p["local"], "Visitante",
+             p["no_perder_visitante_pct"], p.get("prob_visitante_pct")),
         ):
             if _norm(equipo) in usados:
                 continue
             candidatos.append({
                 "equipo": equipo, "rival": rival, "condicion": cond,
                 "no_perder_pct": prob,
+                "prob_victoria_pct": win,
+                "prob_empate_pct": empate,
+                "nivel": _nivel_pick(prob, win),
                 "motivacion_propia": (mot.get(_norm(equipo)) or {}).get("motivacion_nivel"),
                 "rival_motivacion": (mot.get(_norm(rival)) or {}).get("motivacion_nivel"),
             })
     candidatos.sort(
-        key=lambda c: (c["no_perder_pct"], _rank_motivacion(c["rival_motivacion"])),
+        key=lambda c: (
+            c["no_perder_pct"],
+            c.get("prob_victoria_pct") or 0.0,
+            _rank_motivacion(c["rival_motivacion"]),
+        ),
         reverse=True,
     )
     return candidatos[: max(0, n)]
+
+
+# Umbrales del nivel de confianza del pick (en %), coherentes con el planificador.
+_NIVEL_NO_PERDER_ALTA = 75.0
+_NIVEL_GANAR_ALTA = 55.0
+_NIVEL_NO_PERDER_MEDIA = 65.0
+
+
+def _nivel_pick(no_perder_pct: float, win_pct: Optional[float]) -> str:
+    """Clasifica la confianza del pick. Sin info de victoria, usa solo no-perder."""
+    if win_pct is None:
+        if no_perder_pct >= _NIVEL_NO_PERDER_ALTA:
+            return "ALTA"
+        if no_perder_pct >= _NIVEL_NO_PERDER_MEDIA:
+            return "MEDIA"
+        return "RIESGOSA"
+    if no_perder_pct >= _NIVEL_NO_PERDER_ALTA and win_pct >= _NIVEL_GANAR_ALTA:
+        return "ALTA"
+    if no_perder_pct >= _NIVEL_NO_PERDER_MEDIA:
+        return "MEDIA"
+    return "RIESGOSA"
 
 
 def mejor_pick_survivor(

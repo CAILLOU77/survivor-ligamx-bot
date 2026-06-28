@@ -78,6 +78,17 @@ arranque, ~17-jul). Esquema:
 > acentos): `América`, `Atlético de San Luis`, `Mazatlán FC`, `Querétaro`,
 > `Tigres UANL`, `Pumas UNAM`, `Guadalajara`, `León`, `FC Juárez`, etc.
 
+Para generar `data/calendario.json` automáticamente desde ESPN (cuando ya
+publicaron el calendario del torneo):
+
+```bash
+python3 scripts/import_calendario.py            # baja de ESPN y escribe
+python3 scripts/import_calendario.py --dry-run  # muestra sin escribir
+```
+
+Agrupa los fixtures programados por fin de semana (jornada) y usa los nombres de
+ESPN, así que ya quedan listos para el planificador.
+
 ## Telegram
 
 Telegram es **opcional e informativo**: el bot **nunca** envía picks automáticos.

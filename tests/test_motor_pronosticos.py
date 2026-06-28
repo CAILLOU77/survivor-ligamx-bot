@@ -115,6 +115,36 @@ class TestSurvivor(unittest.TestCase):
         # mejor_pick_survivor es el #1 de la lista
         self.assertEqual(mp.mejor_pick_survivor(pronos)["equipo"], top[0]["equipo"])
 
+    def test_campos_de_riesgo_presentes(self):
+        # Con pronósticos completos, cada candidato trae victoria/empate/nivel.
+        pronos = [{
+            "local": "América", "visitante": "Toluca",
+            "prob_local_pct": 70.0, "prob_empate_pct": 20.0, "prob_visitante_pct": 10.0,
+            "no_perder_local_pct": 90.0, "no_perder_visitante_pct": 30.0,
+        }]
+        pick = mp.mejor_pick_survivor(pronos)
+        self.assertEqual(pick["equipo"], "América")
+        self.assertEqual(pick["prob_victoria_pct"], 70.0)
+        self.assertEqual(pick["prob_empate_pct"], 20.0)
+        self.assertEqual(pick["nivel"], "ALTA")  # no_perder 90 y victoria 70
+
+    def test_victoria_desempata_mismo_no_perder(self):
+        # Mismo no_perder; gana el de MAYOR prob. de victoria (más puntos).
+        pronos = [
+            {"local": "A", "visitante": "B", "prob_local_pct": 50.0, "prob_empate_pct": 35.0,
+             "prob_visitante_pct": 15.0, "no_perder_local_pct": 85.0, "no_perder_visitante_pct": 50.0},
+            {"local": "C", "visitante": "D", "prob_local_pct": 70.0, "prob_empate_pct": 15.0,
+             "prob_visitante_pct": 15.0, "no_perder_local_pct": 85.0, "no_perder_visitante_pct": 30.0},
+        ]
+        pick = mp.mejor_pick_survivor(pronos)
+        self.assertEqual(pick["equipo"], "C")  # 70% victoria > 50%, mismo no-perder 85
+
+    def test_nivel_riesgosa(self):
+        self.assertEqual(mp._nivel_pick(55.0, 40.0), "RIESGOSA")
+        self.assertEqual(mp._nivel_pick(68.0, 40.0), "MEDIA")
+        self.assertEqual(mp._nivel_pick(80.0, 60.0), "ALTA")
+        self.assertEqual(mp._nivel_pick(80.0, None), "ALTA")  # sin info de victoria
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

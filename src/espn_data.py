@@ -110,6 +110,21 @@ def _rangos_meses_atras(meses: int, hoy: Optional[datetime] = None) -> List[str]
     return rangos
 
 
+def _rangos_dias_adelante(dias: int, hoy: Optional[datetime] = None) -> List[str]:
+    """Genera rangos de ~30 días 'YYYYMMDD-YYYYMMDD' hacia ADELANTE (próximos `dias`)."""
+    hoy = hoy or datetime.now(timezone.utc)
+    rangos: List[str] = []
+    inicio = hoy
+    restantes = max(1, dias)
+    while restantes > 0:
+        bloque = min(30, restantes)
+        fin = inicio + timedelta(days=bloque)
+        rangos.append(f"{inicio.strftime('%Y%m%d')}-{fin.strftime('%Y%m%d')}")
+        inicio = fin + timedelta(days=1)
+        restantes -= bloque + 1
+    return rangos
+
+
 def obtener_resultados(meses: int = 6) -> List[Dict[str, Any]]:
     """
     Baja partidos JUGADOS (con marcador) de los últimos `meses`, deduplicados.
@@ -143,6 +158,34 @@ def obtener_fixtures() -> List[Dict[str, Any]]:
     """Devuelve los partidos próximos (no jugados) del scoreboard actual."""
     data = _fetch_scoreboard()
     return [p for p in parsear_eventos(data) if not p.get("jugado")]
+
+
+def obtener_fixtures_futuros(dias: int = 160) -> List[Dict[str, Any]]:
+    """
+    Baja partidos PROGRAMADOS (no jugados) de los próximos `dias`, deduplicados.
+    Útil para construir el calendario completo de la temporada cuando ESPN ya lo
+    publicó. Devuelve dicts con fecha/home_team/away_team. Sin red => [].
+    """
+    vistos = set()
+    fixtures: List[Dict[str, Any]] = []
+    for rango in _rangos_dias_adelante(dias):
+        try:
+            data = _fetch_scoreboard(rango)
+        except RuntimeError:
+            continue
+        for p in parsear_eventos(data):
+            if p.get("jugado"):
+                continue
+            clave = (p["home_team"], p["away_team"], p["fecha"])
+            if clave in vistos:
+                continue
+            vistos.add(clave)
+            fixtures.append({
+                "home_team": p["home_team"],
+                "away_team": p["away_team"],
+                "fecha": p["fecha"],
+            })
+    return fixtures
 
 
 def guardar_resultados(resultados: List[Dict[str, Any]], path: Path = RESULTADOS_PATH) -> None:
