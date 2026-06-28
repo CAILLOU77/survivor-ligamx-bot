@@ -1,4 +1,7 @@
-from fastapi import FastAPI, HTTPException, Header, Depends, Query
+from fastapi import FastAPI, Request
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded, HTTPException, Header, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 import os
@@ -15,8 +18,11 @@ def verify_api_key(x_api_key: Optional[str] = Header(None)):
         raise HTTPException(status_code=403, detail="Clave API inválida o faltante")
     return x_api_key
 
+limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(title="Survivor LigaMX API Premium", version="2.1.0", docs_url="/docs")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET", "POST"], allow_headers=["*"])
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.include_router(analizar_router)
 from src.routers.cron_router import router as cron_router
 app.include_router(cron_router)
@@ -55,16 +61,19 @@ def refresh_cache():
 def health():
     return {"status": "ok", "version": "2.1.0-premium", "timestamp": datetime.utcnow().isoformat()}
 
+@limiter.limit("10/minute")
 @app.get("/picks/latest", summary="Picks activos (EV>4%)", tags=["Picks"])
 def get_picks(api_key: str = Depends(verify_api_key)):
     if not PICKS_CACHE["last_update"] or datetime.fromisoformat(PICKS_CACHE["last_update"].replace("Z","")) < datetime.utcnow() - timedelta(minutes=15):
         refresh_cache()
     return PICKS_CACHE
 
+@limiter.limit("20/minute")
 @app.get("/stats", summary="Métricas de rendimiento", tags=["Analytics"])
 def premium_stats(api_key: str = Depends(verify_api_key)):
     return get_metrics()
 
+@limiter.limit("20/minute")
 @app.get("/history", summary="Historial paginado", tags=["Analytics"])
 def get_history(limit: int = 20, offset: int = 0, api_key: str = Depends(verify_api_key)):
     try:

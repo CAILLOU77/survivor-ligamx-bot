@@ -1,9 +1,9 @@
 fastapi
-uvicorn[standard]
 pandas
+psycopg2-binary
 pyarrow
 python-dotenv
 requests
 scipy
-psycopg2-binary
 slowapi
+uvicorn[standard]
