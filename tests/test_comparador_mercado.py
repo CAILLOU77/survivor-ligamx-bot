@@ -179,6 +179,30 @@ class TestGating(unittest.TestCase):
         self.assertFalse(d["habilitado"])
         self.assertIn("nota", d)
 
+    def test_auto_seleccion_elige_casas_con_mas_odds(self):
+        activas = [{"name": n, "active": True} for n in
+                   ("Bet365", "Betano", "Caliente", "Codere")]
+
+        def fake(url, p):
+            if url.endswith("/bookmakers"):
+                return activas
+            if url.endswith("/events"):
+                b = p.get("bookmaker")
+                if b == "Betano":
+                    return [{"id": 1}] * 9
+                if b == "Caliente":
+                    return [{"id": 2}] * 5
+                return []
+            return []
+
+        cm._ACTIVAS_CACHE = None
+        cm._CASAS_AUTO_CACHE = {"casas": None, "ts": None}
+        with mock.patch.object(cm, "_get", side_effect=fake):
+            casas = cm.casas_con_odds_liga("k")
+        self.assertEqual(casas, ["Betano", "Caliente"])  # ordenadas por nº de partidos
+        cm._ACTIVAS_CACHE = None
+        cm._CASAS_AUTO_CACHE = {"casas": None, "ts": None}
+
     def test_bookmakers_override_por_env(self):
         with mock.patch.dict(os.environ, {"ODDS_API_IO_BOOKMAKERS": "Bet365,Pinnacle"}, clear=True):
             import importlib
