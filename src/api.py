@@ -64,19 +64,19 @@ def health():
 
 @limiter.limit("10/minute")
 @app.get("/picks/latest", summary="Picks activos (EV>4%)", tags=["Picks"])
-def get_picks(api_key: str = Depends(verify_api_key)):
+def get_picks(request: Request, api_key: str = Depends(verify_api_key)):
     if not PICKS_CACHE["last_update"] or datetime.fromisoformat(PICKS_CACHE["last_update"].replace("Z","")) < datetime.utcnow() - timedelta(minutes=15):
         refresh_cache()
     return PICKS_CACHE
 
 @limiter.limit("20/minute")
 @app.get("/stats", summary="Métricas de rendimiento", tags=["Analytics"])
-def premium_stats(api_key: str = Depends(verify_api_key)):
+def premium_stats(request: Request, api_key: str = Depends(verify_api_key)):
     return get_metrics()
 
 @limiter.limit("20/minute")
 @app.get("/history", summary="Historial paginado", tags=["Analytics"])
-def get_history(limit: int = 20, offset: int = 0, api_key: str = Depends(verify_api_key)):
+def get_history(request: Request, limit: int = 20, offset: int = 0, api_key: str = Depends(verify_api_key)):
     try:
         import sqlite3
         db_path = os.getenv("DATABASE_URL", "data/premium_history.db")
