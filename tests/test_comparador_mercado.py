@@ -15,82 +15,128 @@ if SRC not in sys.path:
 import comparador_mercado as cm  # noqa: E402
 
 
+def _odds_response():
+    """Respuesta /odds con el formato real de odds-api.io (2 casas)."""
+    return {
+        "id": 1, "home": "América", "away": "Toluca", "status": "pending",
+        "bookmakers": {
+            "Bet365": [
+                {"name": "ML", "odds": [{"home": "2.00", "draw": "3.40", "away": "4.00"}]},
+                {"name": "Over/Under", "odds": [{"max": 2.5, "over": "1.80", "under": "2.05"}]},
+                {"name": "Asian Handicap", "odds": [{"hdp": -0.5, "home": "1.90", "away": "1.95"}]},
+            ],
+            "Pinnacle": [
+                {"name": "ML", "odds": [{"home": "2.10", "draw": "3.50", "away": "3.80"}]},
+                {"name": "Over/Under", "odds": [{"max": 2.5, "over": "1.85", "under": "2.00"}]},
+            ],
+        },
+    }
+
+
 class TestQuitarVig(unittest.TestCase):
-    def test_suma_uno_y_vig_positivo(self):
+    def test_1x2_suma_uno_y_vig(self):
         r = cm.quitar_vig(2.0, 3.5, 4.0)
         self.assertAlmostEqual(r["prob_local"] + r["prob_empate"] + r["prob_visita"], 1.0, places=9)
         self.assertGreater(r["vig"], 0.0)
 
-    def test_favorito_tiene_mayor_prob(self):
-        r = cm.quitar_vig(1.5, 4.0, 6.0)  # local muy favorito
-        self.assertGreater(r["prob_local"], r["prob_visita"])
+    def test_2vias_suma_uno(self):
+        r = cm.quitar_vig_2(1.90, 1.90)
+        self.assertAlmostEqual(r["prob_a"] + r["prob_b"], 1.0, places=9)
+        self.assertAlmostEqual(r["prob_a"], 0.5, places=6)
 
     def test_momio_invalido_lanza(self):
         with self.assertRaises(ValueError):
             cm.quitar_vig(1.0, 3.0, 4.0)
+        with self.assertRaises(ValueError):
+            cm.quitar_vig_2(1.0, 2.0)
 
 
-class TestComparar(unittest.TestCase):
-    def test_detecta_valor_cuando_modelo_supera_mercado(self):
-        # Modelo da 70% local; mercado (2.0) implica ~50% -> valor en local.
-        r = cm.comparar([0.70, 0.20, 0.10], 2.0, 3.5, 4.0)
+class TestComparar1x2(unittest.TestCase):
+    def test_detecta_valor_y_favorito(self):
+        r = cm.comparar_1x2([70.0, 20.0, 10.0], 2.0, 3.5, 4.0)
+        self.assertEqual(r["favorito_mercado"], "local")
         self.assertTrue(r["hay_valor"])
         self.assertEqual(r["valor_en"], "local")
-        self.assertEqual(r["decision"], cm.DISCLAIMER)
+        self.assertFalse(r["empate_accionable"])
 
-    def test_sin_valor_cuando_modelo_igual_mercado(self):
-        # Modelo ~ igual al mercado -> sin valor relevante.
+    def test_sin_valor_si_igual_al_mercado(self):
         mkt = cm.quitar_vig(2.0, 3.5, 4.0)
         prob = [mkt["prob_local"], mkt["prob_empate"], mkt["prob_visita"]]
-        r = cm.comparar(prob, 2.0, 3.5, 4.0)
+        r = cm.comparar_1x2(prob, 2.0, 3.5, 4.0)
         self.assertFalse(r["hay_valor"])
-        self.assertIsNone(r["valor_en"])
 
-    def test_acepta_porcentajes(self):
-        r = cm.comparar([70.0, 20.0, 10.0], 2.0, 3.5, 4.0)
-        self.assertAlmostEqual(sum(r["prob_modelo_pct"]), 100.0, places=1)
 
-    def test_largo_invalido_lanza(self):
-        with self.assertRaises(ValueError):
-            cm.comparar([0.5, 0.5], 2.0, 3.5, 4.0)
+class TestCompararTotales(unittest.TestCase):
+    def test_mercado_explosivo_y_valor_over(self):
+        # Over barato (1.6) => mercado explosivo; modelo aún más alto => valor Over.
+        r = cm.comparar_totales(75.0, 1.6, 2.4)
+        self.assertEqual(r["mercado_ve"], "explosivo")
+        self.assertEqual(r["valor_en"], "Over")
+
+    def test_mercado_cauteloso(self):
+        # Under barato => cauteloso.
+        r = cm.comparar_totales(45.0, 2.4, 1.6)
+        self.assertEqual(r["mercado_ve"], "cauteloso")
+
+
+class TestHandicap(unittest.TestCase):
+    def test_local_muy_favorito(self):
+        r = cm.resumen_handicap(-1.5, 1.9, 1.9)
+        self.assertEqual(r["favorito"], "local")
+        self.assertEqual(r["fuerza"], "muy favorito")
+
+    def test_visitante_ligero(self):
+        r = cm.resumen_handicap(0.25, 1.9, 1.9)
+        self.assertEqual(r["favorito"], "visitante")
+
+
+class TestParsearMercado(unittest.TestCase):
+    def test_extrae_ml_totales_handicap_promediando(self):
+        m = cm.parsear_mercado(_odds_response())
+        self.assertIn("ml", m)
+        self.assertAlmostEqual(m["ml"]["local"], 2.05, places=2)   # (2.00+2.10)/2
+        self.assertIn("totals", m)
+        self.assertEqual(m["totals"]["linea"], 2.5)
+        self.assertAlmostEqual(m["totals"]["over"], 1.825, places=3)  # (1.80+1.85)/2
+        self.assertIn("handicap", m)
+        self.assertEqual(m["handicap"]["linea"], -0.5)
+
+    def test_prefiere_linea_2_5(self):
+        resp = {"bookmakers": {"X": [
+            {"name": "Over/Under", "odds": [{"max": 3.0, "over": "2.5", "under": "1.5"}]},
+            {"name": "Over/Under", "odds": [{"max": 2.5, "over": "1.9", "under": "1.9"}]},
+        ]}}
+        m = cm.parsear_mercado(resp)
+        self.assertEqual(m["totals"]["linea"], 2.5)
+
+    def test_vacio_o_invalido(self):
+        self.assertEqual(cm.parsear_mercado({}), {})
+        self.assertEqual(cm.parsear_mercado({"bookmakers": {}}), {})
+        self.assertEqual(cm.parsear_mercado(None), {})
 
 
 class TestAnotar(unittest.TestCase):
     def _pron(self):
         return {"local": "América", "visitante": "Toluca",
-                "prob_local_pct": 70.0, "prob_empate_pct": 20.0, "prob_visitante_pct": 10.0}
+                "prob_local_pct": 70.0, "prob_empate_pct": 20.0, "prob_visitante_pct": 10.0,
+                "prob_over_pct": 60.0, "prob_under_pct": 40.0}
 
-    def test_sin_momios_mercado_none(self):
-        r = cm.anotar_pronostico(self._pron(), None)
-        self.assertIsNone(r["mercado"])
+    def test_sin_mercado_none(self):
+        self.assertIsNone(cm.anotar_pronostico(self._pron(), None)["mercado"])
 
-    def test_con_momios_anota(self):
-        r = cm.anotar_pronostico(self._pron(), {"local": 2.0, "empate": 3.5, "visita": 4.0})
+    def test_con_mercado_anota_bloques(self):
+        mercado = cm.parsear_mercado(_odds_response())
+        r = cm.anotar_pronostico(self._pron(), mercado)
         self.assertIsNotNone(r["mercado"])
-        self.assertTrue(r["mercado"]["hay_valor"])
+        self.assertIn("1x2", r["mercado"])
+        self.assertIn("over_under", r["mercado"])
+        self.assertIn("handicap", r["mercado"])
 
-    def test_anotar_lista_empareja_por_clave(self):
-        pron = self._pron()
+    def test_lista_empareja_por_clave(self):
+        mercado = cm.parsear_mercado(_odds_response())
         clave = cm._clave_partido("América", "Toluca")
-        momios = {clave: {"local": 2.0, "empate": 3.5, "visita": 4.0}}
-        out = cm.anotar_pronosticos([pron], momios)
+        out = cm.anotar_pronosticos([self._pron()], {clave: mercado})
         self.assertIsNotNone(out[0]["mercado"])
-
-
-class TestParseOdds(unittest.TestCase):
-    def test_promedia_casas(self):
-        book = {
-            "bet365": {"home": "2.00", "draw": "3.40", "away": "4.00"},
-            "pinnacle": {"home": "2.10", "draw": "3.60", "away": "3.80"},
-        }
-        m = cm.parsear_odds_1x2(book)
-        self.assertAlmostEqual(m["local"], 2.05, places=2)
-        self.assertAlmostEqual(m["empate"], 3.50, places=2)
-
-    def test_vacio_o_invalido_es_none(self):
-        self.assertIsNone(cm.parsear_odds_1x2({}))
-        self.assertIsNone(cm.parsear_odds_1x2({"x": {"home": "abc"}}))
-        self.assertIsNone(cm.parsear_odds_1x2(None))
 
 
 class TestGating(unittest.TestCase):
