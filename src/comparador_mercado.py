@@ -448,8 +448,16 @@ def _listar_eventos(key: str) -> List[Dict[str, Any]]:
     return out
 
 
+def _odds_evento(key: str, ev_id: Any, bookmakers: str) -> Optional[Dict[str, Any]]:
+    """Odds de UN evento (/odds individual; disponible en el plan gratis)."""
+    data = _get(f"{BASE_URL}/odds", {
+        "apiKey": key, "eventId": ev_id, "bookmakers": bookmakers,
+    })
+    return data if isinstance(data, dict) else None
+
+
 def _odds_multi(key: str, ids: List[Any], bookmakers: str) -> List[Dict[str, Any]]:
-    """Odds para hasta 10 eventos en una sola llamada (/odds/multi)."""
+    """Odds para hasta 10 eventos en una llamada (/odds/multi; suele ser premium)."""
     if not ids:
         return []
     data = _get(f"{BASE_URL}/odds/multi", {
@@ -464,7 +472,8 @@ def obtener_momios_liga_mx() -> Dict[str, Dict[str, Any]]:
     """
     Baja momios de Liga MX desde odds-api.io. Devuelve
     {clave_partido: {ml, totals, handicap}}. Sin key o ante cualquier fallo
-    devuelve {} (no-op). Limita a MAX_EVENTOS por ciclo (tier gratis).
+    devuelve {} (no-op). Limita a MAX_EVENTOS por ciclo. Usa /odds individual
+    (plan gratis); /odds/multi es premium y da 403 en el free tier.
     """
     if not mercado_habilitado():
         return {}
@@ -475,20 +484,18 @@ def obtener_momios_liga_mx() -> Dict[str, Dict[str, Any]]:
         if not eventos:
             return {}
         bookmakers = _bookmakers_consulta()
-        for i in range(0, len(eventos), 10):
-            lote = eventos[i:i + 10]
-            ids = [e["id"] for e in lote]
+        for ev in eventos:
             try:
-                respuestas = _odds_multi(key, ids, bookmakers)
+                odds = _odds_evento(key, ev["id"], bookmakers)
             except RuntimeError:
                 continue
-            for odds in respuestas:
-                home, away = odds.get("home", ""), odds.get("away", "")
-                if not home or not away:
-                    continue
-                mercado = parsear_mercado(odds)
-                if mercado:
-                    out[_clave_partido(home, away)] = mercado
+            if not odds:
+                continue
+            home = odds.get("home") or ev.get("home", "")
+            away = odds.get("away") or ev.get("away", "")
+            mercado = parsear_mercado(odds)
+            if mercado and home and away:
+                out[_clave_partido(home, away)] = mercado
     except RuntimeError:
         return {}
     return out
@@ -517,11 +524,9 @@ def diagnostico_mercado() -> Dict[str, Any]:
         ]
         info["bookmakers_usadas"] = _bookmakers_consulta()[:300]
         if eventos:
-            ids = [e["id"] for e in eventos[:3]]
-            respuestas = _odds_multi(key, ids, _bookmakers_consulta())
-            info["n_odds_respuestas"] = len(respuestas)
-            if respuestas:
-                primera = respuestas[0]
+            primera = _odds_evento(key, eventos[0]["id"], _bookmakers_consulta())
+            info["n_odds_respuestas"] = 1 if primera else 0
+            if primera:
                 casas = list((primera.get("bookmakers") or {}).keys())
                 mercados = []
                 if casas:
