@@ -52,6 +52,8 @@ BOOKMAKERS_PRIORIDAD = [
     "Pinnacle Sports", "Stake", "BetWinner", "Melbet", "888", "Vbet",
 ]
 _BOOKMAKERS_OVERRIDE = os.getenv("ODDS_API_IO_BOOKMAKERS", "").strip()
+# Máximo de casas por request. El tier gratis de odds-api.io permite 2.
+MAX_CASAS = int(os.getenv("ODDS_API_IO_MAX_CASAS", "2"))
 
 # Diferencia mínima (proporción) para marcar "valor" del modelo vs mercado.
 UMBRAL_VALOR = 0.05
@@ -400,7 +402,7 @@ def _bookmakers_consulta() -> str:
     """
     global _BOOKMAKERS_CACHE
     if _BOOKMAKERS_OVERRIDE:
-        return _BOOKMAKERS_OVERRIDE
+        return ",".join([b.strip() for b in _BOOKMAKERS_OVERRIDE.split(",") if b.strip()][:MAX_CASAS])
     if _BOOKMAKERS_CACHE is not None:
         return _BOOKMAKERS_CACHE
     try:
@@ -410,7 +412,7 @@ def _bookmakers_consulta() -> str:
     except RuntimeError:
         activas = []
     if not activas:
-        _BOOKMAKERS_CACHE = ",".join(BOOKMAKERS_PRIORIDAD[:30])
+        _BOOKMAKERS_CACHE = ",".join(BOOKMAKERS_PRIORIDAD[:MAX_CASAS])
         return _BOOKMAKERS_CACHE
     activas_norm = {_norm(n): n for n in activas}
     elegidas: List[str] = []
@@ -418,12 +420,12 @@ def _bookmakers_consulta() -> str:
         real = activas_norm.get(_norm(pref))
         if real and real not in elegidas:
             elegidas.append(real)
-    for n in activas:  # rellenar hasta 30 con otras activas
-        if len(elegidas) >= 30:
+    for n in activas:  # rellenar con otras activas
+        if len(elegidas) >= MAX_CASAS:
             break
         if n not in elegidas:
             elegidas.append(n)
-    _BOOKMAKERS_CACHE = ",".join(elegidas[:30])
+    _BOOKMAKERS_CACHE = ",".join(elegidas[:MAX_CASAS])
     return _BOOKMAKERS_CACHE
 
 
@@ -559,6 +561,21 @@ def diagnostico_mercado() -> Dict[str, Any]:
                     }
                 except RuntimeError as exc:
                     info["odds_tras_seleccion"] = {"error": str(exc)[-80:]}
+            # (c) ¿Qué casas tienen odds de Liga MX AHORA? (/events?bookmaker=)
+            hasta = (datetime.now(timezone.utc) + timedelta(days=VENTANA_DIAS)).strftime("%Y-%m-%dT%H:%M:%SZ")
+            candidatos = ["Bet365", "1xbet", "Betano", "Betcris", "Caliente",
+                          "Codere", "Betsson", "Pinnacle", "Stake", "bwin"]
+            con_odds: Dict[str, Any] = {}
+            for b in candidatos:
+                try:
+                    evs = _get(f"{BASE_URL}/events", {
+                        "apiKey": key, "sport": SPORT_SLUG, "league": LIGA_SLUG,
+                        "bookmaker": b, "to": hasta,
+                    })
+                    con_odds[b] = len(evs) if isinstance(evs, list) else 0
+                except RuntimeError as exc:
+                    con_odds[b] = f"err {str(exc)[-24:]}"
+            info["eventos_con_odds_por_casa"] = con_odds
     except RuntimeError as exc:
         info["error"] = str(exc)
     return info
