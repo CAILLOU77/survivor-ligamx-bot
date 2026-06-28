@@ -73,6 +73,14 @@ class TestEndpoints(unittest.TestCase):
         self.assertEqual(r["tabla"][0]["equipo"], "América")
         self.assertEqual(r["decision"], "INFORMATIVO / REVISIÓN HUMANA")
 
+    def test_valor_passthrough_sin_mercado(self):
+        with mock.patch.object(pred.motor, "generar_pronosticos", return_value=_fake_data()):
+            with mock.patch.object(pred.mercado_mod, "mercado_habilitado", return_value=False):
+                r = pred.valor()
+        self.assertFalse(r["mercado_habilitado"])
+        self.assertEqual(r["fuente_datos"], "ESPN")
+        self.assertIsNone(r["pronosticos"][0]["mercado"])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -26,6 +26,11 @@ try:
 except ImportError:  # pragma: no cover
     from src import tabla_posiciones as tabla_mod  # type: ignore
 
+try:
+    import comparador_mercado as mercado_mod
+except ImportError:  # pragma: no cover
+    from src import comparador_mercado as mercado_mod  # type: ignore
+
 router = APIRouter(tags=["Predicciones"])
 
 _CACHE: Dict[str, Any] = {"data": None, "ts": None}
@@ -89,3 +94,20 @@ def tabla() -> Dict[str, Any]:
         return {"torneo": "", "tabla": [], "error": str(exc),
                 "decision": "INFORMATIVO / REVISIÓN HUMANA"}
     return {**data, "decision": "INFORMATIVO / REVISIÓN HUMANA"}
+
+
+@router.get("/valor", summary="Predicciones + comparación vs mercado (opcional)")
+def valor() -> Dict[str, Any]:
+    """
+    Predicciones del modelo anotadas con comparación vs mercado (dónde el modelo
+    ve 'valor'). SOLO activa si hay key de momios configurada (ODDS_API_IO_KEY);
+    si no, devuelve las predicciones sin comparación (mercado_habilitado=False).
+    Informativo: el modelo es la fuente de verdad; no es consejo de apuesta.
+    """
+    data = _obtener()
+    comp = mercado_mod.comparar_pronosticos(data.get("pronosticos", []))
+    return {
+        "generado_utc": data.get("generado_utc"),
+        "fuente_datos": data.get("fuente_datos"),
+        **comp,
+    }
