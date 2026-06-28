@@ -1,22 +1,19 @@
-import sqlite3
 import random
-from datetime import datetime
+from src.database import get_db
 
 def get_unsettled_picks():
-    conn = sqlite3.connect('data/premium_history.db')
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM picks WHERE status='pending' AND created_at < datetime('now', '-3 hours')")
-    picks = [dict(row) for row in cur.fetchall()]
-    conn.close()
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM picks WHERE status='pending' AND created_at < NOW() - INTERVAL '3 hours'")
+        picks = [dict(zip([col[0] for col in cur.description], row)) for row in cur.fetchall()]
     return picks
 
 def settle_pick(pick_id, result, profit_loss):
-    conn = sqlite3.connect('data/premium_history.db')
-    conn.execute("UPDATE picks SET status='settled', result=?, profit_loss=? WHERE id=?", 
-                 (result, profit_loss, pick_id))
-    conn.commit()
-    conn.close()
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute("UPDATE picks SET status='settled', result=%s, profit_loss=%s WHERE id=%s", 
+                   (result, profit_loss, pick_id))
+        conn.commit()
 
 def run_backtest():
     picks = get_unsettled_picks()
