@@ -531,26 +531,34 @@ def diagnostico_mercado() -> Dict[str, Any]:
             info["bookmakers_seleccionadas_error"] = str(exc)
         if eventos:
             ev_id = eventos[0]["id"]
-            # Prueba 1: /odds con UNA sola casa (para ver si el plan limita el nro de casas)
-            try:
-                una = _odds_evento(key, ev_id, "Bet365")
-                if una:
-                    casas1 = list((una.get("bookmakers") or {}).keys())
-                    info["prueba_odds_1_casa"] = {"ok": True, "casas": casas1,
-                                                  "parseado": parsear_mercado(una)}
-                else:
-                    info["prueba_odds_1_casa"] = {"ok": True, "casas": [], "nota": "sin bookmakers en respuesta"}
-            except RuntimeError as exc:
-                info["prueba_odds_1_casa"] = {"ok": False, "error": str(exc)}
-            # Prueba 2: /odds con la lista completa (lo que usa el bot)
-            try:
-                full = _odds_evento(key, ev_id, _bookmakers_consulta())
-                info["prueba_odds_full"] = {
-                    "ok": bool(full),
-                    "casas": list((full.get("bookmakers") or {}).keys())[:10] if full else [],
-                }
-            except RuntimeError as exc:
-                info["prueba_odds_full"] = {"ok": False, "error": str(exc)}
+            todas = _bookmakers_consulta().split(",")
+            # (a) Hallar el límite de casas: probar 1, 2, 3, 5, 10.
+            pruebas = []
+            for n in (1, 2, 3, 5, 10):
+                libro = ",".join(todas[:n])
+                try:
+                    r = _odds_evento(key, ev_id, libro)
+                    casas = list((r.get("bookmakers") or {}).keys()) if r else []
+                    pruebas.append({"casas_pedidas": n, "ok": True, "casas_con_datos": len(casas)})
+                except RuntimeError as exc:
+                    pruebas.append({"casas_pedidas": n, "ok": False, "error": str(exc)[-60:]})
+            info["pruebas_por_n_casas"] = pruebas
+            # (b) Intentar SELECCIONAR 2 casas y volver a pedir odds.
+            if requests is not None:
+                try:
+                    put = requests.put(f"{BASE_URL}/bookmakers/selected/select",
+                                       params={"apiKey": key, "bookmakers": "Bet365,1xbet"}, timeout=20)
+                    info["seleccion_intento"] = {"status": put.status_code, "resp": str(put.text)[:160]}
+                except Exception as exc:  # pragma: no cover
+                    info["seleccion_intento"] = {"error": str(exc)[:120]}
+                try:
+                    r2 = _odds_evento(key, ev_id, "Bet365,1xbet")
+                    info["odds_tras_seleccion"] = {
+                        "casas": list((r2.get("bookmakers") or {}).keys()) if r2 else [],
+                        "parseado": parsear_mercado(r2) if r2 else {},
+                    }
+                except RuntimeError as exc:
+                    info["odds_tras_seleccion"] = {"error": str(exc)[-80:]}
     except RuntimeError as exc:
         info["error"] = str(exc)
     return info
