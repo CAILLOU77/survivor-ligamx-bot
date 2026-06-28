@@ -126,12 +126,19 @@ def generar_pronosticos(
 def mejor_pick_survivor(
     pronosticos: Sequence[Dict[str, Any]],
     equipos_usados: Optional[Sequence[str]] = None,
+    motivacion: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> Optional[Dict[str, Any]]:
     """
     Mejor candidato de Survivor: equipo con mayor probabilidad de NO perder,
     excluyendo los ya usados.
+
+    Si se pasa `motivacion` ({equipo_norm: {motivacion_nivel, zona}}), se usa
+    como CONTEXTO y DESEMPATE: ante probabilidades parejas, se prefiere enfrentar
+    a un rival con MENOR motivación (p. ej. ya eliminado). El criterio principal
+    sigue siendo la probabilidad del modelo (fuente de verdad).
     """
     usados = {_norm(e) for e in (equipos_usados or [])}
+    mot = motivacion or {}
     candidatos: List[Dict[str, Any]] = []
     for p in pronosticos:
         for equipo, rival, cond, prob in (
@@ -143,10 +150,46 @@ def mejor_pick_survivor(
             candidatos.append({
                 "equipo": equipo, "rival": rival, "condicion": cond,
                 "no_perder_pct": prob,
+                "motivacion_propia": (mot.get(_norm(equipo)) or {}).get("motivacion_nivel"),
+                "rival_motivacion": (mot.get(_norm(rival)) or {}).get("motivacion_nivel"),
             })
     if not candidatos:
         return None
-    return max(candidatos, key=lambda c: c["no_perder_pct"])
+    # Criterio: no_perder_pct (principal) y, como desempate, rival menos motivado.
+    return max(candidatos, key=lambda c: (c["no_perder_pct"], _rank_motivacion(c["rival_motivacion"])))
+
+
+# Rango de "qué tan conveniente es el rival" (rival menos motivado = más seguro).
+_RANK_MOTIVACION = {"baja": 3.0, "n/a": 2.0, "media": 1.0, "alta": 0.0}
+
+
+def _rank_motivacion(nivel: Optional[str]) -> float:
+    """Rank de conveniencia del rival; None => neutral (no afecta el orden base)."""
+    if nivel is None:
+        return 1.5
+    return _RANK_MOTIVACION.get(str(nivel).lower(), 1.5)
+
+
+def motivacion_por_equipo() -> Dict[str, Dict[str, Any]]:
+    """
+    Mapa {equipo_norm: {motivacion_nivel, zona}} desde la tabla de ESPN.
+    Defensivo: devuelve {} si no hay red/datos (no rompe el flujo).
+    """
+    try:
+        import tabla_posiciones as tabla_mod
+    except ImportError:  # pragma: no cover
+        from src import tabla_posiciones as tabla_mod  # type: ignore
+    try:
+        data = tabla_mod.obtener_tabla()
+    except Exception:
+        return {}
+    salida: Dict[str, Dict[str, Any]] = {}
+    for fila in data.get("tabla", []):
+        salida[_norm(fila.get("equipo", ""))] = {
+            "motivacion_nivel": fila.get("motivacion_nivel"),
+            "zona": fila.get("zona"),
+        }
+    return salida
 
 
 def guardar_pronosticos(resultado: Dict[str, Any], path: Path = PRONOSTICOS_PATH) -> None:

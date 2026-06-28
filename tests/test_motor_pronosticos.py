@@ -73,6 +73,35 @@ class TestSurvivor(unittest.TestCase):
     def test_sin_candidatos(self):
         self.assertIsNone(mp.mejor_pick_survivor([]))
 
+    def test_motivacion_es_desempate(self):
+        # Dos candidatos con MISMO no_perder; gana el que enfrenta al rival
+        # con menor motivación (rival 'baja' = más seguro).
+        pronos = [
+            {"local": "América", "visitante": "Eliminado", "no_perder_local_pct": 70.0,
+             "no_perder_visitante_pct": 30.0},
+            {"local": "Pumas", "visitante": "Puntero", "no_perder_local_pct": 70.0,
+             "no_perder_visitante_pct": 30.0},
+        ]
+        motivacion = {
+            "eliminado": {"motivacion_nivel": "baja"},
+            "puntero": {"motivacion_nivel": "alta"},
+        }
+        pick = mp.mejor_pick_survivor(pronos, motivacion=motivacion)
+        self.assertEqual(pick["equipo"], "América")  # rival 'baja' desempata
+        self.assertEqual(pick["rival_motivacion"], "baja")
+
+    def test_motivacion_no_altera_orden_principal(self):
+        # El no_perder manda: aunque el rival del mejor esté motivado, gana por prob.
+        pronos = [
+            {"local": "América", "visitante": "X", "no_perder_local_pct": 85.0,
+             "no_perder_visitante_pct": 30.0},
+            {"local": "Pumas", "visitante": "Y", "no_perder_local_pct": 60.0,
+             "no_perder_visitante_pct": 30.0},
+        ]
+        motivacion = {"x": {"motivacion_nivel": "alta"}, "y": {"motivacion_nivel": "baja"}}
+        pick = mp.mejor_pick_survivor(pronos, motivacion=motivacion)
+        self.assertEqual(pick["equipo"], "América")  # 85 > 60 pese a la motivación
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

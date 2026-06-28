@@ -28,7 +28,32 @@ DISCLAIMER = "ℹ️ Informativo / revisión humana. No es consejo de apuesta."
 _MAX_PARTIDOS = 9
 
 
-def construir_mensaje(resultado: Dict[str, Any], equipos_usados: Optional[List[str]] = None) -> str:
+def _resumen_mercado(mercado: Optional[Dict[str, Any]]) -> Optional[str]:
+    """Línea concisa con lo que ve el mercado (favorito, O/U, hándicap, valor)."""
+    if not mercado:
+        return None
+    partes: List[str] = []
+    o = mercado.get("1x2")
+    if o and o.get("favorito_mercado"):
+        partes.append(f"fav {o['favorito_mercado']}")
+        if o.get("hay_valor") and o.get("valor_en"):
+            partes.append(f"valor {o['valor_en']}")
+    ou = mercado.get("over_under")
+    if ou and ou.get("mercado_ve"):
+        partes.append(ou["mercado_ve"])  # explosivo / cauteloso
+        if ou.get("hay_valor") and ou.get("valor_en"):
+            partes.append(f"valor {ou['valor_en']}")
+    h = mercado.get("handicap")
+    if h and h.get("favorito"):
+        partes.append(f"hcp {h['favorito']} {h['linea']}")
+    return " · ".join(partes) if partes else None
+
+
+def construir_mensaje(
+    resultado: Dict[str, Any],
+    equipos_usados: Optional[List[str]] = None,
+    motivacion: Optional[Dict[str, Dict[str, Any]]] = None,
+) -> str:
     """Arma el mensaje (HTML) de pronósticos a partir de la salida del motor."""
     pronosticos = resultado.get("pronosticos", [])
     fuente = resultado.get("fuente_datos", "?")
@@ -40,12 +65,15 @@ def construir_mensaje(resultado: Dict[str, Any], equipos_usados: Optional[List[s
         "",
     ]
 
-    pick = motor.mejor_pick_survivor(pronosticos, equipos_usados)
+    pick = motor.mejor_pick_survivor(pronosticos, equipos_usados, motivacion)
     if pick:
-        lineas.append(
+        linea_pick = (
             f"🎯 <b>SURVIVOR sugerido:</b> {pick['equipo']} "
             f"({pick['condicion']} vs {pick['rival']}) — no perder {pick['no_perder_pct']}%"
         )
+        if pick.get("rival_motivacion"):
+            linea_pick += f" · rival motivación: {pick['rival_motivacion']}"
+        lineas.append(linea_pick)
         lineas.append("")
 
     if pronosticos:
@@ -58,6 +86,9 @@ def construir_mensaje(resultado: Dict[str, Any], equipos_usados: Optional[List[s
             lineas.append(
                 f"    {p['pick_ou']} 2.5 · BTTS {p['pick_btts']} · marcador {p['marcador_mas_probable']}"
             )
+            resumen = _resumen_mercado(p.get("mercado"))
+            if resumen:
+                lineas.append(f"    💰 Mercado: {resumen}")
     else:
         lineas.append("Sin pronósticos disponibles (faltan datos de ESPN o fixtures).")
 
@@ -87,13 +118,39 @@ def enviar_mensaje(mensaje: str) -> bool:
 
 
 def enviar_pronosticos(equipos_usados: Optional[List[str]] = None) -> Dict[str, Any]:
-    """Genera pronósticos reales y los envía por Telegram."""
+    """
+    Genera pronósticos reales y los envía por Telegram, enriquecidos con:
+    - momios/valor del mercado (si hay ODDS_API_IO_KEY; si no, no-op), y
+    - motivación de la tabla (defensivo; {} si no hay red).
+    """
     resultado = motor.generar_pronosticos()
-    mensaje = construir_mensaje(resultado, equipos_usados)
+    pronosticos = resultado.get("pronosticos", [])
+
+    # Momios/valor (gated por key; sin key no toca nada).
+    con_momios = 0
+    try:
+        try:
+            import comparador_mercado as cm
+        except ImportError:  # pragma: no cover
+            from src import comparador_mercado as cm  # type: ignore
+        comp = cm.comparar_pronosticos(pronosticos)
+        resultado["pronosticos"] = comp.get("pronosticos", pronosticos)
+        con_momios = comp.get("partidos_con_momios", 0)
+    except Exception:  # pragma: no cover - nunca debe tumbar el envío
+        pass
+
+    # Motivación de la tabla (contexto/desempate Survivor).
+    try:
+        motivacion = motor.motivacion_por_equipo()
+    except Exception:  # pragma: no cover
+        motivacion = {}
+
+    mensaje = construir_mensaje(resultado, equipos_usados, motivacion)
     enviado = enviar_mensaje(mensaje)
     return {
         "enviado": enviado,
         "total_pronosticos": resultado.get("total_pronosticos", 0),
+        "partidos_con_momios": con_momios,
         "fuente": resultado.get("fuente_datos"),
     }
 

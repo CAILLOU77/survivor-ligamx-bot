@@ -66,11 +66,35 @@ class TestEnviar(unittest.TestCase):
 
     def test_enviar_pronosticos_flujo(self):
         with mock.patch.object(tp.motor, "generar_pronosticos", return_value=_resultado()):
-            with mock.patch.object(tp, "enviar_mensaje", return_value=True) as menv:
-                r = tp.enviar_pronosticos()
+            with mock.patch.object(tp.motor, "motivacion_por_equipo", return_value={}):
+                with mock.patch.object(tp, "enviar_mensaje", return_value=True) as menv:
+                    r = tp.enviar_pronosticos()
         self.assertTrue(r["enviado"])
         self.assertEqual(r["total_pronosticos"], 1)
         menv.assert_called_once()
+
+
+class TestMercadoYMotivacion(unittest.TestCase):
+    def test_linea_mercado_aparece(self):
+        res = _resultado()
+        res["pronosticos"][0]["mercado"] = {
+            "1x2": {"favorito_mercado": "local", "hay_valor": True, "valor_en": "local"},
+            "over_under": {"mercado_ve": "explosivo", "hay_valor": False, "valor_en": None},
+            "handicap": {"favorito": "local", "linea": -0.5},
+        }
+        msg = tp.construir_mensaje(res)
+        self.assertIn("💰 Mercado:", msg)
+        self.assertIn("fav local", msg)
+        self.assertIn("explosivo", msg)
+
+    def test_sin_mercado_no_pone_linea(self):
+        msg = tp.construir_mensaje(_resultado())
+        self.assertNotIn("💰 Mercado:", msg)
+
+    def test_motivacion_rival_en_pick(self):
+        motivacion = {"toluca": {"motivacion_nivel": "baja"}}
+        msg = tp.construir_mensaje(_resultado(), motivacion=motivacion)
+        self.assertIn("rival motivación: baja", msg)
 
 
 if __name__ == "__main__":
