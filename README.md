@@ -135,13 +135,13 @@ python3 -m pytest tests/
 El workflow `.github/workflows/ci.yml` instala dependencias y **corre toda la
 suite** en cada push y pull request.
 
-## Herramientas locales de auditoría (legado, opcionales)
+## Herramientas locales (opcionales)
 
-Quedan utilidades locales de auditoría manual (no deciden picks, no envían nada):
-`scripts/api_health_matrix.py` (inventario de APIs), `scripts/import_fbref_schedule.py`
-(importar/auditar calendario de FBref a mano), `scripts/final_audit_readiness.py`
-(data confidence), `src/market_watchdog.py` (vigía de mercado). Son de la etapa
-previa al pivote y se conservan como apoyo manual.
+Utilidades locales de apoyo manual (no deciden picks, no envían nada):
+`scripts/import_fbref_schedule.py` (importar/auditar calendario de FBref a mano),
+`scripts/assisted_caliente_odds.py` (importar momios pegados manualmente, sin
+scraping), `scripts/rss_lesiones_ligamx.py` (lesiones vía RSS) y
+`scripts/final_security_gate.py` (gate de seguridad).
 
 ## Notas
 
