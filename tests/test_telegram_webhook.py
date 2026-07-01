@@ -27,6 +27,11 @@ class TestParsearComando(unittest.TestCase):
     def test_texto_normal_no_es_comando(self):
         self.assertEqual(tw.parsear_comando("hola bot"), (None, ""))
 
+    def test_picks_y_pick_disparan_pronostico(self):
+        # Tanto /pick como /picks deben estar en el set que genera el pronóstico.
+        self.assertIn(tw.parsear_comando("/pick")[0], tw.CMDS_PICK)
+        self.assertIn(tw.parsear_comando("/picks")[0], tw.CMDS_PICK)
+
 
 class TestExtraerMensaje(unittest.TestCase):
     def test_message(self):
