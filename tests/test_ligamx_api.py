@@ -360,7 +360,8 @@ class TestResumenPartido(unittest.TestCase):
              mock.patch.object(api, "forma_equipo", return_value={"form": "WWDLW"}), \
              mock.patch.object(api, "disciplina_equipo", return_value=disc), \
              mock.patch.object(api, "h2h_resumen", return_value={"played": 12}), \
-             mock.patch.object(api, "noticias_de_equipos", return_value=[{"titulo": "N"}]):
+             mock.patch.object(api, "noticias_de_equipos", return_value=[{"titulo": "N"}]), \
+             mock.patch.object(api, "alineacion_de_partido", return_value={"disponible": False}):
             r = api.resumen_partido("America", "Toluca")
         self.assertEqual(r["prediccion_api"]["prob_local_pct"], 55.0)
         self.assertEqual(r["prediccion_api"]["goles_esp"], "1.8-1.0")
@@ -376,7 +377,8 @@ class TestResumenPartido(unittest.TestCase):
              mock.patch.object(api, "forma_equipo", return_value={"form": ""}), \
              mock.patch.object(api, "disciplina_equipo", return_value={"at_risk": []}), \
              mock.patch.object(api, "h2h_resumen", return_value={}), \
-             mock.patch.object(api, "noticias_de_equipos", return_value=[]):
+             mock.patch.object(api, "noticias_de_equipos", return_value=[]), \
+             mock.patch.object(api, "alineacion_de_partido", return_value=None):
             r = api.resumen_partido("America", "Toluca")
         self.assertIsNone(r["prediccion_api"])
         self.assertEqual(r["en_riesgo_local"], [])

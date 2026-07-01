@@ -92,6 +92,40 @@ class TestDatabaseSQLite(unittest.TestCase):
     def test_norm_equipo(self):
         self.assertEqual(db._norm_equipo("  Club  AMÉRICA "), "club america")
 
+    def test_historial_pronosticos_ciclo(self):
+        db.init_db()
+        # Registrar dos pronósticos.
+        self.assertTrue(db.registrar_pronostico(
+            "América", "Toluca", "Gana Local", 60.0, 22.0, 18.0, "2-1", fecha="2026-07-18"))
+        self.assertTrue(db.registrar_pronostico(
+            "Atlas", "Pumas", "Empate", 30.0, 40.0, 30.0, "1-1", fecha="2026-07-19"))
+        # Duplicado (mismos equipos+fecha) -> no se inserta.
+        self.assertFalse(db.registrar_pronostico(
+            "america", "toluca", "Gana Local", 60.0, 22.0, 18.0, "2-1", fecha="2026-07-18"))
+        self.assertEqual(len(db.historial_pronosticos()), 2)
+
+        # Resolver con resultados reales: América ganó 2-1 (acierta 1X2 y marcador);
+        # Atlas-Pumas terminó 0-2 (falla 1X2 y marcador).
+        reales = [
+            {"home_team": "América", "away_team": "Toluca", "home_goals": 2, "away_goals": 1, "fecha": "2026-07-18"},
+            {"home_team": "Atlas", "away_team": "Pumas", "home_goals": 0, "away_goals": 2, "fecha": "2026-07-19"},
+        ]
+        self.assertEqual(db.settle_pronosticos(reales), 2)
+        rent = db.rentabilidad_pronosticos()
+        self.assertEqual(rent["resueltos"], 2)
+        self.assertEqual(rent["aciertos_1x2"], 1)             # solo América
+        self.assertEqual(rent["acierto_1x2_pct"], 50.0)
+        self.assertEqual(rent["aciertos_marcador_exacto"], 1)  # solo América 2-1
+        self.assertEqual(rent["pendientes"], 0)
+
+    def test_settle_sin_resultado_queda_pendiente(self):
+        db.init_db()
+        db.registrar_pronostico("Leon", "Necaxa", "Gana Local", 55.0, 25.0, 20.0, "2-0", fecha="2026-08-01")
+        # Resultado de otro partido -> no resuelve el de Leon.
+        db.settle_pronosticos([{"home_team": "Cruz Azul", "away_team": "Atlas",
+                                "home_goals": 1, "away_goals": 0, "fecha": "2026-08-01"}])
+        self.assertEqual(db.rentabilidad_pronosticos()["pendientes"], 1)
+
 
 class TestEsPostgres(unittest.TestCase):
     def test_detecta_postgres(self):

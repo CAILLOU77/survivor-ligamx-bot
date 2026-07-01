@@ -744,4 +744,6 @@ def resumen_partido(
     if isinstance(h, dict) and h:
         out["h2h"] = h
     out["noticias"] = _safe(lambda: noticias_de_equipos([out["home"], out["away"]], limit=4), []) or []
+    # Alineación confirmada (365Scores, ~1h antes): señal de "¿salió con suplentes?".
+    out["alineacion"] = _safe(lambda: alineacion_de_partido(out["home"], out["away"]), None)
     return out

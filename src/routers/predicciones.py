@@ -391,3 +391,36 @@ def alineacion(home: str, away: str) -> Dict[str, Any]:
     except Exception as exc:  # pragma: no cover - fallback defensivo de red
         return {"disponible": False, "equipos": [], "error": str(exc),
                 "decision": "INFORMATIVO / REVISIÓN HUMANA"}
+
+
+@router.get("/historial/pronosticos", summary="Track-record de pronósticos (marcador + aciertos)")
+def historial_pronosticos(limit: int = 50, solo_resueltos: bool = False) -> Dict[str, Any]:
+    """
+    Historial de pronósticos con marcador predicho vs real y si acertó (1X2 y
+    marcador exacto). Se llena solo (cada envío guarda; el cron diario resuelve).
+    """
+    try:
+        try:
+            from database import historial_pronosticos as _hist
+        except ImportError:  # pragma: no cover
+            from src.database import historial_pronosticos as _hist  # type: ignore
+        filas = _hist(limit=limit, solo_resueltos=solo_resueltos)
+        return {"total": len(filas), "pronosticos": filas,
+                "decision": "INFORMATIVO / REVISIÓN HUMANA"}
+    except Exception as exc:  # pragma: no cover - fallback defensivo
+        return {"total": 0, "pronosticos": [], "error": str(exc),
+                "decision": "INFORMATIVO / REVISIÓN HUMANA"}
+
+
+@router.get("/historial/rentabilidad", summary="Rentabilidad/precisión del modelo (aciertos)")
+def historial_rentabilidad() -> Dict[str, Any]:
+    """% de aciertos 1X2 y de marcador exacto sobre los pronósticos ya resueltos."""
+    try:
+        try:
+            from database import rentabilidad_pronosticos as _rent
+        except ImportError:  # pragma: no cover
+            from src.database import rentabilidad_pronosticos as _rent  # type: ignore
+        return {**_rent(), "decision": "INFORMATIVO / REVISIÓN HUMANA"}
+    except Exception as exc:  # pragma: no cover - fallback defensivo
+        return {"resueltos": 0, "error": str(exc),
+                "decision": "INFORMATIVO / REVISIÓN HUMANA"}

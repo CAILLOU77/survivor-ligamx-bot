@@ -26,6 +26,12 @@ Modelos: `poisson_model` (default) y `dixon_coles_mle` (alternativa opcional, va
 
 > **Equipos usados (Survivor):** se guardan en la BD (persisten entre deploys). Regístralos con `POST /survivor/usados?equipo=America` (protegido con API_KEY); el pick, `/jornada`, `/plan-survivor` y el Telegram los EXCLUYEN automáticamente. `POST /survivor/usados/reset` para nueva temporada. El Telegram marca el pick #1 como **⭐ RECOMENDADO** (mayor confianza no-perder + ganar).
 
+> **Estrategia anti-sorpresa:** el pick usa `motor.mejores_picks_estrategico` (penaliza favorito visitante; cautela de arranque cuando hay pocos datos). `/analisis/riesgo` mide muy-favoritos y arranque (J1-3) con datos reales. `GET /alineacion?home=&away=` da el XI confirmado (365Scores, ~1h antes) para detectar suplentes; se adjunta al dossier del pick.
+
+> **Track-record:** `GET /historial/pronosticos` (marcador predicho vs real + aciertos) y `GET /historial/rentabilidad` (% acierto 1X2 y marcador exacto). Se llena solo: cada envío de Telegram registra los pronósticos y el cron diario (`/cron/backtest`) los resuelve con resultados reales.
+
+> **Telegram (comandos):** webhook activo (`/telegram/webhook`). Comandos del dueño: `/pick` (genera y envía pronóstico + pick), `/usado <equipo>`, `/usados`, `/quitar <equipo>`, `/reset`, `/ayuda`. Además `auto-alerts.yml` envía el pronóstico cada 6h automáticamente.
+
 ## 5. Lo que se hizo en sesiones previas (todo en `main`)
 **Modelo (lo grande):**
 - Pasó de **38.3% → 49.3%** de accuracy (supera baseline 45%), Brier 0.70→0.63. El fix clave fue **más datos** (8→18 meses) + recencia + shrinkage + rho calibrado.

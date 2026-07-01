@@ -64,10 +64,18 @@ def _formatear_contexto(ctx: Optional[Dict[str, Any]]) -> List[str]:
     riesgo_v = ctx.get("en_riesgo_visita") or []
     h2h = ctx.get("h2h")
     noticias = ctx.get("noticias") or []
-    if not (pred or forma_l or forma_v or riesgo_l or riesgo_v or h2h or noticias):
+    ali = ctx.get("alineacion") if isinstance(ctx.get("alineacion"), dict) else None
+    ali_ok = bool(ali and ali.get("disponible"))
+    if not (pred or forma_l or forma_v or riesgo_l or riesgo_v or h2h or noticias or ali_ok):
         return []  # pretemporada: sin datos aún, no ensuciar el mensaje
 
     lineas.append(f"🔎 <b>Contexto (Liga MX API)</b> — {ctx.get('home')} vs {ctx.get('away')}:")
+    if ali_ok:
+        forms = " · ".join(
+            f"{e.get('equipo', '')} {e.get('formacion') or ''}".strip()
+            for e in ali.get("equipos", []) if e.get("equipo")
+        )
+        lineas.append(f"    📋 XI CONFIRMADO — {forms} ⚠️ revisa si tu favorito rotó (suplentes)")
     if pred:
         lineas.append(
             f"    2ª opinión API: L{pred['prob_local_pct']}/E{pred['prob_empate_pct']}/"
@@ -229,6 +237,27 @@ def _contexto_top_pick(pronosticos: List[Dict[str, Any]],
         return None
 
 
+def _registrar_historial(pronosticos) -> None:
+    """Guarda los pronósticos en el track-record (dedup por equipos+fecha). Tolerante."""
+    try:
+        try:
+            from database import registrar_pronostico
+        except ImportError:  # pragma: no cover
+            from src.database import registrar_pronostico  # type: ignore
+    except Exception:  # pragma: no cover
+        return
+    for p in pronosticos or []:
+        try:
+            registrar_pronostico(
+                p.get("local", ""), p.get("visitante", ""), p.get("pick_1x2", ""),
+                p.get("prob_local_pct", 0), p.get("prob_empate_pct", 0),
+                p.get("prob_visitante_pct", 0), p.get("marcador_mas_probable", ""),
+                fecha=p.get("fecha", ""),
+            )
+        except Exception:  # pragma: no cover - nunca tumbar el envío por el log
+            continue
+
+
 def enviar_pronosticos(equipos_usados: Optional[List[str]] = None,
                        incluir_contexto: bool = True) -> Dict[str, Any]:
     """
@@ -240,6 +269,7 @@ def enviar_pronosticos(equipos_usados: Optional[List[str]] = None,
     """
     resultado = motor.generar_pronosticos()
     pronosticos = resultado.get("pronosticos", [])
+    _registrar_historial(pronosticos)  # track-record (dedup, tolerante)
 
     # Excluir equipos ya usados (persistidos en BD) si no se pasaron explícitos.
     if equipos_usados is None:
