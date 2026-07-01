@@ -197,15 +197,17 @@ def construir_mensaje(
     if pronosticos:
         lineas.append(div)
         lineas.append("📋 <b>PARTIDOS DE LA JORNADA</b>")
-        for p in pronosticos[:_MAX_PARTIDOS]:
+        nums = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣"]
+        for idx, p in enumerate(pronosticos[:_MAX_PARTIDOS]):
             lineas.append("")
+            n = nums[idx] if idx < len(nums) else "•"
             conf = f" · confianza <b>{p['nivel_confianza']}</b>" if p.get("nivel_confianza") else ""
             prob_pick = p.get("prob_pick_pct")
             pptxt = f" ({prob_pick}%)" if prob_pick is not None else ""
-            lineas.append(f"⚽ <b>{p['local']} vs {p['visitante']}</b>")
-            lineas.append(f"     🎯 {p['pick_1x2']}{pptxt}{conf}")
-            lineas.append(f"     📊 L {p['prob_local_pct']}% · E {p['prob_empate_pct']}% · V {p['prob_visitante_pct']}%")
-            lineas.append(f"     ⚖️ {p['pick_ou']} 2.5 · BTTS {p['pick_btts']} · marcador {p['marcador_mas_probable']}")
+            lineas.append(f"{n} 🏠 <b>{p['local']} vs {p['visitante']}</b> ✈️")
+            lineas.append(f"     🎯 Pick: <b>{p['pick_1x2']}</b>{pptxt}{conf}")
+            lineas.append(f"     📊 Local {p['prob_local_pct']}% · Empate {p['prob_empate_pct']}% · Visita {p['prob_visitante_pct']}%")
+            lineas.append(f"     ⚽ Goles: {p['pick_ou']} 2.5 · BTTS {p['pick_btts']} · marcador {p['marcador_mas_probable']}")
             if p.get("explicacion_1x2"):
                 lineas.append(f"     💡 {p['explicacion_1x2']}")
             if p.get("explicacion_ou"):
