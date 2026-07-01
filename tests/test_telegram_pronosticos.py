@@ -37,7 +37,9 @@ class TestConstruirMensaje(unittest.TestCase):
         self.assertIn("América vs Toluca", msg)
         self.assertIn("SURVIVOR", msg)
         self.assertIn("🥇", msg)  # ranking top-3
-        self.assertIn("Gana Local", msg)
+        # el pick del partido se muestra con el nombre real del club (no "Gana Local")
+        self.assertIn("🎯 Pick: <b>América</b>", msg)
+        self.assertNotIn("Gana Local", msg)
 
     def test_incluye_disclaimer(self):
         msg = tp.construir_mensaje(_resultado())

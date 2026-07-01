@@ -126,6 +126,16 @@ def _resumen_mercado(mercado: Optional[Dict[str, Any]]) -> Optional[str]:
     return " · ".join(partes) if partes else None
 
 
+def _pick_club(p: Dict[str, Any]) -> str:
+    """Traduce el pick 1X2 al nombre real del club (o 'Empate')."""
+    pick = p.get("pick_1x2", "")
+    if pick == "Gana Local":
+        return p.get("local", pick)
+    if pick == "Gana Visitante":
+        return p.get("visitante", pick)
+    return pick  # "Empate"
+
+
 def construir_mensaje(
     resultado: Dict[str, Any],
     equipos_usados: Optional[List[str]] = None,
@@ -205,7 +215,7 @@ def construir_mensaje(
             prob_pick = p.get("prob_pick_pct")
             pptxt = f" ({prob_pick}%)" if prob_pick is not None else ""
             lineas.append(f"{n} 🏠 <b>{p['local']} vs {p['visitante']}</b> ✈️")
-            lineas.append(f"     🎯 Pick: <b>{p['pick_1x2']}</b>{pptxt}{conf}")
+            lineas.append(f"     🎯 Pick: <b>{_pick_club(p)}</b>{pptxt}{conf}")
             lineas.append(f"     📊 Local {p['prob_local_pct']}% · Empate {p['prob_empate_pct']}% · Visita {p['prob_visitante_pct']}%")
             lineas.append(f"     ⚽ Goles: {p['pick_ou']} 2.5 · BTTS {p['pick_btts']} · marcador {p['marcador_mas_probable']}")
             if p.get("explicacion_1x2"):
