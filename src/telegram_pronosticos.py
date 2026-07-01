@@ -184,6 +184,10 @@ def construir_mensaje(
             lineas.append(
                 f"    {p['pick_ou']} 2.5 · BTTS {p['pick_btts']} · marcador {p['marcador_mas_probable']}"
             )
+            if p.get("explicacion_1x2"):
+                lineas.append(f"    💡 {p['explicacion_1x2']}")
+            if p.get("explicacion_ou"):
+                lineas.append(f"    💡 {p['explicacion_ou']}")
             resumen = _resumen_mercado(p.get("mercado"))
             if resumen:
                 lineas.append(f"    💰 Mercado: {resumen}")

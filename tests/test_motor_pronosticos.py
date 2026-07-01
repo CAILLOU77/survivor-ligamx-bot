@@ -50,6 +50,16 @@ class TestGenerar(unittest.TestCase):
             p["no_perder_local_pct"], round(p["prob_local_pct"] + p["prob_empate_pct"], 2), places=1
         )
 
+    def test_incluye_explicaciones(self):
+        fixtures = [{"home_team": "América", "away_team": "Toluca", "fecha": "x"}]
+        p = mp.generar_pronosticos(fixtures=fixtures, resultados=_historico())["pronosticos"][0]
+        self.assertIn("explicacion_1x2", p)
+        self.assertIn("explicacion_ou", p)
+        self.assertTrue(p["explicacion_1x2"])
+        # La explicación menciona al equipo o el escenario (parejo/empate).
+        self.assertTrue(any(w in p["explicacion_1x2"] for w in ("América", "Toluca", "parejo", "EMPATE")))
+        self.assertIn("goles_esperados_local", p)
+
 
 class TestSurvivor(unittest.TestCase):
     def _pronos(self):
@@ -187,6 +197,12 @@ class TestEstrategia(unittest.TestCase):
     def test_incluye_razon(self):
         r = mp.mejores_picks_estrategico(self._pronos(), partidos_jugados_torneo=0, n=2)
         self.assertTrue(all(p.get("razon") for p in r["picks"]))
+
+    def test_razon_incluye_numeros(self):
+        r = mp.mejores_picks_estrategico(self._pronos(), partidos_jugados_torneo=100, n=1)
+        razon = r["picks"][0]["razon"]
+        self.assertIn("no perder", razon)
+        self.assertIn("%", razon)
 
 
 if __name__ == "__main__":
