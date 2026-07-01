@@ -378,11 +378,10 @@ def goleadores(limit: int = 20, season: Optional[str] = None) -> List[Dict[str, 
     return _get("/top-scorers", params)
 
 
-def noticias() -> List[Dict[str, Any]]:
+def noticias_365() -> List[Dict[str, Any]]:
     """
-    Noticias Liga MX desde **365Scores** (plataforma real, vía /365scores/news),
-    NO Google News. Normaliza a un esquema estable:
-    {title, link, description, source, image_url, published_at}.
+    Noticias Liga MX desde **365Scores** (/365scores/news, plataforma real).
+    Normaliza a {title, link, description, source, image_url, published_at}.
     """
     out: List[Dict[str, Any]] = []
     for n in _get("/365scores/news"):
@@ -400,8 +399,31 @@ def noticias() -> List[Dict[str, Any]]:
 
 
 def noticias_google() -> List[Dict[str, Any]]:
-    """/news — noticias vía Google News RSS (fuente secundaria/agregador)."""
+    """/news — noticias vía Google News RSS (ya viene en el esquema estándar)."""
     return _get("/news")
+
+
+def _clave_titulo(item: Dict[str, Any]) -> str:
+    """Clave de dedup por título (sin acentos, minúsculas, espacios colapsados)."""
+    return clean_team_name(str(item.get("title", "")))
+
+
+def noticias() -> List[Dict[str, Any]]:
+    """
+    Noticias Liga MX combinando **365Scores (primario)** + **Google News (relleno)**,
+    deduplicadas por título. Tolerante: si una fuente falla, usa la otra. Esquema
+    estable: {title, link, description, source, image_url, published_at}.
+    """
+    items: List[Dict[str, Any]] = list(_safe(noticias_365, []) or [])
+    vistos = {_clave_titulo(i) for i in items if i.get("title")}
+    for g in (_safe(noticias_google, []) or []):
+        if not isinstance(g, dict):
+            continue
+        clave = _clave_titulo(g)
+        if clave and clave not in vistos:
+            items.append(g)
+            vistos.add(clave)
+    return items
 
 
 def noticias_recientes(limit: int = 10) -> List[Dict[str, Any]]:

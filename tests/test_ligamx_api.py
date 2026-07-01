@@ -180,17 +180,36 @@ class TestNoticias(unittest.TestCase):
         {"id": 3, "title": "Media", "source": "Z", "link": "http://z", "published_at": "2026-07-02T10:00:00"},
     ]
 
-    def test_noticias_usa_365scores_y_normaliza(self):
+    def test_noticias_365_normaliza(self):
         # /365scores/news usa 'url'/'image', no 'link'/'image_url'.
         raw365 = [{"id": 9, "title": "Fichaje bomba", "url": "http://bolavip/x",
                    "image": "http://img", "published_at": "2026-07-03", "is_magazine": False}]
         with mock.patch.object(api, "_get", return_value=raw365) as g:
-            out = api.noticias()
+            out = api.noticias_365()
             g.assert_called_once_with("/365scores/news")
         self.assertEqual(out[0]["title"], "Fichaje bomba")
         self.assertEqual(out[0]["link"], "http://bolavip/x")      # url -> link
         self.assertEqual(out[0]["source"], "365Scores")
         self.assertEqual(out[0]["image_url"], "http://img")       # image -> image_url
+
+    def test_noticias_combina_365_y_google_dedup(self):
+        s365 = [{"title": "Nota A", "link": "a", "source": "365Scores", "published_at": "2026-07-03"}]
+        goog = [
+            {"title": "Nota A", "link": "a2", "source": "MARCA", "published_at": "2026-07-03"},  # dup por título
+            {"title": "Nota B", "link": "b", "source": "ESPN", "published_at": "2026-07-02"},
+        ]
+        with mock.patch.object(api, "noticias_365", return_value=s365), \
+             mock.patch.object(api, "noticias_google", return_value=goog):
+            out = api.noticias()
+        titulos = [n["title"] for n in out]
+        self.assertEqual(titulos, ["Nota A", "Nota B"])           # 365 primero, B de relleno
+        self.assertEqual(out[0]["source"], "365Scores")           # gana 365 en el dup
+
+    def test_noticias_tolerante_si_una_fuente_falla(self):
+        with mock.patch.object(api, "noticias_365", side_effect=RuntimeError("down")), \
+             mock.patch.object(api, "noticias_google", return_value=[{"title": "Solo Google", "link": "g"}]):
+            out = api.noticias()
+        self.assertEqual([n["title"] for n in out], ["Solo Google"])
 
     def test_compacta_y_ordena_por_fecha(self):
         with mock.patch.object(api, "noticias", return_value=self._NEWS):
