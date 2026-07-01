@@ -198,6 +198,8 @@ def construir_mensaje(
                 lineas.append(f"    💡 {p['explicacion_1x2']}")
             if p.get("explicacion_ou"):
                 lineas.append(f"    💡 {p['explicacion_ou']}")
+            if p.get("precaucion") and p.get("motivos_alerta"):
+                lineas.append(f"    {p['nivel_alerta']}: {' '.join(p['motivos_alerta'])}")
             resumen = _resumen_mercado(p.get("mercado"))
             if resumen:
                 lineas.append(f"    💰 Mercado: {resumen}")

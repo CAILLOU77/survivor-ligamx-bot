@@ -84,6 +84,38 @@ def _nivel_confianza_1x2(prob_pick_pct: float) -> str:
     return "BAJA"
 
 
+# Umbrales de alerta (partido "trampa" para Survivor), derivados del modelo.
+_EMPATE_ALTO_PCT = 30.0       # riesgo de push (empate)
+_GOLES_CERRADO = 2.3          # goles esperados totales bajos => juego cerrado
+_PICK_ABIERTO_PCT = 45.0      # sin favorito claro
+
+
+def _alertas_partido(pick_1x2: str, prob_empate: float, prob_pick: float,
+                     goles_totales: float) -> Dict[str, Any]:
+    """
+    Marca un partido como de PRECAUCIÓN / ALERTA ROJA con los motivos concretos
+    (basados en los números del modelo). Útil para no quemar el Survivor en un
+    partido trampa. Sin invención: cada motivo sale de una condición medible.
+    """
+    motivos: List[str] = []
+    if pick_1x2 == "Gana Visitante":
+        motivos.append("El favorito es VISITANTE (de visita hay más sorpresas).")
+    if prob_pick < _PICK_ABIERTO_PCT:
+        motivos.append(f"Sin favorito claro (pick {prob_pick:.0f}%): resultado muy abierto.")
+    if prob_empate >= _EMPATE_ALTO_PCT:
+        motivos.append(f"Empate probable ({prob_empate:.0f}%): riesgo de 'push' (empate = sobrevives sin punto).")
+    if goles_totales < _GOLES_CERRADO:
+        motivos.append(f"Partido cerrado (~{goles_totales:.1f} goles): pocos goles, propenso a empate/sorpresa.")
+
+    if len(motivos) >= 2:
+        nivel = "🚨 ALERTA ROJA"
+    elif len(motivos) == 1:
+        nivel = "⚠️ PRECAUCIÓN"
+    else:
+        nivel = "OK"
+    return {"precaucion": bool(motivos), "nivel_alerta": nivel, "motivos": motivos}
+
+
 def pronosticar_partido(
     home: str, away: str, fuerzas: Dict[str, Any]
 ) -> Optional[Dict[str, Any]]:
@@ -93,6 +125,8 @@ def pronosticar_partido(
     p = pm.pronostico(home, away, fuerzas)
     exp = _explicar_partido(p)
     prob_pick = max(p["prob_local_pct"], p["prob_empate_pct"], p["prob_visitante_pct"])
+    goles_totales = p["lambda_local"] + p["lambda_visitante"]
+    alerta = _alertas_partido(p["pick_1x2"], p["prob_empate_pct"], prob_pick, goles_totales)
     return {
         "local": home,
         "visitante": away,
@@ -102,6 +136,9 @@ def pronosticar_partido(
         "prob_visitante_pct": p["prob_visitante_pct"],
         "prob_pick_pct": round(prob_pick, 2),
         "nivel_confianza": _nivel_confianza_1x2(prob_pick),
+        "precaucion": alerta["precaucion"],
+        "nivel_alerta": alerta["nivel_alerta"],
+        "motivos_alerta": alerta["motivos"],
         "goles_esperados_local": p["lambda_local"],
         "goles_esperados_visitante": p["lambda_visitante"],
         "pick_ou": p["pick_ou"],
