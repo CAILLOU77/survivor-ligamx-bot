@@ -196,8 +196,20 @@ def estado_fuentes() -> Dict[str, Any]:
     ligamx_base = os.getenv("LIGAMX_API_URL", "https://ligamx-api.onrender.com").strip().rstrip("/")
     ligamx = _ping(f"{ligamx_base}/health")
 
+    # IA opcional (Groq): estado por presencia de key (sin llamada de red).
+    try:
+        try:
+            import analista_ia
+        except ImportError:  # pragma: no cover
+            from src import analista_ia  # type: ignore
+        groq = {"ok": True, "estado": "habilitado (IA opcional)"} if analista_ia.habilitado() \
+            else {"ok": None, "estado": "deshabilitado (sin GROQ_API_KEY)"}
+    except Exception:  # pragma: no cover
+        groq = {"ok": None, "estado": "no disponible"}
+
     return {
-        "fuentes": {"espn": espn, "thesportsdb": tsdb, "odds_api_io": odds, "ligamx_api": ligamx},
+        "fuentes": {"espn": espn, "thesportsdb": tsdb, "odds_api_io": odds,
+                    "ligamx_api": ligamx, "groq_ia": groq},
         "ok_global": bool(espn.get("ok") or tsdb.get("ok")),
         "decision": "INFORMATIVO / REVISIÓN HUMANA",
     }
