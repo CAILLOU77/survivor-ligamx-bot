@@ -40,9 +40,11 @@ except ImportError:  # pragma: no cover - dependencia opcional ausente
     requests = None  # type: ignore[assignment]
 
 try:
-    from team_normalizer import display_team_name, canonical_team_key
+    from team_normalizer import display_team_name, canonical_team_key, team_aliases, clean_team_name
 except ImportError:  # pragma: no cover - ruta alterna de import
-    from src.team_normalizer import display_team_name, canonical_team_key  # type: ignore
+    from src.team_normalizer import (  # type: ignore
+        display_team_name, canonical_team_key, team_aliases, clean_team_name,
+    )
 
 DEFAULT_BASE_URL = "https://ligamx-api.onrender.com"
 DECISION = "INFORMATIVO / REVISIÓN HUMANA"
@@ -402,6 +404,36 @@ def noticias_recientes(limit: int = 10) -> List[Dict[str, Any]]:
     return items[: max(0, limit)]
 
 
+def noticias_de_equipos(nombres: List[str], limit: int = 5) -> List[Dict[str, Any]]:
+    """
+    Noticias que MENCIONAN a alguno de los equipos dados (por título/descripción),
+    en forma compacta. Útil para el dossier del pick: ahí aparecen lesiones,
+    bajas y fichajes del equipo. Match tolerante por alias (team_normalizer),
+    con guarda de longitud para evitar falsos positivos por alias muy cortos.
+    """
+    aliases: set = set()
+    for nombre in nombres:
+        for a in team_aliases(nombre):
+            if len(a) >= 4:  # evita ruido con alias de 1-3 letras
+                aliases.add(a)
+    if not aliases:
+        return []
+    out: List[Dict[str, Any]] = []
+    for n in noticias():
+        if not isinstance(n, dict):
+            continue
+        texto = clean_team_name(f"{n.get('title', '')} {n.get('description', '')}")
+        if any(a in texto for a in aliases):
+            out.append({
+                "titulo": n.get("title", ""),
+                "fuente": n.get("source", ""),
+                "publicado": n.get("published_at", ""),
+                "link": n.get("link", ""),
+            })
+    out.sort(key=lambda x: str(x.get("publicado") or ""), reverse=True)
+    return out[: max(0, limit)]
+
+
 def jugadores_en_riesgo() -> Any:
     """/players/discipline — jugadores con tarjetas / riesgo de suspensión."""
     return _get("/players/discipline")
@@ -541,6 +573,7 @@ def resumen_partido(
         "en_riesgo_local": [],
         "en_riesgo_visita": [],
         "h2h": None,
+        "noticias": [],
         "decision": DECISION,
     }
     if hid is None or aid is None:
@@ -579,4 +612,5 @@ def resumen_partido(
     h = _safe(lambda: h2h_resumen(hid, aid))
     if isinstance(h, dict) and h:
         out["h2h"] = h
+    out["noticias"] = _safe(lambda: noticias_de_equipos([out["home"], out["away"]], limit=4), []) or []
     return out

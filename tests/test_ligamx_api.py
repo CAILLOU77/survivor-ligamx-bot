@@ -193,6 +193,29 @@ class TestNoticias(unittest.TestCase):
             self.assertEqual(api.noticias_recientes(limit=0), [])
 
 
+class TestNoticiasDeEquipos(unittest.TestCase):
+    _NEWS = [
+        {"title": "Toluca ficha a un delantero", "description": "", "source": "A",
+         "link": "l1", "published_at": "2026-07-03"},
+        {"title": "Cruz Azul golea en amistoso", "description": "", "source": "B",
+         "link": "l2", "published_at": "2026-07-02"},
+        {"title": "Lesión de un jugador del América", "description": "", "source": "C",
+         "link": "l3", "published_at": "2026-07-01"},
+    ]
+
+    def test_filtra_por_equipos(self):
+        with mock.patch.object(api, "noticias", return_value=self._NEWS):
+            res = api.noticias_de_equipos(["América", "Toluca"], limit=5)
+        titulos = [n["titulo"] for n in res]
+        self.assertTrue(any("Toluca" in t for t in titulos))
+        self.assertTrue(any("América" in t for t in titulos))
+        self.assertFalse(any("Cruz Azul" in t for t in titulos))  # no es del match
+
+    def test_sin_equipos(self):
+        with mock.patch.object(api, "noticias", return_value=self._NEWS):
+            self.assertEqual(api.noticias_de_equipos([], limit=5), [])
+
+
 _TEAMS = [
     {"id": 205, "name": "Club América"},
     {"id": 234, "name": "Pachuca"},
@@ -285,13 +308,15 @@ class TestResumenPartido(unittest.TestCase):
              mock.patch.object(api, "predecir", return_value=pred), \
              mock.patch.object(api, "forma_equipo", return_value={"form": "WWDLW"}), \
              mock.patch.object(api, "disciplina_equipo", return_value=disc), \
-             mock.patch.object(api, "h2h_resumen", return_value={"played": 12}):
+             mock.patch.object(api, "h2h_resumen", return_value={"played": 12}), \
+             mock.patch.object(api, "noticias_de_equipos", return_value=[{"titulo": "N"}]):
             r = api.resumen_partido("America", "Toluca")
         self.assertEqual(r["prediccion_api"]["prob_local_pct"], 55.0)
         self.assertEqual(r["prediccion_api"]["goles_esp"], "1.8-1.0")
         self.assertEqual(r["forma_local"], "WWDLW")
         self.assertEqual(r["en_riesgo_local"], ["Jugador X", "Jugador Y"])
         self.assertEqual(r["h2h"], {"played": 12})
+        self.assertEqual(r["noticias"], [{"titulo": "N"}])
 
     def test_resumen_pretemporada_tolerante(self):
         # predecir falla (sin partidos); forma/disciplina vacías -> sin romper.
@@ -299,11 +324,13 @@ class TestResumenPartido(unittest.TestCase):
              mock.patch.object(api, "predecir", side_effect=RuntimeError("sin partidos")), \
              mock.patch.object(api, "forma_equipo", return_value={"form": ""}), \
              mock.patch.object(api, "disciplina_equipo", return_value={"at_risk": []}), \
-             mock.patch.object(api, "h2h_resumen", return_value={}):
+             mock.patch.object(api, "h2h_resumen", return_value={}), \
+             mock.patch.object(api, "noticias_de_equipos", return_value=[]):
             r = api.resumen_partido("America", "Toluca")
         self.assertIsNone(r["prediccion_api"])
         self.assertEqual(r["en_riesgo_local"], [])
         self.assertIsNone(r["h2h"])
+        self.assertEqual(r["noticias"], [])
 
 
 if __name__ == "__main__":
