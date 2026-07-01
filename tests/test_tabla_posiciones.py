@@ -96,5 +96,29 @@ class TestMotivacion(unittest.TestCase):
         self.assertIsNone(tp.motivacion_de(d, "Inexistente FC"))
 
 
+class TestFallbackLigaMX(unittest.TestCase):
+    def test_usa_ligamx_si_espn_falla(self):
+        from unittest import mock
+        parsed_lmx = {"torneo": "Apertura 2026", "tabla": [
+            {"posicion": 1, "equipo": "América", "puntos": 9, "jugados": 3,
+             "ganados": 3, "empatados": 0, "perdidos": 0,
+             "goles_favor": 8, "goles_contra": 1, "diferencia": 7},
+        ]}
+        with mock.patch.object(tp, "_fetch_standings", side_effect=RuntimeError("ESPN caído")):
+            with mock.patch.object(tp, "_tabla_desde_ligamx", return_value=parsed_lmx):
+                data = tp.obtener_tabla()
+        self.assertEqual(data["torneo"], "Apertura 2026")
+        self.assertEqual(data["tabla"][0]["equipo"], "América")
+        # La motivación se anotó igual sobre la tabla de la Liga MX API.
+        self.assertIn("motivacion_nivel", data["tabla"][0])
+
+    def test_propaga_error_si_ambas_fallan(self):
+        from unittest import mock
+        with mock.patch.object(tp, "_fetch_standings", side_effect=RuntimeError("ESPN caído")):
+            with mock.patch.object(tp, "_tabla_desde_ligamx", return_value={"torneo": "", "tabla": []}):
+                with self.assertRaises(RuntimeError):
+                    tp.obtener_tabla()
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

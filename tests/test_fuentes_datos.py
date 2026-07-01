@@ -51,6 +51,24 @@ class TestRedundancia(unittest.TestCase):
         self.assertEqual(res["fuente"], "ESPN")
         self.assertEqual(res["total"], 12)
 
+    def test_ligamx_api_primaria_si_habilitada_y_suficiente(self):
+        lmx = [_r(f"H{i}", f"A{i}", 2, 1, f"2026-08-{i+1:02d}") for i in range(12)]
+        with mock.patch.object(fd.ligamx_api, "usar_como_fuente", return_value=True):
+            with mock.patch.object(fd.ligamx_api, "resultados_historicos", return_value=lmx):
+                with mock.patch.object(fd, "guardar_cache"):
+                    res = fd.obtener_resultados(minimo=10)
+        self.assertEqual(res["fuente"], "LigaMX-API")
+        self.assertEqual(res["total"], 12)
+
+    def test_ligamx_api_ignorada_si_deshabilitada(self):
+        # Aunque la API tuviera datos, si el flag está apagado se usa ESPN.
+        espn = [_r(f"H{i}", f"A{i}", 1, 0, f"2026-02-{i+1:02d}") for i in range(12)]
+        with mock.patch.object(fd.ligamx_api, "usar_como_fuente", return_value=False):
+            with mock.patch.object(fd.espn_data, "obtener_resultados", return_value=espn):
+                with mock.patch.object(fd, "guardar_cache"):
+                    res = fd.obtener_resultados(minimo=10)
+        self.assertEqual(res["fuente"], "ESPN")
+
     def test_fallback_thesportsdb_si_espn_falla(self):
         tsdb = [_r("Pumas", "Cruz Azul", 1, 2)]
         with mock.patch.object(fd.espn_data, "obtener_resultados", side_effect=RuntimeError("ESPN caído")):

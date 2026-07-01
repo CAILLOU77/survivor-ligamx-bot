@@ -16,16 +16,23 @@
    (regularización), y produce 1X2 / Over-Under / BTTS / marcador.
 4. **`src/motor_pronosticos.py`** — "cerebro": ata fuentes + modelo y calcula el
    mejor pick de Survivor (mayor prob. de **no perder**).
-5. **`src/tabla_posiciones.py`** — tabla de ESPN + **motivación** por equipo
+5. **`src/planificador_survivor.py`** — estrategia de **temporada completa**:
+   asigna 1 equipo por jornada (sin repetir) con el algoritmo húngaro,
+   maximizando supervivencia (no perder) y victorias. Requiere
+   `data/calendario.json` (17 jornadas).
+6. **`src/analisis_riesgo.py`** — mide con datos reales (walk-forward) cuándo
+   falla el favorito del modelo (local vs visitante, confianza, partidos
+   cerrados).
+7. **`src/tabla_posiciones.py`** — tabla de ESPN + **motivación** por equipo
    (zona de clasificación, vivo/eliminado), usada como contexto/desempate.
-6. **`src/dixon_coles_mle.py`** — variante por máxima verosimilitud (alternativa
+8. **`src/dixon_coles_mle.py`** — variante por máxima verosimilitud (alternativa
    opcional, validada; no es el default).
-7. **`src/comparador_mercado.py`** — capa **opcional** de comparación vs mercado
+9. **`src/comparador_mercado.py`** — capa **opcional** de comparación vs mercado
    (odds-api.io); apagada sin `ODDS_API_IO_KEY`.
-8. **`src/api.py` + `src/routers/`** — web FastAPI (`/predicciones`, `/survivor`,
-   `/tabla`, `/valor`, …).
-9. **`src/telegram_pronosticos.py`** — alertas informativas por Telegram.
-10. **`src/validacion_modelo.py`** — backtest honesto del modelo vs resultados
+10. **`src/api.py` + `src/routers/`** — web FastAPI (`/predicciones`, `/survivor`,
+    `/plan-survivor`, `/tabla`, `/valor`, …).
+11. **`src/telegram_pronosticos.py`** — alertas informativas por Telegram.
+12. **`src/validacion_modelo.py`** — backtest honesto del modelo vs resultados
     reales (accuracy / Brier / baseline).
 
 ## 🚦 Reglas no negociables

@@ -8,7 +8,14 @@ from fastapi.responses import HTMLResponse
 import os
 from datetime import datetime
 from typing import Optional
-from src.routers.analizar_1x2 import router as analizar_router
+
+# Cargar .env en local (en Render/prod las vars vienen del entorno; esto es no-op).
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:  # pragma: no cover - dotenv es opcional
+    pass
+
 from src.database import init_db, get_metrics, get_history, settle_pick
 
 # Sin default público: la clave DEBE venir del entorno (Render / GitHub secret).
@@ -30,7 +37,6 @@ app = FastAPI(title="Survivor LigaMX API Premium", version="2.1.0", docs_url="/d
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET", "POST"], allow_headers=["*"])
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-app.include_router(analizar_router)
 from src.routers.cron_router import router as cron_router
 app.include_router(cron_router)
 from src.routers.predicciones import router as predicciones_router

@@ -51,6 +51,11 @@ try:
 except ImportError:  # pragma: no cover
     from src import poisson_model as pm  # type: ignore
 
+try:
+    import ligamx_api as lmx
+except ImportError:  # pragma: no cover
+    from src import ligamx_api as lmx  # type: ignore
+
 router = APIRouter(tags=["Predicciones"])
 
 _CACHE: Dict[str, Any] = {"data": None, "ts": None}
@@ -84,6 +89,24 @@ def _obtener_tabla() -> Dict[str, Any]:
     return _CACHE_TABLA["data"]
 
 
+def _contexto_pick(pick: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Dossier compacto de la Liga MX API para un pick de Survivor. Deriva
+    local/visitante desde `condicion` y consulta `ligamx_api.resumen_partido`.
+    Tolerante: ante cualquier fallo devuelve {} (no rompe /jornada).
+    """
+    try:
+        equipo = pick.get("equipo", "")
+        rival = pick.get("rival", "")
+        if pick.get("condicion") == "Local":
+            home, away = equipo, rival
+        else:
+            home, away = rival, equipo
+        return lmx.resumen_partido(home, away)
+    except Exception:  # pragma: no cover - fallback defensivo de red
+        return {}
+
+
 @router.get("/predicciones", summary="Predicciones reales (ESPN + Poisson)")
 def predicciones() -> Dict[str, Any]:
     """1X2 / Over-Under / BTTS / marcador por cada partido próximo."""
@@ -109,10 +132,14 @@ def survivor(excluir: str = "") -> Dict[str, Any]:
 
 
 @router.get("/jornada", summary="Vista de jornada: predicciones + pick + top-3 + motivación + momios")
-def jornada(excluir: str = "") -> Dict[str, Any]:
+def jornada(excluir: str = "", contexto: bool = False) -> Dict[str, Any]:
     """
     Todo-en-uno para decidir la semana: predicciones, mejor pick de Survivor +
     top-3, motivación de la tabla y comparación vs mercado (si hay momios).
+
+    `contexto=true` adjunta al pick #1 un dossier de la Liga MX API (predicción,
+    forma, tarjetas/jugadores en riesgo, h2h). Es una llamada extra a la API
+    externa (puede tardar si está dormida); por eso está apagado por defecto.
     """
     data = _obtener()
     pronos = data.get("pronosticos", [])
@@ -124,11 +151,14 @@ def jornada(excluir: str = "") -> Dict[str, Any]:
         motivacion = {}
     usados = [e.strip() for e in excluir.split(",") if e.strip()]
     top = motor.mejores_picks_survivor(pronos, usados, motivacion, n=3)
+    pick = top[0] if top else None
+    if contexto and pick:
+        pick = {**pick, "contexto_api": _contexto_pick(pick)}
     return {
         "generado_utc": data.get("generado_utc"),
         "fuente_datos": data.get("fuente_datos"),
         "equipos_excluidos": usados,
-        "pick_survivor": top[0] if top else None,
+        "pick_survivor": pick,
         "top_picks": top,
         "mercado_habilitado": comp.get("mercado_habilitado", False),
         "partidos_con_momios": comp.get("partidos_con_momios", 0),
@@ -244,3 +274,25 @@ def plan_survivor(excluir: str = "", peso_victoria: float = 0.5, usar_momios: bo
         _CACHE_PLAN["data"] = resultado
         _CACHE_PLAN["ts"] = datetime.utcnow()
     return resultado
+
+
+@router.get("/analisis-partido", summary="Dossier de un partido (Liga MX API): predicción + forma + tarjetas + h2h")
+def analisis_partido(home: str, away: str, prediccion: bool = True) -> Dict[str, Any]:
+    """
+    Dossier enriquecido de un partido usando la Liga MX API (proyecto hermano):
+    predictor de la API, forma reciente, disciplina/tarjetas (jugadores en riesgo
+    de suspensión), rachas y resumen head-to-head. Por NOMBRE de equipo
+    (ej. ?home=America&away=Toluca).
+
+    Tolerante: cada señal que la API aún no tenga (pretemporada) llega en null.
+    Informativo; el modelo local (ESPN + Poisson) sigue siendo la fuente de verdad
+    del pick.
+    """
+    if not home or not away:
+        return {"error": "Faltan parámetros 'home' y 'away'.",
+                "decision": "INFORMATIVO / REVISIÓN HUMANA"}
+    try:
+        return lmx.analisis_partido(home, away, incluir_prediccion=prediccion)
+    except Exception as exc:  # pragma: no cover - fallback defensivo de red
+        return {"home": home, "away": away, "error": str(exc),
+                "decision": "INFORMATIVO / REVISIÓN HUMANA"}

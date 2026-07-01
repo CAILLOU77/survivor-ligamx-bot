@@ -53,6 +53,29 @@ class TestConstruirMensaje(unittest.TestCase):
         self.assertNotIn("Actúa rápido", msg)
         self.assertNotIn("Kelly", msg)
 
+    def test_incluye_contexto_api_si_se_pasa(self):
+        ctx = {
+            "home": "América", "away": "Toluca",
+            "prediccion_api": {"prob_local_pct": 55.0, "prob_empate_pct": 25.0,
+                               "prob_visita_pct": 20.0, "goles_esp": "1.8-1.0"},
+            "forma_local": "WWDLW", "forma_visita": "LDLWD",
+            "en_riesgo_local": ["Jugador X"], "en_riesgo_visita": [],
+            "h2h": None,
+        }
+        msg = tp.construir_mensaje(_resultado(), contexto_pick=ctx)
+        self.assertIn("Contexto (Liga MX API)", msg)
+        self.assertIn("2ª opinión API", msg)
+        self.assertIn("En riesgo", msg)
+        self.assertIn("Jugador X", msg)
+
+    def test_contexto_pretemporada_no_ensucia(self):
+        # dossier resuelto pero vacío (sin datos aún) -> no agrega bloque.
+        ctx = {"home": "América", "away": "Toluca", "prediccion_api": None,
+               "forma_local": None, "forma_visita": None,
+               "en_riesgo_local": [], "en_riesgo_visita": [], "h2h": None}
+        msg = tp.construir_mensaje(_resultado(), contexto_pick=ctx)
+        self.assertNotIn("Contexto (Liga MX API)", msg)
+
 
 class TestEnviar(unittest.TestCase):
     def test_sin_credenciales_no_envia(self):
@@ -68,11 +91,21 @@ class TestEnviar(unittest.TestCase):
     def test_enviar_pronosticos_flujo(self):
         with mock.patch.object(tp.motor, "generar_pronosticos", return_value=_resultado()):
             with mock.patch.object(tp.motor, "motivacion_por_equipo", return_value={}):
-                with mock.patch.object(tp, "enviar_mensaje", return_value=True) as menv:
-                    r = tp.enviar_pronosticos()
+                with mock.patch.object(tp, "_contexto_top_pick", return_value=None):
+                    with mock.patch.object(tp, "enviar_mensaje", return_value=True) as menv:
+                        r = tp.enviar_pronosticos()
         self.assertTrue(r["enviado"])
         self.assertEqual(r["total_pronosticos"], 1)
         menv.assert_called_once()
+
+    def test_enviar_pronosticos_sin_contexto_no_llama_api(self):
+        # incluir_contexto=False no debe intentar resolver el dossier.
+        with mock.patch.object(tp.motor, "generar_pronosticos", return_value=_resultado()):
+            with mock.patch.object(tp.motor, "motivacion_por_equipo", return_value={}):
+                with mock.patch.object(tp, "_contexto_top_pick") as mctx:
+                    with mock.patch.object(tp, "enviar_mensaje", return_value=True):
+                        tp.enviar_pronosticos(incluir_contexto=False)
+        mctx.assert_not_called()
 
 
 class TestMercadoYMotivacion(unittest.TestCase):
