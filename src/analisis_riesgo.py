@@ -19,6 +19,7 @@ INFORMATIVO / REVISIÓN HUMANA.
 """
 from __future__ import annotations
 
+from datetime import date
 from typing import Any, Dict, List, Optional, Sequence
 
 try:
@@ -40,6 +41,46 @@ UMBRAL_PARTIDO_CERRADO: float = 2.5
 
 # Cortes de confianza (probabilidad de victoria del favorito, en %).
 CORTES_CONFIANZA: Sequence[float] = (55.0, 65.0, 75.0)
+
+# "Muy favorito" del modelo: prob. de victoria alta (tu caso Toluca-Mazatlán).
+CONF_MUY_FAVORITO: float = 70.0
+# Arranque de torneo: primeras N jornadas tras un hueco largo de calendario.
+JORNADAS_ARRANQUE: int = 3
+GAP_TORNEO_DIAS: int = 28
+
+
+def _fecha_semana_iso(wk: str):
+    """Primer día de una semana ISO 'YYYY-Www' -> date (o None)."""
+    try:
+        y, w = str(wk).split("-W")
+        return date.fromisocalendar(int(y), int(w), 1)
+    except (ValueError, TypeError):
+        return None
+
+
+def _labels_arranque(jornadas: Sequence[Dict[str, Any]],
+                     n: int = JORNADAS_ARRANQUE, gap_dias: int = GAP_TORNEO_DIAS) -> set:
+    """
+    Etiquetas de jornada que son 'arranque de torneo' (las primeras `n` tras un
+    hueco de calendario > `gap_dias`, típico entre Apertura/Clausura). Detecta el
+    inicio de cada torneo por el salto de fechas entre jornadas consecutivas.
+    """
+    arranque: set = set()
+    prev = None
+    idx = 0
+    for j in jornadas:
+        f = _fecha_semana_iso(j.get("jornada"))
+        if f is None:
+            prev = None
+            continue
+        if prev is None or (f - prev).days > gap_dias:
+            idx = 1  # nuevo torneo
+        else:
+            idx += 1
+        if idx <= n:
+            arranque.add(j.get("jornada"))
+        prev = f
+    return arranque
 
 
 def _bucket_confianza(conf_pct: float) -> str:
@@ -110,7 +151,8 @@ def _tasas(eventos: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def _recomendaciones(por_cond: Dict[str, Any], cerrado: Dict[str, Any],
-                     abierto: Dict[str, Any]) -> List[str]:
+                     abierto: Dict[str, Any], arranque_vs_resto: Optional[Dict[str, Any]] = None,
+                     muy_favorito: Optional[Dict[str, Any]] = None) -> List[str]:
     """Conclusiones accionables, SOLO si los números las sostienen (no opinión)."""
     recs: List[str] = []
     loc, vis = por_cond.get("local", {}), por_cond.get("visitante", {})
@@ -126,6 +168,26 @@ def _recomendaciones(por_cond: Dict[str, Any], cerrado: Dict[str, Any],
                 f"En partidos CERRADOS (pocos goles esperados, 'under') el favorito no gana "
                 f"el {cerrado['no_gano_pct']}%, vs {abierto['no_gano_pct']}% en partidos abiertos: "
                 f"evita esos partidos para el pick de Survivor."
+            )
+    # Arranque de torneo (el caso Toluca-Mazatlán semana 1).
+    if arranque_vs_resto:
+        a = arranque_vs_resto.get("arranque_j1a3", {})
+        r = arranque_vs_resto.get("resto_temporada", {})
+        if a.get("n") and r.get("n") and a["no_gano_pct"] is not None and r["no_gano_pct"] is not None:
+            if a["no_gano_pct"] - r["no_gano_pct"] >= 5.0:
+                recs.append(
+                    f"En el ARRANQUE (J1-3) el favorito no gana el {a['no_gano_pct']}% "
+                    f"(n={a['n']}), vs {r['no_gano_pct']}% en el resto: EXTRA cuidado las "
+                    f"primeras jornadas (como Toluca-Mazatlán); guarda equipos fuertes."
+                )
+    # Muy favoritos que igual fallan.
+    if muy_favorito:
+        mg = muy_favorito.get("global", {})
+        if mg.get("n") and mg.get("no_gano_pct") is not None and mg["no_gano_pct"] >= 20.0:
+            recs.append(
+                f"Incluso los MUY favoritos (>= {muy_favorito.get('umbral_confianza_pct')}% del modelo) "
+                f"no ganan el {mg['no_gano_pct']}% de las veces (n={mg['n']}): 'muy favorito' NO es "
+                f"seguro en Survivor."
             )
     if not recs:
         recs.append("No hay diferencias grandes y consistentes en los datos disponibles; "
@@ -144,6 +206,7 @@ def analizar_riesgo_favoritos(
     """
     jornadas = agrupar_jornadas(resultados)
     ordenados = sorted(resultados, key=lambda r: str(r.get("fecha", "")))
+    labels_arranque = _labels_arranque(jornadas)
 
     eventos: List[Dict[str, Any]] = []
     historico: List[Dict[str, Any]] = []
@@ -157,9 +220,11 @@ def analizar_riesgo_favoritos(
             fuerzas = pm.calcular_fuerzas(historico)
         except ValueError:
             continue
+        es_arranque = j["jornada"] in labels_arranque
         for p in j["partidos"]:
             ev = _evaluar_partido(p, fuerzas)
             if ev is not None:
+                ev["arranque"] = es_arranque
                 eventos.append(ev)
 
     por_condicion = {
@@ -174,6 +239,24 @@ def analizar_riesgo_favoritos(
 
     cerrado = _tasas([e for e in eventos if e["partido_cerrado"]])
     abierto = _tasas([e for e in eventos if not e["partido_cerrado"]])
+
+    # Muy favoritos del modelo (conf. alta): ¿cuánto fallan? (tu caso Toluca).
+    muy_fav = [e for e in eventos if e["confianza_pct"] >= CONF_MUY_FAVORITO]
+    muy_favorito = {
+        "umbral_confianza_pct": CONF_MUY_FAVORITO,
+        "global": _tasas(muy_fav),
+        "local": _tasas([e for e in muy_fav if e["favorito_local"]]),
+        "visitante": _tasas([e for e in muy_fav if not e["favorito_local"]]),
+    }
+
+    # Arranque de torneo (J1-3) vs resto: ¿las sorpresas son peores al inicio?
+    arr = [e for e in eventos if e.get("arranque")]
+    resto = [e for e in eventos if not e.get("arranque")]
+    arranque_vs_resto = {
+        "arranque_j1a3": _tasas(arr),
+        "resto_temporada": _tasas(resto),
+        "muy_favorito_en_arranque": _tasas([e for e in muy_fav if e.get("arranque")]),
+    }
 
     # De los fallos: ¿cómo se reparten? (responde "qué les faltó / local-visitante").
     fallos = [e for e in eventos if e["fallo"]]
@@ -190,9 +273,12 @@ def analizar_riesgo_favoritos(
         "por_condicion": por_condicion,
         "por_confianza": por_confianza,
         "por_tipo_partido": {"cerrado_under": cerrado, "abierto": abierto},
+        "muy_favorito": muy_favorito,
+        "arranque_vs_resto": arranque_vs_resto,
         "perfil_de_los_fallos": perfil_fallos,
         "umbral_partido_cerrado_goles": UMBRAL_PARTIDO_CERRADO,
-        "recomendaciones": _recomendaciones(por_condicion, cerrado, abierto),
+        "recomendaciones": _recomendaciones(por_condicion, cerrado, abierto,
+                                            arranque_vs_resto, muy_favorito),
         "decision": DEC_INFORMATIVA,
     }
 
@@ -221,6 +307,15 @@ def main() -> int:
         t = r["por_confianza"].get(b)
         if t and t["n"]:
             print(f"  {b}: no gana {t['no_gano_pct']}% (n={t['n']})")
+    mf = r.get("muy_favorito", {}).get("global", {})
+    if mf.get("n"):
+        print(f"MUY favoritos (>= {r['muy_favorito']['umbral_confianza_pct']}%): "
+              f"no ganan {mf['no_gano_pct']}% (n={mf['n']})")
+    avr = r.get("arranque_vs_resto", {})
+    a, rest = avr.get("arranque_j1a3", {}), avr.get("resto_temporada", {})
+    if a.get("n") and rest.get("n"):
+        print(f"Arranque J1-3: no gana {a['no_gano_pct']}% (n={a['n']}) | "
+              f"resto: {rest['no_gano_pct']}% (n={rest['n']})")
     print("Recomendaciones (según TUS datos):")
     for rec in r["recomendaciones"]:
         print(f"  • {rec}")
