@@ -7,5 +7,7 @@ jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Wake up API
-        run: curl -sf https://survivor-ligamx-bot.onrender.com/health || echo "⏳ API despertando..."
+      - name: Wake up Survivor bot
+        run: curl -sf https://survivor-ligamx-bot.onrender.com/health || echo "⏳ Survivor bot despertando..."
+      - name: Wake up Liga MX API (evita nulls por cold start en el dossier)
+        run: curl -sf https://ligamx-api.onrender.com/health || echo "⏳ Liga MX API despertando..."
