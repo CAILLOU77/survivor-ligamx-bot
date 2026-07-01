@@ -1,7 +1,10 @@
 name: Keep Render Alive
+# MANUAL (no automático): en plan gratis de Render, mantener el servicio despierto
+# 24/7 gastaría el cupo mensual de horas. Por eso NO hay 'schedule': el servicio
+# duerme y despierta solo cuando lo usas (/pick, alertas cada 6h). Este workflow
+# queda como botón para "calentar" ambos servicios manualmente antes de un partido
+# (Actions -> Keep Render Alive -> Run workflow), evitando el cold start.
 on:
-  schedule:
-    - cron: '*/15 * * * *'
   workflow_dispatch:
 jobs:
   ping:
