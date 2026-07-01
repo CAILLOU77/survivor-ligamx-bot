@@ -158,11 +158,16 @@ def construir_mensaje(
         if advertencia:
             lineas.append(f"<i>{advertencia}</i>")
         lineas.append("")
-        # Pick recomendado (destacado).
+        # Pick recomendado (destacado) — mostrar partido completo con sede clara.
         rec = tops[0]
         gana = rec.get("prob_victoria_pct")
         gtxt = f" · gana {gana}%" if gana is not None else ""
-        lineas.append(f"🥇 <b>PICK: {rec['equipo']}</b> — {rec['condicion']} vs {rec['rival']}")
+        if rec.get("condicion") == "Local":
+            local_eq, visita_eq = rec["equipo"], rec["rival"]
+        else:
+            local_eq, visita_eq = rec["rival"], rec["equipo"]
+        lineas.append(f"⚽ <b>{local_eq}</b> (🏠 local) vs <b>{visita_eq}</b> (✈️ visita)")
+        lineas.append(f"🥇 <b>PICK: {rec['equipo']}</b> — juega de {rec['condicion'].lower()}")
         lineas.append(f"     ✅ no-perder <b>{rec['no_perder_pct']}%</b>{gtxt} · confianza <b>{rec.get('nivel', '—')}</b>")
         if motivacion:
             mot_rival = motivacion.get(str(rec.get("rival", "")).lower(), {})
@@ -170,7 +175,7 @@ def construir_mensaje(
             if nivel_mot:
                 lineas.append(f"     📉 rival mot.: {nivel_mot}")
         if rec.get("razon"):
-            lineas.append(f"     <i>{rec['razon']}</i>")
+            lineas.append(f"     💬 <i>Por qué: {rec['razon']}</i>")
         # Otras opciones (2º y 3º).
         otras = tops[1:3]
         if otras:
@@ -179,8 +184,9 @@ def construir_mensaje(
             medallas = ["🥈", "🥉"]
             for i, pk in enumerate(otras):
                 nivel = f" [{pk['nivel']}]" if pk.get("nivel") else ""
+                sede = "de local vs" if pk.get("condicion") == "Local" else "de visita vs"
                 lineas.append(
-                    f"{medallas[i]} {pk['equipo']} ({pk['condicion']} vs {pk['rival']}) "
+                    f"{medallas[i]} <b>{pk['equipo']}</b> ({sede} {pk['rival']}) "
                     f"— no-perder {pk['no_perder_pct']}%{nivel}"
                 )
         contexto_lineas = _formatear_contexto(contexto_pick)
