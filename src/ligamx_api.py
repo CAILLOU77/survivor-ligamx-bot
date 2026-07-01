@@ -11,6 +11,11 @@ Para el Survivor lo más valioso HOY es el **calendario completo** (`/calendar`)
 que ya viene agrupado por jornada y alimenta directamente al planificador de
 temporada (`planificador_survivor`) vía `data/calendario.json`.
 
+⚠️ NO CONFUNDIR con `src/routers/api_ligamx.py`: aquel EXPONE la API pública
+`/api/v1` de ESTE bot (sirve datos propios: ESPN + modelo). Este módulo
+(`ligamx_api`) es lo contrario: un CLIENTE que CONSUME la API externa hermana
+`ligamx-api.onrender.com`.
+
 Cuando la temporada avance y haya partidos jugados, esta API también puede
 alimentar al modelo Poisson con `resultados_historicos()` (goles finalizados) y
 servir tabla/forma. En pretemporada (0 partidos jugados) esas funciones

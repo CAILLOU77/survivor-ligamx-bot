@@ -51,7 +51,12 @@ Modelos: `poisson_model` (default) y `dixon_coles_mle` (alternativa opcional, va
 - `/tabla` con **motivación** por equipo, usada como desempate del pick Survivor.
 
 ## 6. Módulos clave (vigentes)
-`fuentes_datos`, `espn_data`, `ligamx_api`, `poisson_model`, `dixon_coles_mle`, `motor_pronosticos`, `planificador_survivor`, `analisis_riesgo`, `tabla_posiciones`, `reglas_liga_mx`, `team_normalizer`, `comparador_mercado`, `assisted_odds_import`, `telegram_pronosticos`, `telegram_notifier`, `validacion_modelo`, `backtesting`, `simulador_survivor`, `backtest_engine`, `database`, `api.py` + `routers/` (`predicciones`, `cron_router`).
+`fuentes_datos`, `espn_data`, `ligamx_api`, `poisson_model`, `dixon_coles_mle`, `motor_pronosticos`, `planificador_survivor`, `analisis_riesgo`, `tabla_posiciones`, `reglas_liga_mx`, `team_normalizer`, `comparador_mercado`, `assisted_odds_import`, `telegram_pronosticos`, `telegram_notifier`, `validacion_modelo`, `backtesting`, `simulador_survivor`, `backtest_engine`, `database`, `api.py` + `routers/` (`predicciones`, `cron_router`, `api_ligamx`).
+
+> ⚠️ **No confundir dos módulos de nombre parecido y dirección OPUESTA:**
+> - **`src/ligamx_api.py`** = **CLIENTE** que CONSUME la API externa hermana (`ligamx-api.onrender.com`): calendario, equipos/ids, tabla, dossier de señales.
+> - **`src/routers/api_ligamx.py`** = **SERVIDOR** que EXPONE la API pública propia del bot (`/api/v1`), con datos propios (ESPN + `calendario.json` + modelo). No llama a la API externa.
+> Deuda menor: `api_ligamx.py` reimplementa normalización de nombres (`_slug`/`_ALIASES`) que ya existe en `team_normalizer.py`; unificar cuando haya calma.
 
 ## 7. ⏳ LO QUE FALTA (para el arranque, ~2 semanas)
 **🔑 Setup en Render/GitHub (lo único bloqueante):**
