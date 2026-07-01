@@ -71,6 +71,31 @@ class TestGenerar(unittest.TestCase):
         self.assertEqual(mp._nivel_confianza_1x2(45.0), "MEDIA")
         self.assertEqual(mp._nivel_confianza_1x2(30.0), "BAJA")
 
+    def test_alerta_favorito_visitante(self):
+        # Favorito visitante + empate alto => varios motivos => ALERTA ROJA.
+        a = mp._alertas_partido("Gana Visitante", prob_empate=32.0, prob_pick=44.0, goles_totales=2.0)
+        self.assertTrue(a["precaucion"])
+        self.assertEqual(a["nivel_alerta"], "🚨 ALERTA ROJA")
+        self.assertTrue(any("VISITANTE" in m for m in a["motivos"]))
+
+    def test_alerta_partido_seguro(self):
+        # Favorito local claro, muchos goles, empate bajo => sin alerta.
+        a = mp._alertas_partido("Gana Local", prob_empate=18.0, prob_pick=65.0, goles_totales=3.1)
+        self.assertFalse(a["precaucion"])
+        self.assertEqual(a["nivel_alerta"], "OK")
+        self.assertEqual(a["motivos"], [])
+
+    def test_alerta_un_motivo_es_precaucion(self):
+        a = mp._alertas_partido("Gana Local", prob_empate=18.0, prob_pick=65.0, goles_totales=2.0)
+        self.assertEqual(a["nivel_alerta"], "⚠️ PRECAUCIÓN")
+
+    def test_pronostico_incluye_alerta(self):
+        fixtures = [{"home_team": "América", "away_team": "Toluca", "fecha": "x"}]
+        p = mp.generar_pronosticos(fixtures=fixtures, resultados=_historico())["pronosticos"][0]
+        self.assertIn("precaucion", p)
+        self.assertIn("nivel_alerta", p)
+        self.assertIn("motivos_alerta", p)
+
 
 class TestSurvivor(unittest.TestCase):
     def _pronos(self):
