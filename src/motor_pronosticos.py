@@ -269,7 +269,7 @@ def _razon_pick(c: Dict[str, Any], es_local: bool, cautela: bool) -> str:
         if rival_mot == "baja":
             base += f" Además {c.get('rival')} llega sin presión (relajado/eliminado): escenario más seguro."
     else:
-        base += f" ⚠️ Ojo: es favorito visitante y de visita hay más sorpresas."
+        base += " ⚠️ Ojo: es favorito visitante y de visita hay más sorpresas."
     if cautela:
         base += " Arranque de torneo: voy conservador."
     return base
