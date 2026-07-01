@@ -51,6 +51,12 @@ def get_db():
         conn = sqlite3.connect(SQLITE_PATH)
     try:
         yield conn
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise
     finally:
         conn.close()
 

@@ -3,7 +3,7 @@
 ## 1. Identidad
 - **Repo:** `BRUCEWAYNE0180/survivor-ligamx-bot` · rama principal `main`
 - **Stack:** Python **3.12**, FastAPI (web en **Render**: `survivor-ligamx-bot.onrender.com`), Postgres (prod) / SQLite (local)
-- **Estado:** **284 tests** ✅ · **ruff** limpio · **CI corre lint+tests** en cada PR
+- **Estado:** **379 tests** ✅ · **ruff** limpio · **CI corre lint+tests** en cada PR
 - **Objetivo:** asistir decisiones de **Survivor Liga MX** + pronósticos (1X2, O/U, BTTS) para el **Apertura 2026** (arranca ~17 de julio).
 
 ## 2. REGLA MÁXIMA (no negociable)

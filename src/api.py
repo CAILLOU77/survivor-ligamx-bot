@@ -65,8 +65,8 @@ def _predicciones_reales() -> dict:
 def health():
     return {"status": "ok", "version": "2.1.0-premium", "timestamp": datetime.utcnow().isoformat()}
 
-@limiter.limit("10/minute")
 @app.get("/picks/latest", summary="(Deprecado) Predicciones reales ESPN+Poisson", tags=["Picks"])
+@limiter.limit("10/minute")
 def get_picks(request: Request, api_key: str = Depends(verify_api_key)):
     """
     DEPRECADO: el viejo path de 'picks de alto EV' dependia de momios scrapeados
@@ -212,13 +212,13 @@ async def telegram_webhook(
         tp.enviar_mensaje(tw.responder(cmd, arg))
     return {"ok": True}
 
-@limiter.limit("20/minute")
 @app.get("/stats", summary="Métricas de rendimiento", tags=["Analytics"])
+@limiter.limit("20/minute")
 def premium_stats(request: Request, api_key: str = Depends(verify_api_key)):
     return get_metrics()
 
-@limiter.limit("20/minute")
 @app.get("/history", summary="Historial paginado", tags=["Analytics"])
+@limiter.limit("20/minute")
 def get_history_endpoint(request: Request, limit: int = 20, offset: int = 0, api_key: str = Depends(verify_api_key)):
     try:
         rows = get_history(limit, offset)
