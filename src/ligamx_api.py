@@ -104,7 +104,8 @@ def usar_como_fuente() -> bool:
 def estado_temporada() -> Dict[str, Any]:
     """
     /season — qué torneo sirve la API y si ya arrancó.
-    Ej.: {tournament_now, year, has_started, first_match_date, total_matches, ...}
+    Ej.: {tournament_now, year, has_started, first_match_date, total_matches,
+    finished_matches, ...}. `finished_matches` alimenta la cautela de arranque.
     """
     return _get("/season")
 

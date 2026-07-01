@@ -48,6 +48,12 @@ ESPN fixtures ───────────────────┼──
 | `GET /plan-survivor?excluir=&peso_victoria=0.5` | **estrategia de temporada**: qué equipo usar en cada jornada (requiere `data/calendario.json`) |
 | `GET /analisis/riesgo` | ¿cuándo falla el favorito? (análisis de upsets, datos reales) |
 | `GET /analisis-partido?home=America&away=Toluca` | dossier de un partido (Liga MX API): predicción + forma + tarjetas + rachas + h2h |
+| `GET /alineacion?home=&away=` | alineación confirmada del partido (365Scores, ~1h antes): detecta suplentes |
+| `GET /noticias?limit=10` | noticias Liga MX (365Scores + Google): fichajes/lesiones/bajas |
+| `GET /jugadores-riesgo` | jugadores en riesgo de suspensión por tarjetas |
+| `GET /historial/pronosticos` · `GET /historial/rentabilidad` | track-record: marcador predicho vs real y % de aciertos (1X2 y marcador exacto) |
+| `GET /survivor/usados` · `POST /survivor/usados?equipo=` · `POST /survivor/usados/reset` | equipos ya usados (se excluyen del pick; persisten en BD) |
+| `POST /telegram/webhook` | comandos por Telegram (`/pick`, `/usado`, `/usados`, `/reset`, `/ayuda`) |
 | `GET /tabla` | tabla de ESPN + **motivación** por equipo (zona, vivo/eliminado) |
 | `GET /valor` | predicciones + comparación vs **mercado** (si hay momios) |
 | `GET /valor/diagnostico` | diagnóstico de la conexión de momios (sin exponer la key) |
