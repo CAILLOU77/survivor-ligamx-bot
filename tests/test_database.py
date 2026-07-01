@@ -71,6 +71,27 @@ class TestDatabaseSQLite(unittest.TestCase):
         ids = {r["id"] for r in page} | {r["id"] for r in page2}
         self.assertEqual(len(ids), 4)
 
+    def test_equipos_usados_ciclo(self):
+        db.init_db()
+        self.assertEqual(db.get_equipos_usados(), [])
+        self.assertTrue(db.add_equipo_usado("América"))
+        self.assertTrue(db.add_equipo_usado("Toluca"))
+        # Duplicado por normalización (acentos/mayúsculas) -> no se agrega.
+        self.assertFalse(db.add_equipo_usado("america"))
+        usados = db.get_equipos_usados()
+        self.assertEqual(len(usados), 2)
+        self.assertIn("América", usados)
+        # Quitar uno.
+        self.assertEqual(db.remove_equipo_usado("TOLUCA"), 1)
+        self.assertEqual(db.get_equipos_usados(), ["América"])
+        # Reset.
+        db.add_equipo_usado("Cruz Azul")
+        self.assertGreaterEqual(db.clear_equipos_usados(), 1)
+        self.assertEqual(db.get_equipos_usados(), [])
+
+    def test_norm_equipo(self):
+        self.assertEqual(db._norm_equipo("  Club  AMÉRICA "), "club america")
+
 
 class TestEsPostgres(unittest.TestCase):
     def test_detecta_postgres(self):

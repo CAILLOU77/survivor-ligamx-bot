@@ -107,6 +107,29 @@ def _contexto_pick(pick: Dict[str, Any]) -> Dict[str, Any]:
         return {}
 
 
+def _usados_combinados(excluir: str) -> list:
+    """
+    Combina los equipos usados PERSISTIDOS (BD) con los que lleguen en el
+    parámetro `excluir`. Así el pick/plan excluye automáticamente lo ya gastado,
+    aunque no se pase nada. Tolerante: si la BD falla, usa solo el parámetro.
+    """
+    manual = [e.strip() for e in (excluir or "").split(",") if e.strip()]
+    persistidos: list = []
+    try:
+        from src.database import get_equipos_usados
+        persistidos = get_equipos_usados()
+    except Exception:  # pragma: no cover - BD no disponible
+        persistidos = []
+    # Dedup preservando orden (persistidos primero).
+    vistos, out = set(), []
+    for e in persistidos + manual:
+        k = e.strip().lower()
+        if k and k not in vistos:
+            vistos.add(k)
+            out.append(e.strip())
+    return out
+
+
 @router.get("/predicciones", summary="Predicciones reales (ESPN + Poisson)")
 def predicciones() -> Dict[str, Any]:
     """1X2 / Over-Under / BTTS / marcador por cada partido próximo."""
@@ -120,7 +143,7 @@ def survivor(excluir: str = "") -> Dict[str, Any]:
     ya usados, separados por coma (ej. ?excluir=America,Toluca).
     """
     data = _obtener()
-    usados = [e.strip() for e in excluir.split(",") if e.strip()]
+    usados = _usados_combinados(excluir)
     pick = motor.mejor_pick_survivor(data.get("pronosticos", []), usados)
     return {
         "generado_utc": data.get("generado_utc"),
@@ -149,7 +172,7 @@ def jornada(excluir: str = "", contexto: bool = False) -> Dict[str, Any]:
         motivacion = motor.motivacion_por_equipo()
     except Exception:  # pragma: no cover - fallback defensivo de red
         motivacion = {}
-    usados = [e.strip() for e in excluir.split(",") if e.strip()]
+    usados = _usados_combinados(excluir)
     top = motor.mejores_picks_survivor(pronos, usados, motivacion, n=3)
     pick = top[0] if top else None
     if contexto and pick:
@@ -242,7 +265,7 @@ def plan_survivor(excluir: str = "", peso_victoria: float = 0.5, usar_momios: bo
     `usar_momios`: mezcla momios reales (odds-api.io) si hay key y cobertura.
     Análisis pesado => caché de 6 horas (con filtros por defecto).
     """
-    usados = [e.strip() for e in excluir.split(",") if e.strip()]
+    usados = _usados_combinados(excluir)
     usar_cache = not usados and abs(peso_victoria - 0.5) < 1e-9 and usar_momios
     if usar_cache:
         fresco = bool(_CACHE_PLAN["data"]) and bool(_CACHE_PLAN["ts"]) and (

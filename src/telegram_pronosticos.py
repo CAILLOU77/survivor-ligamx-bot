@@ -28,6 +28,18 @@ DISCLAIMER = "ℹ️ Informativo / revisión humana. No es consejo de apuesta."
 _MAX_PARTIDOS = 9
 
 
+def _usados_persistidos() -> Optional[List[str]]:
+    """Equipos usados guardados en la BD (para excluir del pick/plan). None si falla."""
+    try:
+        try:
+            from database import get_equipos_usados
+        except ImportError:  # pragma: no cover
+            from src.database import get_equipos_usados  # type: ignore
+        return get_equipos_usados()
+    except Exception:  # pragma: no cover - BD no disponible
+        return None
+
+
 def _formatear_contexto(ctx: Optional[Dict[str, Any]]) -> List[str]:
     """Bloque HTML compacto con el contexto de la Liga MX API para el pick #1."""
     if not ctx or ctx.get("nota"):
@@ -115,10 +127,17 @@ def construir_mensaje(
             g = f"gana {gana}% · " if gana is not None else ""
             nivel = pk.get("nivel")
             nv = f" [{nivel}]" if nivel else ""
+            estrella = " ⭐ RECOMENDADO" if i == 0 else ""
             lineas.append(
                 f"{medallas[i] if i < 3 else '•'} {pk['equipo']} "
-                f"({pk['condicion']} vs {pk['rival']}) — {g}no-perder {pk['no_perder_pct']}%{nv}{extra}"
+                f"({pk['condicion']} vs {pk['rival']}) — {g}no-perder {pk['no_perder_pct']}%{nv}{extra}{estrella}"
             )
+        # Recomendación explícita = el #1 (mayor confianza de no-perder + ganar).
+        rec = tops[0]
+        lineas.append(
+            f"➡️ <b>Pick sugerido: {rec['equipo']}</b> "
+            f"(confianza {rec.get('nivel', '—')})"
+        )
         contexto_lineas = _formatear_contexto(contexto_pick)
         if contexto_lineas:
             lineas.append("")
@@ -200,6 +219,10 @@ def enviar_pronosticos(equipos_usados: Optional[List[str]] = None,
     resultado = motor.generar_pronosticos()
     pronosticos = resultado.get("pronosticos", [])
 
+    # Excluir equipos ya usados (persistidos en BD) si no se pasaron explícitos.
+    if equipos_usados is None:
+        equipos_usados = _usados_persistidos()
+
     # Momios/valor (gated por key; sin key no toca nada).
     con_momios = 0
     try:
@@ -273,6 +296,9 @@ def enviar_plan(equipos_usados: Optional[List[str]] = None,
     except ImportError:  # pragma: no cover
         from src import planificador_survivor as plan_mod  # type: ignore
         from src import fuentes_datos, poisson_model as pm  # type: ignore
+
+    if equipos_usados is None:
+        equipos_usados = _usados_persistidos()
 
     calendario = plan_mod.cargar_calendario()
     if not calendario:

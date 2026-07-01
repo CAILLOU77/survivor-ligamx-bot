@@ -14,6 +14,7 @@ Las funciones públicas (init_db, save_pick, get_metrics, get_history,
 settle_pick) funcionan igual en ambos backends.
 """
 import os
+import unicodedata
 from contextlib import contextmanager
 
 DATABASE_URL = os.getenv("DATABASE_URL", "") or ""
@@ -77,7 +78,67 @@ def init_db():
                 profit_loss REAL DEFAULT 0.0
             )
         """)
+        # Equipos ya usados en el Survivor (persisten entre deploys, en Neon).
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS survivor_usados (
+                equipo_norm TEXT PRIMARY KEY,
+                equipo TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
         conn.commit()
+
+
+def _norm_equipo(s: str) -> str:
+    """Normaliza un nombre de equipo (minúsculas, sin acentos, espacios colapsados)."""
+    base = unicodedata.normalize("NFKD", str(s or "")).lower()
+    base = "".join(c for c in base if not unicodedata.combining(c))
+    return " ".join(base.split())
+
+
+def add_equipo_usado(equipo: str) -> bool:
+    """Marca un equipo como usado en el Survivor. True si se agregó, False si ya estaba."""
+    norm = _norm_equipo(equipo)
+    if not norm:
+        return False
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(f"SELECT 1 FROM survivor_usados WHERE equipo_norm = {PH}", (norm,))
+        if cur.fetchone():
+            return False
+        cur.execute(
+            f"INSERT INTO survivor_usados (equipo_norm, equipo) VALUES ({PH}, {PH})",
+            (norm, str(equipo).strip()),
+        )
+        conn.commit()
+        return True
+
+
+def get_equipos_usados() -> list:
+    """Lista de equipos usados (nombres tal como se guardaron), del más antiguo al reciente."""
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT equipo FROM survivor_usados ORDER BY created_at")
+        return [r[0] for r in cur.fetchall()]
+
+
+def remove_equipo_usado(equipo: str) -> int:
+    """Quita un equipo de la lista de usados. Devuelve filas afectadas (0 o 1)."""
+    norm = _norm_equipo(equipo)
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(f"DELETE FROM survivor_usados WHERE equipo_norm = {PH}", (norm,))
+        conn.commit()
+        return cur.rowcount
+
+
+def clear_equipos_usados() -> int:
+    """Vacía la lista de equipos usados (reinicia la temporada). Devuelve filas borradas."""
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM survivor_usados")
+        conn.commit()
+        return cur.rowcount
 
 
 def save_pick(match_id, market, true_prob, momio, ev, kelly_pct):

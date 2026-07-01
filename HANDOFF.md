@@ -22,7 +22,9 @@ ESPN API (gratis, sin key) + TheSportsDB (respaldo)
 Modelos: `poisson_model` (default) y `dixon_coles_mle` (alternativa opcional, validada).
 
 ## 4. Endpoints web
-`/predicciones` · `/survivor?excluir=` · **`/jornada`** (todo-en-uno: pred+pick+top3+motivación+momios) · **`/plan-survivor`** (estrategia de temporada: qué equipo en cada jornada) · **`/analisis/riesgo`** (¿cuándo falla el favorito?) · **`/analisis-partido?home=&away=`** (dossier Liga MX API: predicción+forma+tarjetas+h2h) · `/tabla` · `/valor` · `/valor/diagnostico` · **`/health/fuentes`** · `/stats` · `/history` · `/dashboard` · `/health` · `/cron/backtest` (validación REAL diaria) · `POST /alerts/pronosticos` · `POST /alerts/plan` · `/docs`
+`/predicciones` · `/survivor?excluir=` · **`/jornada`** (todo-en-uno: pred+pick+top3+motivación+momios; `?contexto=true` añade dossier de la Liga MX API) · **`/plan-survivor`** (estrategia de temporada) · **`/analisis/riesgo`** · **`/analisis-partido?home=&away=`** (dossier Liga MX API) · **`/noticias`** (365Scores+Google) · **`/jugadores-riesgo`** (suspensiones) · **`/survivor/usados`** (GET lista / POST agrega / DELETE quita / POST `/reset`) · `/tabla` · `/valor` · `/valor/diagnostico` · **`/health/fuentes`** · `/stats` · `/history` · `/dashboard` · `/health` · `/cron/backtest` · `POST /alerts/pronosticos` · `POST /alerts/plan` · `/docs`
+
+> **Equipos usados (Survivor):** se guardan en la BD (persisten entre deploys). Regístralos con `POST /survivor/usados?equipo=America` (protegido con API_KEY); el pick, `/jornada`, `/plan-survivor` y el Telegram los EXCLUYEN automáticamente. `POST /survivor/usados/reset` para nueva temporada. El Telegram marca el pick #1 como **⭐ RECOMENDADO** (mayor confianza no-perder + ganar).
 
 ## 5. Lo que se hizo en sesiones previas (todo en `main`)
 **Modelo (lo grande):**

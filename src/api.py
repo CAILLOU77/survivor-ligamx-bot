@@ -115,6 +115,52 @@ def alerts_plan(request: Request, api_key: str = Depends(verify_api_key)):
     from src import telegram_pronosticos
     return telegram_pronosticos.enviar_plan()
 
+
+# ---------------------------------------------------------------------------
+# Equipos usados en el Survivor (persisten en la BD; el pick los excluye).
+# ---------------------------------------------------------------------------
+@app.get("/survivor/usados", summary="Lista de equipos ya usados en el Survivor", tags=["Survivor"])
+@limiter.limit("30/minute")
+def survivor_usados_listar(request: Request):
+    """Equipos que ya gastaste (se excluyen automáticamente del pick y del plan)."""
+    try:
+        from src.database import get_equipos_usados
+        usados = get_equipos_usados()
+    except Exception as exc:
+        return {"usados": [], "total": 0, "error": str(exc)}
+    return {"usados": usados, "total": len(usados),
+            "decision": "INFORMATIVO / REVISIÓN HUMANA"}
+
+
+@app.post("/survivor/usados", summary="Marcar un equipo como usado", tags=["Survivor"])
+@limiter.limit("30/minute")
+def survivor_usados_agregar(request: Request, equipo: str, api_key: str = Depends(verify_api_key)):
+    """Registra el equipo que escogiste esta jornada para que ya no se sugiera."""
+    from src.database import add_equipo_usado, get_equipos_usados
+    if not equipo or not equipo.strip():
+        raise HTTPException(status_code=400, detail="Falta el parámetro 'equipo'.")
+    agregado = add_equipo_usado(equipo)
+    return {"equipo": equipo.strip(), "agregado": agregado,
+            "ya_estaba": not agregado, "usados": get_equipos_usados()}
+
+
+@app.delete("/survivor/usados", summary="Quitar un equipo usado", tags=["Survivor"])
+@limiter.limit("30/minute")
+def survivor_usados_quitar(request: Request, equipo: str, api_key: str = Depends(verify_api_key)):
+    """Quita un equipo de la lista de usados (por si te equivocaste al registrarlo)."""
+    from src.database import remove_equipo_usado, get_equipos_usados
+    filas = remove_equipo_usado(equipo)
+    return {"equipo": equipo.strip(), "quitado": bool(filas), "usados": get_equipos_usados()}
+
+
+@app.post("/survivor/usados/reset", summary="Reiniciar equipos usados (nueva temporada)", tags=["Survivor"])
+@limiter.limit("10/minute")
+def survivor_usados_reset(request: Request, api_key: str = Depends(verify_api_key)):
+    """Vacía la lista de usados (úsalo al empezar una temporada nueva)."""
+    from src.database import clear_equipos_usados
+    borrados = clear_equipos_usados()
+    return {"borrados": borrados, "usados": []}
+
 @limiter.limit("20/minute")
 @app.get("/stats", summary="Métricas de rendimiento", tags=["Analytics"])
 def premium_stats(request: Request, api_key: str = Depends(verify_api_key)):
