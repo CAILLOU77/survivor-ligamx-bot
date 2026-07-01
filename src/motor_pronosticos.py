@@ -48,6 +48,33 @@ def _equipo_conocido(nombre: str, fuerzas: Dict[str, Any]) -> bool:
     return pm._norm(nombre) in fuerzas.get("equipos", {})
 
 
+def _explicar_partido(p: Dict[str, Any]) -> Dict[str, str]:
+    """Explica, con los NÚMEROS del modelo (no opinión), el 1X2 y el Over/Under."""
+    local, visitante = p["local"], p["visitante"]
+    pl, pe, pv = p["prob_local_pct"], p["prob_empate_pct"], p["prob_visitante_pct"]
+    gl, gv = p["lambda_local"], p["lambda_visitante"]
+    total = gl + gv
+    linea = p.get("linea_goles", 2.5)
+
+    if p["pick_1x2"] == "Gana Local":
+        e1 = (f"{local} es favorito: el modelo le da {pl}% de ganar (vs {pv}% de {visitante}); "
+              f"pesan su mayor fuerza y la ventaja de local. Marcador esperado ~{gl:.1f}-{gv:.1f}.")
+    elif p["pick_1x2"] == "Gana Visitante":
+        e1 = (f"{visitante} es favorito aun de visita: {pv}% de ganar (vs {pl}% de {local}); "
+              f"su fuerza supera la ventaja local del rival. Marcador esperado ~{gl:.1f}-{gv:.1f}.")
+    else:
+        e1 = (f"Partido parejo (L {pl}% / E {pe}% / V {pv}%): sin favorito claro y con ~{total:.1f} "
+              f"goles esperados, el EMPATE es el escenario más probable del modelo.")
+
+    if p["pick_ou"] == "Over":
+        e2 = (f"Over {linea}: se esperan ~{total:.1f} goles ({p['prob_over_pct']}%); los ataques "
+              f"pesan más que las defensas.")
+    else:
+        e2 = (f"Under {linea}: solo ~{total:.1f} goles esperados ({p['prob_under_pct']}%); "
+              f"defensas sólidas o ataques flojos, por eso el modelo ve pocos goles.")
+    return {"explicacion_1x2": e1, "explicacion_ou": e2}
+
+
 def pronosticar_partido(
     home: str, away: str, fuerzas: Dict[str, Any]
 ) -> Optional[Dict[str, Any]]:
@@ -55,6 +82,7 @@ def pronosticar_partido(
     if not _equipo_conocido(home, fuerzas) or not _equipo_conocido(away, fuerzas):
         return None
     p = pm.pronostico(home, away, fuerzas)
+    exp = _explicar_partido(p)
     return {
         "local": home,
         "visitante": away,
@@ -62,6 +90,8 @@ def pronosticar_partido(
         "prob_local_pct": p["prob_local_pct"],
         "prob_empate_pct": p["prob_empate_pct"],
         "prob_visitante_pct": p["prob_visitante_pct"],
+        "goles_esperados_local": p["lambda_local"],
+        "goles_esperados_visitante": p["lambda_visitante"],
         "pick_ou": p["pick_ou"],
         "prob_over_pct": p["prob_over_pct"],
         "pick_btts": p["pick_btts"],
@@ -69,6 +99,8 @@ def pronosticar_partido(
         "marcador_mas_probable": p["marcador_mas_probable"],
         "no_perder_local_pct": round(p["prob_local_pct"] + p["prob_empate_pct"], 2),
         "no_perder_visitante_pct": round(p["prob_visitante_pct"] + p["prob_empate_pct"], 2),
+        "explicacion_1x2": exp["explicacion_1x2"],
+        "explicacion_ou": exp["explicacion_ou"],
     }
 
 
@@ -219,14 +251,25 @@ PEN_VISITANTE_CAUTELA = 8.0
 
 
 def _razon_pick(c: Dict[str, Any], es_local: bool, cautela: bool) -> str:
-    """Explica en una frase por qué (o por qué no) conviene este pick."""
+    """Explica en una frase por qué (o por qué no) conviene este pick, con números."""
     rival_mot = (c.get("rival_motivacion") or "").lower()
+    np_pct = c.get("no_perder_pct")
+    win = c.get("prob_victoria_pct")
+    emp = c.get("prob_empate_pct")
+    nums = f"{np_pct}% de no perder"
+    if win is not None:
+        nums += f" ({win}% ganar"
+        if emp is not None:
+            nums += f" + {emp}% empatar"
+        nums += ")"
+    cond = "de LOCAL" if es_local else "de VISITA"
+    base = f"{c.get('equipo')} {cond}: {nums}."
     if es_local:
-        base = "Favorito de LOCAL (los locales fallan menos que los visitantes)."
+        base += " Los locales fallan menos que los visitantes."
         if rival_mot == "baja":
-            base = "Local vs rival sin presión (eliminado/relajado): el escenario más seguro."
+            base += f" Además {c.get('rival')} llega sin presión (relajado/eliminado): escenario más seguro."
     else:
-        base = "Favorito VISITANTE ⚠️ ojo: de visita hay más sorpresas; úsalo solo si no hay buen local."
+        base += f" ⚠️ Ojo: es favorito visitante y de visita hay más sorpresas."
     if cautela:
         base += " Arranque de torneo: voy conservador."
     return base
