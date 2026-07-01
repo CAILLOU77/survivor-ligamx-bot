@@ -56,16 +56,35 @@ class TestHelpers(unittest.TestCase):
         self.assertEqual(t["gano_pct"], 50.0)
         self.assertEqual(t["no_gano_pct"], 50.0)
 
+    def test_labels_arranque_detecta_dos_torneos(self):
+        # Torneo A: 5 semanas seguidas; hueco largo; Torneo B: 4 semanas.
+        d0 = date(2026, 1, 5)
+        jornadas = []
+        for w in range(5):
+            jornadas.append({"jornada": ar._semana_iso((d0 + timedelta(days=7 * w)).isoformat())})
+        d1 = date(2026, 7, 13)  # ~6 meses después (nuevo torneo)
+        for w in range(4):
+            jornadas.append({"jornada": ar._semana_iso((d1 + timedelta(days=7 * w)).isoformat())})
+        arr = ar._labels_arranque(jornadas, n=3)
+        # Primeras 3 de cada torneo => 6 etiquetas.
+        self.assertEqual(len(arr), 6)
+        self.assertIn(jornadas[0]["jornada"], arr)   # J1 torneo A
+        self.assertIn(jornadas[5]["jornada"], arr)   # J1 torneo B
+        self.assertNotIn(jornadas[4]["jornada"], arr)  # J5 torneo A (no arranque)
+
 
 class TestAnalisis(unittest.TestCase):
     def test_estructura(self):
         r = ar.analizar_riesgo_favoritos(_liga(12), min_train=4)
         for k in ("partidos_evaluados", "global", "por_condicion", "por_confianza",
-                  "por_tipo_partido", "perfil_de_los_fallos", "recomendaciones",
-                  "decision"):
+                  "por_tipo_partido", "muy_favorito", "arranque_vs_resto",
+                  "perfil_de_los_fallos", "recomendaciones", "decision"):
             self.assertIn(k, r)
         self.assertEqual(r["decision"], "INFORMATIVO / REVISIÓN HUMANA")
         self.assertGreaterEqual(r["partidos_evaluados"], 1)
+        # Secciones nuevas con forma esperada.
+        self.assertIn("umbral_confianza_pct", r["muy_favorito"])
+        self.assertIn("arranque_j1a3", r["arranque_vs_resto"])
 
     def test_favorito_fuerte_gana(self):
         # 'Fuerte' local 3-0 siempre => como favorito debe tener no_gano bajo.
