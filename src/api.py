@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
-from fastapi import HTTPException, Header, Depends
+from fastapi import HTTPException, Header, Depends, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 import os
@@ -160,6 +160,57 @@ def survivor_usados_reset(request: Request, api_key: str = Depends(verify_api_ke
     from src.database import clear_equipos_usados
     borrados = clear_equipos_usados()
     return {"borrados": borrados, "usados": []}
+
+
+# ---------------------------------------------------------------------------
+# Webhook de Telegram: operar el bot por chat (/usado, /usados, /pick, ...).
+# ---------------------------------------------------------------------------
+@app.post("/telegram/webhook", summary="Webhook de comandos de Telegram", tags=["Telegram"])
+@limiter.limit("30/minute")
+async def telegram_webhook(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    x_telegram_bot_api_secret_token: Optional[str] = Header(None),
+):
+    """
+    Recibe updates de Telegram y responde a comandos del DUEÑO (/usado, /usados,
+    /quitar, /reset, /pick, /ayuda). Solo atiende el TELEGRAM_CHAT_ID configurado
+    y, si hay TELEGRAM_WEBHOOK_SECRET, valida el header secreto de Telegram.
+    """
+    # 1) Validación del secreto del webhook (si está configurado).
+    secreto = os.getenv("TELEGRAM_WEBHOOK_SECRET", "").strip()
+    if secreto and x_telegram_bot_api_secret_token != secreto:
+        raise HTTPException(status_code=403, detail="Secreto de webhook inválido")
+
+    try:
+        update = await request.json()
+    except Exception:
+        return {"ok": True}  # ignora payloads no-JSON sin fallar
+
+    from src import telegram_webhook as tw
+    from src import telegram_pronosticos as tp
+
+    chat_id, texto = tw.extraer_mensaje(update)
+
+    # 2) Solo el dueño (chat configurado) puede operar.
+    chat_cfg = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+    if chat_cfg and str(chat_id) != chat_cfg:
+        return {"ok": True}  # ignora mensajes de otros chats
+
+    if not texto:
+        return {"ok": True}
+
+    cmd, arg = tw.parsear_comando(texto)
+    if cmd is None:
+        return {"ok": True}  # texto normal, no comando
+
+    if cmd in tw.CMDS_PICK:
+        # Generación pesada (ESPN+modelo) en segundo plano; responde rápido.
+        background_tasks.add_task(tp.enviar_pronosticos)
+        tp.enviar_mensaje("🔄 Generando tu pronóstico y pick de la jornada...")
+    else:
+        tp.enviar_mensaje(tw.responder(cmd, arg))
+    return {"ok": True}
 
 @limiter.limit("20/minute")
 @app.get("/stats", summary="Métricas de rendimiento", tags=["Analytics"])
