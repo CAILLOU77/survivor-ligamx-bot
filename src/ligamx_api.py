@@ -11,6 +11,11 @@ Para el Survivor lo más valioso HOY es el **calendario completo** (`/calendar`)
 que ya viene agrupado por jornada y alimenta directamente al planificador de
 temporada (`planificador_survivor`) vía `data/calendario.json`.
 
+⚠️ NO CONFUNDIR con `src/routers/api_ligamx.py`: aquel EXPONE la API pública
+`/api/v1` de ESTE bot (sirve datos propios: ESPN + modelo). Este módulo
+(`ligamx_api`) es lo contrario: un CLIENTE que CONSUME la API externa hermana
+`ligamx-api.onrender.com`.
+
 Cuando la temporada avance y haya partidos jugados, esta API también puede
 alimentar al modelo Poisson con `resultados_historicos()` (goles finalizados) y
 servir tabla/forma. En pretemporada (0 partidos jugados) esas funciones
@@ -40,9 +45,11 @@ except ImportError:  # pragma: no cover - dependencia opcional ausente
     requests = None  # type: ignore[assignment]
 
 try:
-    from team_normalizer import display_team_name, canonical_team_key
+    from team_normalizer import display_team_name, canonical_team_key, team_aliases, clean_team_name
 except ImportError:  # pragma: no cover - ruta alterna de import
-    from src.team_normalizer import display_team_name, canonical_team_key  # type: ignore
+    from src.team_normalizer import (  # type: ignore
+        display_team_name, canonical_team_key, team_aliases, clean_team_name,
+    )
 
 DEFAULT_BASE_URL = "https://ligamx-api.onrender.com"
 DECISION = "INFORMATIVO / REVISIÓN HUMANA"
@@ -376,9 +383,103 @@ def goleadores(limit: int = 20, season: Optional[str] = None) -> List[Dict[str, 
     return _get("/top-scorers", params)
 
 
-def noticias() -> List[Dict[str, Any]]:
-    """/news — noticias Liga MX (Google News RSS): fichajes, lesiones, bajas."""
+def noticias_365() -> List[Dict[str, Any]]:
+    """
+    Noticias Liga MX desde **365Scores** (/365scores/news, plataforma real).
+    Normaliza a {title, link, description, source, image_url, published_at}.
+    """
+    out: List[Dict[str, Any]] = []
+    for n in _get("/365scores/news"):
+        if not isinstance(n, dict):
+            continue
+        out.append({
+            "title": n.get("title", ""),
+            "link": n.get("url", ""),
+            "description": n.get("description", ""),
+            "source": "365Scores",
+            "image_url": n.get("image", ""),
+            "published_at": n.get("published_at", ""),
+        })
+    return out
+
+
+def noticias_google() -> List[Dict[str, Any]]:
+    """/news — noticias vía Google News RSS (ya viene en el esquema estándar)."""
     return _get("/news")
+
+
+def _clave_titulo(item: Dict[str, Any]) -> str:
+    """Clave de dedup por título (sin acentos, minúsculas, espacios colapsados)."""
+    return clean_team_name(str(item.get("title", "")))
+
+
+def noticias() -> List[Dict[str, Any]]:
+    """
+    Noticias Liga MX combinando **365Scores (primario)** + **Google News (relleno)**,
+    deduplicadas por título. Tolerante: si una fuente falla, usa la otra. Esquema
+    estable: {title, link, description, source, image_url, published_at}.
+    """
+    items: List[Dict[str, Any]] = list(_safe(noticias_365, []) or [])
+    vistos = {_clave_titulo(i) for i in items if i.get("title")}
+    for g in (_safe(noticias_google, []) or []):
+        if not isinstance(g, dict):
+            continue
+        clave = _clave_titulo(g)
+        if clave and clave not in vistos:
+            items.append(g)
+            vistos.add(clave)
+    return items
+
+
+def noticias_recientes(limit: int = 10) -> List[Dict[str, Any]]:
+    """
+    Noticias recientes en forma COMPACTA (title, fuente, publicado, link),
+    listas para mostrar/mandar. Ordenadas por fecha de publicación (recientes
+    primero). Tolerante: si la API falla, propaga el error al caller.
+    """
+    crudas = noticias()
+    items: List[Dict[str, Any]] = []
+    for n in crudas:
+        if not isinstance(n, dict):
+            continue
+        items.append({
+            "titulo": n.get("title", ""),
+            "fuente": n.get("source", ""),
+            "publicado": n.get("published_at", ""),
+            "link": n.get("link", ""),
+        })
+    items.sort(key=lambda x: str(x.get("publicado") or ""), reverse=True)
+    return items[: max(0, limit)]
+
+
+def noticias_de_equipos(nombres: List[str], limit: int = 5) -> List[Dict[str, Any]]:
+    """
+    Noticias que MENCIONAN a alguno de los equipos dados (por título/descripción),
+    en forma compacta. Útil para el dossier del pick: ahí aparecen lesiones,
+    bajas y fichajes del equipo. Match tolerante por alias (team_normalizer),
+    con guarda de longitud para evitar falsos positivos por alias muy cortos.
+    """
+    aliases: set = set()
+    for nombre in nombres:
+        for a in team_aliases(nombre):
+            if len(a) >= 4:  # evita ruido con alias de 1-3 letras
+                aliases.add(a)
+    if not aliases:
+        return []
+    out: List[Dict[str, Any]] = []
+    for n in noticias():
+        if not isinstance(n, dict):
+            continue
+        texto = clean_team_name(f"{n.get('title', '')} {n.get('description', '')}")
+        if any(a in texto for a in aliases):
+            out.append({
+                "titulo": n.get("title", ""),
+                "fuente": n.get("source", ""),
+                "publicado": n.get("published_at", ""),
+                "link": n.get("link", ""),
+            })
+    out.sort(key=lambda x: str(x.get("publicado") or ""), reverse=True)
+    return out[: max(0, limit)]
 
 
 def jugadores_en_riesgo() -> Any:
@@ -537,6 +638,7 @@ def resumen_partido(
         "en_riesgo_local": [],
         "en_riesgo_visita": [],
         "h2h": None,
+        "noticias": [],
         "decision": DECISION,
     }
     if hid is None or aid is None:
@@ -575,4 +677,5 @@ def resumen_partido(
     h = _safe(lambda: h2h_resumen(hid, aid))
     if isinstance(h, dict) and h:
         out["h2h"] = h
+    out["noticias"] = _safe(lambda: noticias_de_equipos([out["home"], out["away"]], limit=4), []) or []
     return out

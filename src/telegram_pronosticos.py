@@ -38,7 +38,8 @@ def _formatear_contexto(ctx: Optional[Dict[str, Any]]) -> List[str]:
     riesgo_l = ctx.get("en_riesgo_local") or []
     riesgo_v = ctx.get("en_riesgo_visita") or []
     h2h = ctx.get("h2h")
-    if not (pred or forma_l or forma_v or riesgo_l or riesgo_v or h2h):
+    noticias = ctx.get("noticias") or []
+    if not (pred or forma_l or forma_v or riesgo_l or riesgo_v or h2h or noticias):
         return []  # pretemporada: sin datos aún, no ensuciar el mensaje
 
     lineas.append(f"🔎 <b>Contexto (Liga MX API)</b> — {ctx.get('home')} vs {ctx.get('away')}:")
@@ -53,6 +54,12 @@ def _formatear_contexto(ctx: Optional[Dict[str, Any]]) -> List[str]:
         lineas.append(f"    ⚠️ En riesgo ({ctx.get('home')}): {', '.join(riesgo_l)}")
     if riesgo_v:
         lineas.append(f"    ⚠️ En riesgo ({ctx.get('away')}): {', '.join(riesgo_v)}")
+    if noticias:
+        lineas.append("    📰 Noticias:")
+        for n in noticias[:3]:
+            titulo = n.get("titulo", "") if isinstance(n, dict) else str(n)
+            if titulo:
+                lineas.append(f"      • {titulo}")
     return lineas
 
 

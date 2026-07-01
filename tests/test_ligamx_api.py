@@ -193,6 +193,80 @@ class TestJugadoresEnRiesgo(unittest.TestCase):
         self.assertEqual(out["jugadores"], [])
 
 
+class TestNoticias(unittest.TestCase):
+    _NEWS = [
+        {"id": 1, "title": "Vieja", "source": "X", "link": "http://x", "published_at": "2026-07-01T10:00:00"},
+        {"id": 2, "title": "Nueva", "source": "Y", "link": "http://y", "published_at": "2026-07-03T10:00:00"},
+        {"id": 3, "title": "Media", "source": "Z", "link": "http://z", "published_at": "2026-07-02T10:00:00"},
+    ]
+
+    def test_noticias_365_normaliza(self):
+        # /365scores/news usa 'url'/'image', no 'link'/'image_url'.
+        raw365 = [{"id": 9, "title": "Fichaje bomba", "url": "http://bolavip/x",
+                   "image": "http://img", "published_at": "2026-07-03", "is_magazine": False}]
+        with mock.patch.object(api, "_get", return_value=raw365) as g:
+            out = api.noticias_365()
+            g.assert_called_once_with("/365scores/news")
+        self.assertEqual(out[0]["title"], "Fichaje bomba")
+        self.assertEqual(out[0]["link"], "http://bolavip/x")      # url -> link
+        self.assertEqual(out[0]["source"], "365Scores")
+        self.assertEqual(out[0]["image_url"], "http://img")       # image -> image_url
+
+    def test_noticias_combina_365_y_google_dedup(self):
+        s365 = [{"title": "Nota A", "link": "a", "source": "365Scores", "published_at": "2026-07-03"}]
+        goog = [
+            {"title": "Nota A", "link": "a2", "source": "MARCA", "published_at": "2026-07-03"},  # dup por título
+            {"title": "Nota B", "link": "b", "source": "ESPN", "published_at": "2026-07-02"},
+        ]
+        with mock.patch.object(api, "noticias_365", return_value=s365), \
+             mock.patch.object(api, "noticias_google", return_value=goog):
+            out = api.noticias()
+        titulos = [n["title"] for n in out]
+        self.assertEqual(titulos, ["Nota A", "Nota B"])           # 365 primero, B de relleno
+        self.assertEqual(out[0]["source"], "365Scores")           # gana 365 en el dup
+
+    def test_noticias_tolerante_si_una_fuente_falla(self):
+        with mock.patch.object(api, "noticias_365", side_effect=RuntimeError("down")), \
+             mock.patch.object(api, "noticias_google", return_value=[{"title": "Solo Google", "link": "g"}]):
+            out = api.noticias()
+        self.assertEqual([n["title"] for n in out], ["Solo Google"])
+
+    def test_compacta_y_ordena_por_fecha(self):
+        with mock.patch.object(api, "noticias", return_value=self._NEWS):
+            items = api.noticias_recientes(limit=2)
+        self.assertEqual(len(items), 2)
+        self.assertEqual(items[0]["titulo"], "Nueva")   # más reciente primero
+        self.assertEqual(items[1]["titulo"], "Media")
+        self.assertEqual(set(items[0].keys()), {"titulo", "fuente", "publicado", "link"})
+
+    def test_limit_cero(self):
+        with mock.patch.object(api, "noticias", return_value=self._NEWS):
+            self.assertEqual(api.noticias_recientes(limit=0), [])
+
+
+class TestNoticiasDeEquipos(unittest.TestCase):
+    _NEWS = [
+        {"title": "Toluca ficha a un delantero", "description": "", "source": "A",
+         "link": "l1", "published_at": "2026-07-03"},
+        {"title": "Cruz Azul golea en amistoso", "description": "", "source": "B",
+         "link": "l2", "published_at": "2026-07-02"},
+        {"title": "Lesión de un jugador del América", "description": "", "source": "C",
+         "link": "l3", "published_at": "2026-07-01"},
+    ]
+
+    def test_filtra_por_equipos(self):
+        with mock.patch.object(api, "noticias", return_value=self._NEWS):
+            res = api.noticias_de_equipos(["América", "Toluca"], limit=5)
+        titulos = [n["titulo"] for n in res]
+        self.assertTrue(any("Toluca" in t for t in titulos))
+        self.assertTrue(any("América" in t for t in titulos))
+        self.assertFalse(any("Cruz Azul" in t for t in titulos))  # no es del match
+
+    def test_sin_equipos(self):
+        with mock.patch.object(api, "noticias", return_value=self._NEWS):
+            self.assertEqual(api.noticias_de_equipos([], limit=5), [])
+
+
 _TEAMS = [
     {"id": 205, "name": "Club América"},
     {"id": 234, "name": "Pachuca"},
@@ -285,13 +359,15 @@ class TestResumenPartido(unittest.TestCase):
              mock.patch.object(api, "predecir", return_value=pred), \
              mock.patch.object(api, "forma_equipo", return_value={"form": "WWDLW"}), \
              mock.patch.object(api, "disciplina_equipo", return_value=disc), \
-             mock.patch.object(api, "h2h_resumen", return_value={"played": 12}):
+             mock.patch.object(api, "h2h_resumen", return_value={"played": 12}), \
+             mock.patch.object(api, "noticias_de_equipos", return_value=[{"titulo": "N"}]):
             r = api.resumen_partido("America", "Toluca")
         self.assertEqual(r["prediccion_api"]["prob_local_pct"], 55.0)
         self.assertEqual(r["prediccion_api"]["goles_esp"], "1.8-1.0")
         self.assertEqual(r["forma_local"], "WWDLW")
         self.assertEqual(r["en_riesgo_local"], ["Jugador X", "Jugador Y"])
         self.assertEqual(r["h2h"], {"played": 12})
+        self.assertEqual(r["noticias"], [{"titulo": "N"}])
 
     def test_resumen_pretemporada_tolerante(self):
         # predecir falla (sin partidos); forma/disciplina vacías -> sin romper.
@@ -299,11 +375,13 @@ class TestResumenPartido(unittest.TestCase):
              mock.patch.object(api, "predecir", side_effect=RuntimeError("sin partidos")), \
              mock.patch.object(api, "forma_equipo", return_value={"form": ""}), \
              mock.patch.object(api, "disciplina_equipo", return_value={"at_risk": []}), \
-             mock.patch.object(api, "h2h_resumen", return_value={}):
+             mock.patch.object(api, "h2h_resumen", return_value={}), \
+             mock.patch.object(api, "noticias_de_equipos", return_value=[]):
             r = api.resumen_partido("America", "Toluca")
         self.assertIsNone(r["prediccion_api"])
         self.assertEqual(r["en_riesgo_local"], [])
         self.assertIsNone(r["h2h"])
+        self.assertEqual(r["noticias"], [])
 
 
 if __name__ == "__main__":

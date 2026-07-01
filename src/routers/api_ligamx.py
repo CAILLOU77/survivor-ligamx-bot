@@ -13,6 +13,10 @@ recolecta de fuentes públicas GRATUITAS y normaliza:
 Todo es READ-ONLY, cacheado en memoria, sin API key y SIN inventar datos
 (REGLA MÁXIMA). Cada respuesta lleva la etiqueta INFORMATIVO / REVISIÓN HUMANA.
 
+⚠️ NO CONFUNDIR con `src/ligamx_api.py`: aquel es un CLIENTE que CONSUME la API
+externa hermana (`ligamx-api.onrender.com`). Este módulo hace lo contrario:
+EXPONE una API pública propia (`/api/v1`) con los datos de ESTE bot.
+
 Endpoints:
   GET /api/v1                              -> índice/catálogo
   GET /api/v1/equipos                      -> equipos del torneo (+ tiene_modelo)
