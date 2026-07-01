@@ -186,9 +186,10 @@ def construir_mensaje(
     if pronosticos:
         lineas.append("<b>Partidos:</b>")
         for p in pronosticos[:_MAX_PARTIDOS]:
+            conf = f" · confianza {p['nivel_confianza']}" if p.get("nivel_confianza") else ""
             lineas.append(
                 f"⚽ {p['local']} vs {p['visitante']} → <b>{p['pick_1x2']}</b> "
-                f"(L{p['prob_local_pct']}/E{p['prob_empate_pct']}/V{p['prob_visitante_pct']})"
+                f"(L{p['prob_local_pct']}/E{p['prob_empate_pct']}/V{p['prob_visitante_pct']}){conf}"
             )
             lineas.append(
                 f"    {p['pick_ou']} 2.5 · BTTS {p['pick_btts']} · marcador {p['marcador_mas_probable']}"

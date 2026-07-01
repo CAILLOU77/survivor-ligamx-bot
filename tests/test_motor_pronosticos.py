@@ -60,6 +60,17 @@ class TestGenerar(unittest.TestCase):
         self.assertTrue(any(w in p["explicacion_1x2"] for w in ("América", "Toluca", "parejo", "EMPATE")))
         self.assertIn("goles_esperados_local", p)
 
+    def test_incluye_nivel_confianza(self):
+        fixtures = [{"home_team": "América", "away_team": "Toluca", "fecha": "x"}]
+        p = mp.generar_pronosticos(fixtures=fixtures, resultados=_historico())["pronosticos"][0]
+        self.assertIn(p["nivel_confianza"], ("ALTA", "MEDIA", "BAJA"))
+        self.assertIn("prob_pick_pct", p)
+
+    def test_umbrales_nivel_confianza(self):
+        self.assertEqual(mp._nivel_confianza_1x2(60.0), "ALTA")
+        self.assertEqual(mp._nivel_confianza_1x2(45.0), "MEDIA")
+        self.assertEqual(mp._nivel_confianza_1x2(30.0), "BAJA")
+
 
 class TestSurvivor(unittest.TestCase):
     def _pronos(self):

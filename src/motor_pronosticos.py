@@ -75,6 +75,15 @@ def _explicar_partido(p: Dict[str, Any]) -> Dict[str, str]:
     return {"explicacion_1x2": e1, "explicacion_ou": e2}
 
 
+def _nivel_confianza_1x2(prob_pick_pct: float) -> str:
+    """Confianza del pronóstico 1X2 según la probabilidad del resultado elegido."""
+    if prob_pick_pct >= 55.0:
+        return "ALTA"
+    if prob_pick_pct >= 42.0:
+        return "MEDIA"
+    return "BAJA"
+
+
 def pronosticar_partido(
     home: str, away: str, fuerzas: Dict[str, Any]
 ) -> Optional[Dict[str, Any]]:
@@ -83,6 +92,7 @@ def pronosticar_partido(
         return None
     p = pm.pronostico(home, away, fuerzas)
     exp = _explicar_partido(p)
+    prob_pick = max(p["prob_local_pct"], p["prob_empate_pct"], p["prob_visitante_pct"])
     return {
         "local": home,
         "visitante": away,
@@ -90,6 +100,8 @@ def pronosticar_partido(
         "prob_local_pct": p["prob_local_pct"],
         "prob_empate_pct": p["prob_empate_pct"],
         "prob_visitante_pct": p["prob_visitante_pct"],
+        "prob_pick_pct": round(prob_pick, 2),
+        "nivel_confianza": _nivel_confianza_1x2(prob_pick),
         "goles_esperados_local": p["lambda_local"],
         "goles_esperados_visitante": p["lambda_visitante"],
         "pick_ou": p["pick_ou"],
