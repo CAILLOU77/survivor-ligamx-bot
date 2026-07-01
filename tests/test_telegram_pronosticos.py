@@ -92,8 +92,9 @@ class TestEnviar(unittest.TestCase):
         with mock.patch.object(tp.motor, "generar_pronosticos", return_value=_resultado()):
             with mock.patch.object(tp.motor, "motivacion_por_equipo", return_value={}):
                 with mock.patch.object(tp, "_contexto_top_pick", return_value=None):
-                    with mock.patch.object(tp, "enviar_mensaje", return_value=True) as menv:
-                        r = tp.enviar_pronosticos()
+                    with mock.patch.object(tp, "_partidos_jugados_torneo", return_value=100):
+                        with mock.patch.object(tp, "enviar_mensaje", return_value=True) as menv:
+                            r = tp.enviar_pronosticos()
         self.assertTrue(r["enviado"])
         self.assertEqual(r["total_pronosticos"], 1)
         menv.assert_called_once()
@@ -102,9 +103,10 @@ class TestEnviar(unittest.TestCase):
         # incluir_contexto=False no debe intentar resolver el dossier.
         with mock.patch.object(tp.motor, "generar_pronosticos", return_value=_resultado()):
             with mock.patch.object(tp.motor, "motivacion_por_equipo", return_value={}):
-                with mock.patch.object(tp, "_contexto_top_pick") as mctx:
-                    with mock.patch.object(tp, "enviar_mensaje", return_value=True):
-                        tp.enviar_pronosticos(incluir_contexto=False)
+                with mock.patch.object(tp, "_partidos_jugados_torneo", return_value=100):
+                    with mock.patch.object(tp, "_contexto_top_pick") as mctx:
+                        with mock.patch.object(tp, "enviar_mensaje", return_value=True):
+                            tp.enviar_pronosticos(incluir_contexto=False)
         mctx.assert_not_called()
 
 

@@ -146,5 +146,48 @@ class TestSurvivor(unittest.TestCase):
         self.assertEqual(mp._nivel_pick(80.0, None), "ALTA")  # sin info de victoria
 
 
+class TestEstrategia(unittest.TestCase):
+    def _pronos(self):
+        # Local fuerte (no-perder 82) vs Visitante fuerte (no-perder 84).
+        return [
+            {"local": "Casa", "visitante": "Rival1", "prob_local_pct": 62.0,
+             "prob_empate_pct": 20.0, "prob_visitante_pct": 18.0,
+             "no_perder_local_pct": 82.0, "no_perder_visitante_pct": 40.0},
+            {"local": "Rival2", "visitante": "Visita", "prob_local_pct": 16.0,
+             "prob_empate_pct": 18.0, "prob_visitante_pct": 66.0,
+             "no_perder_local_pct": 34.0, "no_perder_visitante_pct": 84.0},
+        ]
+
+    def test_cautela_por_pocos_datos(self):
+        r = mp.mejores_picks_estrategico(self._pronos(), partidos_jugados_torneo=0)
+        self.assertTrue(r["cautela"])
+        self.assertIsNotNone(r["advertencia"])
+
+    def test_sin_dato_es_cauteloso(self):
+        r = mp.mejores_picks_estrategico(self._pronos(), partidos_jugados_torneo=None)
+        self.assertTrue(r["cautela"])
+
+    def test_temporada_avanzada_sin_cautela(self):
+        r = mp.mejores_picks_estrategico(self._pronos(), partidos_jugados_torneo=100)
+        self.assertFalse(r["cautela"])
+        self.assertIsNone(r["advertencia"])
+
+    def test_local_preferido_sobre_visitante_en_arranque(self):
+        # En cautela, el LOCAL (82) debe ganarle al VISITANTE (84) por la penalización.
+        r = mp.mejores_picks_estrategico(self._pronos(), partidos_jugados_torneo=0, n=1)
+        self.assertEqual(r["picks"][0]["equipo"], "Casa")
+        self.assertEqual(r["picks"][0]["condicion"], "Local")
+
+    def test_favorito_visitante_no_es_alta(self):
+        # Un favorito visitante fuerte no puede etiquetarse 'ALTA' (riesgo sorpresa).
+        r = mp.mejores_picks_estrategico(self._pronos(), partidos_jugados_torneo=100)
+        visita = next(p for p in r["picks"] if p["equipo"] == "Visita")
+        self.assertNotEqual(visita["nivel"], "ALTA")
+
+    def test_incluye_razon(self):
+        r = mp.mejores_picks_estrategico(self._pronos(), partidos_jugados_torneo=0, n=2)
+        self.assertTrue(all(p.get("razon") for p in r["picks"]))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

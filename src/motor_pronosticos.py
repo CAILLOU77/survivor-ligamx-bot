@@ -206,6 +206,94 @@ def mejor_pick_survivor(
     return tops[0] if tops else None
 
 
+# ---------------------------------------------------------------------------
+# Capa ESTRATÉGICA: cautela de arranque + anti-sorpresa (favorito visitante).
+# ---------------------------------------------------------------------------
+# Debajo de este # de partidos jugados del torneo, estamos en "arranque":
+# pocos datos frescos y muchas sorpresas => modo cauteloso.
+UMBRAL_CAUTELA_PARTIDOS = 27  # ~3 jornadas de 9 partidos
+# Penalización (en puntos de no-perder) a los favoritos VISITANTES: se midió que
+# el favorito visitante falla ~58% vs ~44% del local (analisis_riesgo).
+PEN_VISITANTE = 4.0
+PEN_VISITANTE_CAUTELA = 8.0
+
+
+def _razon_pick(c: Dict[str, Any], es_local: bool, cautela: bool) -> str:
+    """Explica en una frase por qué (o por qué no) conviene este pick."""
+    rival_mot = (c.get("rival_motivacion") or "").lower()
+    if es_local:
+        base = "Favorito de LOCAL (los locales fallan menos que los visitantes)."
+        if rival_mot == "baja":
+            base = "Local vs rival sin presión (eliminado/relajado): el escenario más seguro."
+    else:
+        base = "Favorito VISITANTE ⚠️ ojo: de visita hay más sorpresas; úsalo solo si no hay buen local."
+    if cautela:
+        base += " Arranque de torneo: voy conservador."
+    return base
+
+
+def _nivel_estrategico(no_perder: float, win: Optional[float], es_local: bool, cautela: bool) -> str:
+    """Confianza ajustada por sorpresa: castiga visitantes y sube el listón en arranque."""
+    nivel = _nivel_pick(no_perder, win)
+    if not es_local and nivel == "ALTA":
+        nivel = "MEDIA"  # favorito visitante nunca es 'ALTA' (riesgo de sorpresa)
+    if cautela and nivel == "ALTA" and no_perder < 80.0:
+        nivel = "MEDIA"  # en arranque, ALTA exige margen alto de no-perder
+    return nivel
+
+
+def mejores_picks_estrategico(
+    pronosticos: Sequence[Dict[str, Any]],
+    equipos_usados: Optional[Sequence[str]] = None,
+    motivacion: Optional[Dict[str, Dict[str, Any]]] = None,
+    partidos_jugados_torneo: Optional[int] = None,
+    n: int = 3,
+) -> Dict[str, Any]:
+    """
+    Pick de Survivor con ESTRATEGIA anti-sorpresa y cautela de arranque.
+
+    Sobre el ranking base (no-perder + victoria + motivación del rival) aplica:
+      - Penalización a favoritos VISITANTES (fallan más).
+      - Cautela cuando el torneo tiene POCOS partidos jugados (`partidos_jugados_torneo`
+        bajo o desconocido => modo cauteloso: penaliza más al visitante y sube el
+        listón de confianza). "Sin datos" => por defecto cauteloso.
+      - `razon` (explicación) y `nivel` ajustado por sorpresa a cada candidato.
+
+    Devuelve {cautela, partidos_jugados_torneo, advertencia, picks}.
+    """
+    cautela = (partidos_jugados_torneo is None) or (partidos_jugados_torneo < UMBRAL_CAUTELA_PARTIDOS)
+    pen = PEN_VISITANTE_CAUTELA if cautela else PEN_VISITANTE
+
+    base = list(mejores_picks_survivor(pronosticos, equipos_usados, motivacion, n=10_000))
+    for c in base:
+        es_local = c.get("condicion") == "Local"
+        c["_score"] = float(c.get("no_perder_pct") or 0.0) - (0.0 if es_local else pen)
+        c["nivel"] = _nivel_estrategico(
+            float(c.get("no_perder_pct") or 0.0), c.get("prob_victoria_pct"), es_local, cautela
+        )
+        c["razon"] = _razon_pick(c, es_local, cautela)
+    base.sort(
+        key=lambda c: (c["_score"], c.get("prob_victoria_pct") or 0.0, _rank_motivacion(c.get("rival_motivacion"))),
+        reverse=True,
+    )
+    for c in base:
+        c.pop("_score", None)
+
+    advertencia = None
+    if cautela:
+        advertencia = (
+            "⚠️ Arranque de torneo (pocos datos aún): priorizo LOCALES, evito favoritos "
+            "visitantes y guardo a los equipos fuertes para jornadas difíciles. "
+            "Las primeras semanas traen sorpresas."
+        )
+    return {
+        "cautela": cautela,
+        "partidos_jugados_torneo": partidos_jugados_torneo,
+        "advertencia": advertencia,
+        "picks": base[: max(0, n)],
+    }
+
+
 # Rango de "qué tan conveniente es el rival" (rival menos motivado = más seguro).
 _RANK_MOTIVACION = {"baja": 3.0, "n/a": 2.0, "media": 1.0, "alta": 0.0}
 
