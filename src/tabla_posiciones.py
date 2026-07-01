@@ -175,8 +175,30 @@ def _fetch_standings() -> Dict[str, Any]:
 
 
 def obtener_tabla() -> Dict[str, Any]:
-    """Baja la tabla actual de Liga MX desde ESPN y la anota con motivación."""
-    return tabla_con_motivacion(parsear_standings(_fetch_standings()))
+    """
+    Tabla actual de Liga MX anotada con motivación. ESPN es la fuente primaria;
+    si ESPN falla, cae a la Liga MX API (proyecto hermano). Ambas producen el
+    mismo esquema intermedio, así que la motivación se calcula igual.
+    """
+    try:
+        return tabla_con_motivacion(parsear_standings(_fetch_standings()))
+    except Exception:
+        parsed = _tabla_desde_ligamx()
+        if parsed.get("tabla"):
+            return tabla_con_motivacion(parsed)
+        raise
+
+
+def _tabla_desde_ligamx() -> Dict[str, Any]:
+    """Tabla intermedia desde la Liga MX API (respaldo). {} si no está disponible."""
+    try:
+        import ligamx_api
+    except ImportError:  # pragma: no cover
+        from src import ligamx_api  # type: ignore
+    try:
+        return ligamx_api.tabla_normalizada()
+    except Exception:  # pragma: no cover - error de red
+        return {"torneo": "", "tabla": []}
 
 
 def main() -> int:

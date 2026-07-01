@@ -3,7 +3,7 @@
 ## 1. Identidad
 - **Repo:** `BRUCEWAYNE0180/survivor-ligamx-bot` · rama principal `main`
 - **Stack:** Python **3.12**, FastAPI (web en **Render**: `survivor-ligamx-bot.onrender.com`), Postgres (prod) / SQLite (local)
-- **Estado:** **481 tests** ✅ · **ruff** limpio · **CI corre lint+tests** en cada PR
+- **Estado:** **284 tests** ✅ · **ruff** limpio · **CI corre lint+tests** en cada PR
 - **Objetivo:** asistir decisiones de **Survivor Liga MX** + pronósticos (1X2, O/U, BTTS) para el **Apertura 2026** (arranca ~17 de julio).
 
 ## 2. REGLA MÁXIMA (no negociable)
@@ -22,7 +22,7 @@ ESPN API (gratis, sin key) + TheSportsDB (respaldo)
 Modelos: `poisson_model` (default) y `dixon_coles_mle` (alternativa opcional, validada).
 
 ## 4. Endpoints web
-`/predicciones` · `/survivor?excluir=` · **`/jornada`** (todo-en-uno: pred+pick+top3+motivación+momios) · `/tabla` · `/valor` · `/valor/diagnostico` · **`/health/fuentes`** · `/stats` · `/history` · `/dashboard` · `/health` · `/cron/backtest` (validación REAL diaria) · `/docs`
+`/predicciones` · `/survivor?excluir=` · **`/jornada`** (todo-en-uno: pred+pick+top3+motivación+momios) · **`/plan-survivor`** (estrategia de temporada: qué equipo en cada jornada) · **`/analisis/riesgo`** (¿cuándo falla el favorito?) · **`/analisis-partido?home=&away=`** (dossier Liga MX API: predicción+forma+tarjetas+h2h) · `/tabla` · `/valor` · `/valor/diagnostico` · **`/health/fuentes`** · `/stats` · `/history` · `/dashboard` · `/health` · `/cron/backtest` (validación REAL diaria) · `POST /alerts/pronosticos` · `POST /alerts/plan` · `/docs`
 
 ## 5. Lo que se hizo en sesiones previas (todo en `main`)
 **Modelo (lo grande):**
@@ -51,21 +51,25 @@ Modelos: `poisson_model` (default) y `dixon_coles_mle` (alternativa opcional, va
 - `/tabla` con **motivación** por equipo, usada como desempate del pick Survivor.
 
 ## 6. Módulos clave (vigentes)
-`fuentes_datos`, `espn_data`, `poisson_model`, `dixon_coles_mle`, `motor_pronosticos`, `tabla_posiciones`, `reglas_liga_mx`, `comparador_mercado`, `telegram_pronosticos`, `telegram_notifier`, `validacion_modelo`, `simulador_survivor`, `backtest_engine`, `database`, `api.py` + `routers/`.
+`fuentes_datos`, `espn_data`, `ligamx_api`, `poisson_model`, `dixon_coles_mle`, `motor_pronosticos`, `planificador_survivor`, `analisis_riesgo`, `tabla_posiciones`, `reglas_liga_mx`, `team_normalizer`, `comparador_mercado`, `assisted_odds_import`, `telegram_pronosticos`, `telegram_notifier`, `validacion_modelo`, `backtesting`, `simulador_survivor`, `backtest_engine`, `database`, `api.py` + `routers/` (`predicciones`, `cron_router`).
 
 ## 7. ⏳ LO QUE FALTA (para el arranque, ~2 semanas)
 **🔑 Setup en Render/GitHub (lo único bloqueante):**
-1. Render → Environment: confirmar `ODDS_API_IO_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `DATABASE_URL`, y agregar **`API_KEY`** (clave fuerte).
+1. Render → Environment: `API_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `ODDS_API_IO_KEY` y `DATABASE_URL` = la de **Neon** (`neondb`, base PROPIA del bot; NO la `ligamx_api_db` de la API hermana; `REDIS_URL`/`SYNC_API_KEY` son de la API, no de este bot).
 2. GitHub → Settings → Secrets → Actions: agregar secret **`API_KEY`** con el mismo valor (para que el workflow de alertas funcione).
+   > ✅ Validado en local (jul-2026): Telegram (ping OK), odds-api.io (`habilitado:true`, 90 eventos) y Postgres Neon (`init_db` OK). Credenciales cargadas en `.env` local (gitignored). `database.py` arreglado para NO duplicar `sslmode` cuando la URL ya lo trae (Neon).
 
 **📅 Cuando arranque el Apertura (mediados de julio):**
-3. Verificar `/valor/diagnostico` → que aparezcan casas con momios (`eventos_con_odds_por_casa > 0`); luego validar `/valor`.
-4. Recalibrar el modelo con datos frescos: `python3 src/validacion_modelo.py`.
-5. Correr el backtest del juego: `python3 src/simulador_survivor.py`.
+3. **Generar `data/calendario.json`** con las 17 jornadas (lo necesita el planificador / `/plan-survivor`; sin él responde `calendario_incompleto`): `python3 scripts/import_calendario.py`. Fuente primaria: **Liga MX API** (`src/ligamx_api.py`, `/calendar`); fallback a ESPN. Config en `LIGAMX_API_URL` (default `https://ligamx-api.onrender.com`); estado en `/health/fuentes`.
+   > ✅ El agrupado de jornadas se RE-DERIVA de las fechas reales (regla round-robin en `construir_calendario`), no del campo `jornada` del upstream —que venía mal (16 jornadas, J1=11, J12=18)—. Verificado: produce **17 jornadas × 9** limpias. El script avisa si algo no cuadra.
+   > ℹ️ La Liga MX API HOY solo tiene el Apertura 2026 sin jugar (0 resultados finalizados, `/seasons` sin históricos), así que NO puede alimentar el modelo todavía. Cuando haya partidos jugados, activar `LIGAMX_API_AS_SOURCE=1` para usarla como fuente de resultados del modelo.
+4. Verificar `/valor/diagnostico` → que aparezcan casas con momios (`eventos_con_odds_por_casa > 0`); luego validar `/valor`.
+5. Recalibrar el modelo con datos frescos: `python3 src/validacion_modelo.py`.
+6. Correr el backtest del juego: `python3 src/simulador_survivor.py`.
 
 **🟡 Opcionales / deuda menor:**
-6. Subir cobertura de los módulos que se conserven.
-7. Mejora de modelo solo con datos reales en mano (forma por torneo, etc.) — medir siempre con `validacion_modelo`.
+7. Subir cobertura de la capa web/persistencia (sin test directo: `api.py`, `database.py`, `telegram_notifier.py`, `routers/cron_router.py`).
+8. Mejora de modelo solo con datos reales en mano (forma por torneo, etc.) — medir siempre con `validacion_modelo`.
 
 ## 8. Notas operativas (gotchas)
 - **Merges a main:** PRs normales los puede mergear el agente; los que tocan **`.github/workflows/`** los **mergea el usuario** (barrera de seguridad).

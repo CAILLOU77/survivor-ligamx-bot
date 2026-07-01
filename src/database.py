@@ -35,7 +35,13 @@ def get_db():
     """Conexión al backend activo. Cierra siempre al salir."""
     if USE_POSTGRES:
         import psycopg2
-        conn = psycopg2.connect(DATABASE_URL, sslmode="require")
+        # Neon/algunas URLs ya incluyen `sslmode=...` (y `channel_binding=...`)
+        # en la query string; pasarlo TAMBIÉN como kwarg provoca error de
+        # "parámetro duplicado". Solo forzamos sslmode si la URL no lo trae.
+        if "sslmode=" in DATABASE_URL:
+            conn = psycopg2.connect(DATABASE_URL)
+        else:
+            conn = psycopg2.connect(DATABASE_URL, sslmode="require")
     else:
         import sqlite3
         carpeta = os.path.dirname(SQLITE_PATH)

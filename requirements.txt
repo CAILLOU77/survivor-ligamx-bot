@@ -1,5 +1,6 @@
 # Dependencias del bot Survivor Liga MX (versiones fijadas para builds reproducibles).
-# Probadas con Python 3.9. Actualiza con cuidado y corre `pytest tests/` antes de subir.
+# Probadas con Python 3.12 (ver runtime.txt). Actualiza con cuidado y corre
+# `pytest tests/` antes de subir.
 
 # Web / API
 fastapi==0.128.8

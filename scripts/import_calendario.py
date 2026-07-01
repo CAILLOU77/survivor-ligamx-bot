@@ -2,19 +2,25 @@
 """
 import_calendario.py — Construye data/calendario.json para el planificador.
 
-Toma los fixtures PROGRAMADOS de ESPN (cuando ya publicaron el calendario del
-torneo) y los agrupa en jornadas (por fin de semana ISO), produciendo el
-esquema que consume src/planificador_survivor.py:
+Fuentes (en orden de preferencia):
+  1. **Liga MX API** (`src/ligamx_api.py`, `/calendar`) — YA viene agrupada por
+     jornada oficial, así que es la fuente preferida y más fiable.
+  2. **ESPN** (fallback) — fixtures programados agrupados heurísticamente por
+     fin de semana; se usa si la Liga MX API no está disponible o con `--fuente espn`.
+
+Produce el esquema que consume src/planificador_survivor.py:
 
     [{"jornada": 1, "partidos": [{"home_team","away_team"}, ...]}, ...]
 
-NO hace scraping (usa la API pública JSON de ESPN), NO toca picks, NO envía
-Telegram. Solo escribe data/calendario.json para uso del planificador.
+NO hace scraping (usa APIs públicas JSON), NO toca picks, NO envía Telegram.
+Solo escribe data/calendario.json para uso del planificador.
 
 Uso:
-    python3 scripts/import_calendario.py            # baja de ESPN y escribe
-    python3 scripts/import_calendario.py --dias 170 # ventana hacia adelante
-    python3 scripts/import_calendario.py --dry-run  # muestra, no escribe
+    python3 scripts/import_calendario.py                 # Liga MX API -> ESPN fallback
+    python3 scripts/import_calendario.py --fuente espn   # fuerza ESPN
+    python3 scripts/import_calendario.py --fuente ligamx # fuerza Liga MX API
+    python3 scripts/import_calendario.py --dias 170      # ventana ESPN hacia adelante
+    python3 scripts/import_calendario.py --dry-run       # muestra, no escribe
 """
 from __future__ import annotations
 
@@ -100,31 +106,74 @@ def construir_calendario(
     return [{"jornada": i, "partidos": g["partidos"]} for i, g in enumerate(grupos, start=1)]
 
 
+def _calendario_desde_ligamx() -> List[Dict[str, Any]]:
+    """
+    Calendario desde la Liga MX API. Toma la lista PLANA de partidos (con sus
+    fechas reales) y RE-DERIVA las jornadas con `construir_calendario` (regla
+    round-robin), en vez de confiar en el campo `jornada` del upstream —que a
+    veces agrupa mal (J1=11, J12=18, 16 jornadas). Así se obtienen 17×9 limpias.
+    Lanza si la API falla.
+    """
+    import ligamx_api  # noqa: E402
+    fixtures = ligamx_api.fixtures_planos()
+    return construir_calendario(fixtures)
+
+
+def _calendario_desde_espn(dias: int) -> List[Dict[str, Any]]:
+    """Calendario desde ESPN (fixtures programados + agrupado heurístico)."""
+    import espn_data  # noqa: E402
+    fixtures = espn_data.obtener_fixtures_futuros(dias)
+    return construir_calendario(fixtures)
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Construye data/calendario.json desde ESPN.")
-    parser.add_argument("--dias", type=int, default=160, help="Ventana hacia adelante (días).")
+    parser = argparse.ArgumentParser(description="Construye data/calendario.json.")
+    parser.add_argument("--fuente", choices=["auto", "ligamx", "espn"], default="auto",
+                        help="Fuente del calendario (auto = Liga MX API con fallback a ESPN).")
+    parser.add_argument("--dias", type=int, default=160, help="Ventana ESPN hacia adelante (días).")
     parser.add_argument("--dry-run", action="store_true", help="Muestra sin escribir.")
     parser.add_argument("--output", default=str(CALENDARIO_PATH))
     args = parser.parse_args()
 
-    import espn_data  # noqa: E402
+    calendario: List[Dict[str, Any]] = []
 
-    print(f"📥 Bajando fixtures programados de ESPN (próximos {args.dias} días)...")
-    try:
-        fixtures = espn_data.obtener_fixtures_futuros(args.dias)
-    except Exception as exc:  # pragma: no cover - error de red
-        print(f"⚠️  No se pudo consultar ESPN: {exc}")
-        return 1
+    # 1) Liga MX API (preferida): ya viene agrupada por jornada oficial.
+    if args.fuente in ("auto", "ligamx"):
+        print("📥 Bajando calendario de la Liga MX API (/calendar)...")
+        try:
+            calendario = _calendario_desde_ligamx()
+            if calendario:
+                print(f"✅ Liga MX API: {len(calendario)} jornadas.")
+        except Exception as exc:  # pragma: no cover - error de red
+            print(f"⚠️  Liga MX API no disponible: {exc}")
+            if args.fuente == "ligamx":
+                return 1
 
-    calendario = construir_calendario(fixtures)
+    # 2) ESPN (fallback) si no hubo calendario y no se forzó ligamx.
+    if not calendario and args.fuente != "ligamx":
+        print(f"📥 Bajando fixtures programados de ESPN (próximos {args.dias} días)...")
+        try:
+            calendario = _calendario_desde_espn(args.dias)
+        except Exception as exc:  # pragma: no cover - error de red
+            print(f"⚠️  No se pudo consultar ESPN: {exc}")
+            return 1
+
     total_partidos = sum(len(j["partidos"]) for j in calendario)
     print(f"✅ {len(calendario)} jornadas, {total_partidos} partidos.")
     if not calendario:
-        print("   (ESPN aún no publica el calendario del torneo, o no hay fixtures "
-              "en la ventana. Reintenta cerca del arranque, ~17-jul.)")
+        print("   (Ninguna fuente publicó el calendario todavía. Reintenta cerca "
+              "del arranque, ~17-jul.)")
         return 0
     for j in calendario:
         print(f"  J{j['jornada']:>2}: {len(j['partidos'])} partidos")
+
+    # Aviso de calidad: Liga MX regular = 17 jornadas de 9 partidos cada una.
+    anomalas = [j["jornada"] for j in calendario if len(j["partidos"]) != 9]
+    if len(calendario) != 17 or anomalas:
+        print("⚠️  El calendario no luce como 17 jornadas × 9 partidos "
+              f"({len(calendario)} jornadas; jornadas != 9 partidos: {anomalas}).")
+        print("    Puede ser un agrupado imperfecto de la fuente. Revisa antes de "
+              "confiar en el plan; alternativa: --fuente espn.")
 
     if args.dry_run:
         print("(dry-run: no se escribió nada)")

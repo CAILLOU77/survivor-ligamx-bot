@@ -28,6 +28,34 @@ DISCLAIMER = "ℹ️ Informativo / revisión humana. No es consejo de apuesta."
 _MAX_PARTIDOS = 9
 
 
+def _formatear_contexto(ctx: Optional[Dict[str, Any]]) -> List[str]:
+    """Bloque HTML compacto con el contexto de la Liga MX API para el pick #1."""
+    if not ctx or ctx.get("nota"):
+        return []
+    lineas: List[str] = []
+    pred = ctx.get("prediccion_api")
+    forma_l, forma_v = ctx.get("forma_local"), ctx.get("forma_visita")
+    riesgo_l = ctx.get("en_riesgo_local") or []
+    riesgo_v = ctx.get("en_riesgo_visita") or []
+    h2h = ctx.get("h2h")
+    if not (pred or forma_l or forma_v or riesgo_l or riesgo_v or h2h):
+        return []  # pretemporada: sin datos aún, no ensuciar el mensaje
+
+    lineas.append(f"🔎 <b>Contexto (Liga MX API)</b> — {ctx.get('home')} vs {ctx.get('away')}:")
+    if pred:
+        lineas.append(
+            f"    2ª opinión API: L{pred['prob_local_pct']}/E{pred['prob_empate_pct']}/"
+            f"V{pred['prob_visita_pct']} · goles {pred['goles_esp']}"
+        )
+    if forma_l or forma_v:
+        lineas.append(f"    Forma: {ctx.get('home')} {forma_l or '—'} · {ctx.get('away')} {forma_v or '—'}")
+    if riesgo_l:
+        lineas.append(f"    ⚠️ En riesgo ({ctx.get('home')}): {', '.join(riesgo_l)}")
+    if riesgo_v:
+        lineas.append(f"    ⚠️ En riesgo ({ctx.get('away')}): {', '.join(riesgo_v)}")
+    return lineas
+
+
 def _resumen_mercado(mercado: Optional[Dict[str, Any]]) -> Optional[str]:
     """Línea concisa con lo que ve el mercado (favorito, O/U, hándicap, valor)."""
     if not mercado:
@@ -53,8 +81,13 @@ def construir_mensaje(
     resultado: Dict[str, Any],
     equipos_usados: Optional[List[str]] = None,
     motivacion: Optional[Dict[str, Dict[str, Any]]] = None,
+    contexto_pick: Optional[Dict[str, Any]] = None,
 ) -> str:
-    """Arma el mensaje (HTML) de pronósticos a partir de la salida del motor."""
+    """Arma el mensaje (HTML) de pronósticos a partir de la salida del motor.
+
+    `contexto_pick`: dossier compacto de la Liga MX API para el pick #1
+    (opcional; ya resuelto por el orquestador para no meter red aquí).
+    """
     pronosticos = resultado.get("pronosticos", [])
     fuente = resultado.get("fuente_datos", "?")
     fecha = resultado.get("generado_utc", "")
@@ -79,6 +112,10 @@ def construir_mensaje(
                 f"{medallas[i] if i < 3 else '•'} {pk['equipo']} "
                 f"({pk['condicion']} vs {pk['rival']}) — {g}no-perder {pk['no_perder_pct']}%{nv}{extra}"
             )
+        contexto_lineas = _formatear_contexto(contexto_pick)
+        if contexto_lineas:
+            lineas.append("")
+            lineas.extend(contexto_lineas)
         lineas.append("")
 
     if pronosticos:
@@ -122,11 +159,36 @@ def enviar_mensaje(mensaje: str) -> bool:
         return False
 
 
-def enviar_pronosticos(equipos_usados: Optional[List[str]] = None) -> Dict[str, Any]:
+def _contexto_top_pick(pronosticos: List[Dict[str, Any]],
+                       equipos_usados: Optional[List[str]],
+                       motivacion: Optional[Dict[str, Dict[str, Any]]]) -> Optional[Dict[str, Any]]:
+    """Dossier compacto (Liga MX API) del pick #1. Tolerante: None si algo falla."""
+    try:
+        try:
+            import ligamx_api as lmx
+        except ImportError:  # pragma: no cover
+            from src import ligamx_api as lmx  # type: ignore
+        tops = motor.mejores_picks_survivor(pronosticos, equipos_usados, motivacion, n=1)
+        if not tops:
+            return None
+        pk = tops[0]
+        if pk.get("condicion") == "Local":
+            home, away = pk["equipo"], pk["rival"]
+        else:
+            home, away = pk["rival"], pk["equipo"]
+        return lmx.resumen_partido(home, away)
+    except Exception:  # pragma: no cover - nunca debe tumbar el envío
+        return None
+
+
+def enviar_pronosticos(equipos_usados: Optional[List[str]] = None,
+                       incluir_contexto: bool = True) -> Dict[str, Any]:
     """
     Genera pronósticos reales y los envía por Telegram, enriquecidos con:
-    - momios/valor del mercado (si hay ODDS_API_IO_KEY; si no, no-op), y
-    - motivación de la tabla (defensivo; {} si no hay red).
+    - momios/valor del mercado (si hay ODDS_API_IO_KEY; si no, no-op),
+    - motivación de la tabla (defensivo; {} si no hay red), y
+    - contexto de la Liga MX API para el pick #1 (forma/tarjetas/2ª opinión),
+      si `incluir_contexto` (tolerante: si no hay datos aún, no aparece).
     """
     resultado = motor.generar_pronosticos()
     pronosticos = resultado.get("pronosticos", [])
@@ -150,7 +212,12 @@ def enviar_pronosticos(equipos_usados: Optional[List[str]] = None) -> Dict[str, 
     except Exception:  # pragma: no cover
         motivacion = {}
 
-    mensaje = construir_mensaje(resultado, equipos_usados, motivacion)
+    contexto_pick = None
+    if incluir_contexto:
+        contexto_pick = _contexto_top_pick(resultado.get("pronosticos", []),
+                                           equipos_usados, motivacion)
+
+    mensaje = construir_mensaje(resultado, equipos_usados, motivacion, contexto_pick)
     enviado = enviar_mensaje(mensaje)
     return {
         "enviado": enviado,

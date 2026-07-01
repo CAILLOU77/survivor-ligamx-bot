@@ -29,6 +29,11 @@ try:
 except ImportError:  # pragma: no cover
     from src import espn_data  # type: ignore
 
+try:
+    import ligamx_api
+except ImportError:  # pragma: no cover
+    from src import ligamx_api  # type: ignore
+
 BASE_DIR = Path(__file__).resolve().parents[1]
 CACHE_PATH = BASE_DIR / "data" / "resultados_historicos.json"
 
@@ -101,9 +106,21 @@ def obtener_resultados(meses: int = 6, minimo: int = MIN_ACEPTABLE) -> Dict[str,
     """
     Devuelve resultados con redundancia: {fuente, resultados, total}.
 
-    Cadena: ESPN -> TheSportsDB -> caché local. La fuente que tenga suficientes
-    datos gana; el resultado elegido se cachea para futuros respaldos.
+    Cadena: (Liga MX API, si LIGAMX_API_AS_SOURCE está activo) -> ESPN ->
+    TheSportsDB -> caché local. La fuente que tenga suficientes datos gana; el
+    resultado elegido se cachea para futuros respaldos.
     """
+    # 0) Liga MX API (opt-in): fuente curada del proyecto hermano. Solo si está
+    #    habilitada por entorno Y ya tiene partidos jugados (en pretemporada da []).
+    if ligamx_api.usar_como_fuente():
+        try:
+            lmx = ligamx_api.resultados_historicos()
+        except Exception:
+            lmx = []
+        if len(lmx) >= minimo:
+            guardar_cache(lmx)
+            return {"fuente": "LigaMX-API", "resultados": lmx, "total": len(lmx)}
+
     # 1) ESPN (primaria)
     try:
         espn = espn_data.obtener_resultados(meses)
@@ -175,8 +192,12 @@ def estado_fuentes() -> Dict[str, Any]:
     else:
         odds = {"ok": None, "estado": "deshabilitado (sin ODDS_API_IO_KEY)"}
 
+    # Liga MX API (proyecto hermano): fuente del calendario para el planificador.
+    ligamx_base = os.getenv("LIGAMX_API_URL", "https://ligamx-api.onrender.com").strip().rstrip("/")
+    ligamx = _ping(f"{ligamx_base}/health")
+
     return {
-        "fuentes": {"espn": espn, "thesportsdb": tsdb, "odds_api_io": odds},
+        "fuentes": {"espn": espn, "thesportsdb": tsdb, "odds_api_io": odds, "ligamx_api": ligamx},
         "ok_global": bool(espn.get("ok") or tsdb.get("ok")),
         "decision": "INFORMATIVO / REVISIÓN HUMANA",
     }

@@ -4,7 +4,7 @@ Asistente **informativo** para decisiones de **Survivor Liga MX** y pronósticos
 de partidos (1X2, Over/Under, BTTS, marcador). **No apuesta ni envía picks
 automáticos**: toda salida es informativa y para revisión humana.
 
-![Python](https://img.shields.io/badge/Python-3.9%2B-blue)
+![Python](https://img.shields.io/badge/Python-3.12-blue)
 ![CI](https://github.com/BRUCEWAYNE0180/survivor-ligamx-bot/workflows/CI%2FCD/badge.svg)
 
 ## Arquitectura (ESPN + Poisson)
@@ -44,16 +44,22 @@ ESPN fixtures ───────────────────┼──
 |---|---|
 | `GET /predicciones` | 1X2 / Over-Under / BTTS / marcador por partido próximo |
 | `GET /survivor?excluir=America,Toluca` | mejor equipo "no perder" (excluye usados) |
+| `GET /jornada?excluir=` | todo-en-uno: predicciones + pick + top-3 + motivación + momios |
+| `GET /plan-survivor?excluir=&peso_victoria=0.5` | **estrategia de temporada**: qué equipo usar en cada jornada (requiere `data/calendario.json`) |
+| `GET /analisis/riesgo` | ¿cuándo falla el favorito? (análisis de upsets, datos reales) |
+| `GET /analisis-partido?home=America&away=Toluca` | dossier de un partido (Liga MX API): predicción + forma + tarjetas + rachas + h2h |
 | `GET /tabla` | tabla de ESPN + **motivación** por equipo (zona, vivo/eliminado) |
 | `GET /valor` | predicciones + comparación vs **mercado** (si hay momios) |
 | `GET /valor/diagnostico` | diagnóstico de la conexión de momios (sin exponer la key) |
+| `GET /health/fuentes` | salud de las fuentes (ESPN / TheSportsDB / odds) |
 | `POST /alerts/pronosticos` | envía el resumen por Telegram (real) |
+| `POST /alerts/plan` | envía el plan de temporada por Telegram |
 | `POST /cron/backtest` | **validación real** del modelo vs ESPN (cron diario) |
 | `GET /stats`, `GET /history`, `GET /dashboard`, `GET /health`, `GET /docs` | métricas, historial, dashboard, salud, OpenAPI |
 
 ## Instalación
 
-Requiere **Python 3.9+**.
+Requiere **Python 3.12** (ver `runtime.txt`).
 
 ```bash
 git clone https://github.com/BRUCEWAYNE0180/survivor-ligamx-bot.git
@@ -134,6 +140,42 @@ python3 -m pytest tests/
 
 El workflow `.github/workflows/ci.yml` instala dependencias y **corre toda la
 suite** en cada push y pull request.
+
+## Calendario de la temporada — Liga MX API (para el planificador)
+
+El planificador de Survivor (`/plan-survivor`) necesita el calendario completo
+de las 17 jornadas en `data/calendario.json`. Se genera con:
+
+```bash
+python3 scripts/import_calendario.py                 # Liga MX API -> fallback ESPN
+python3 scripts/import_calendario.py --fuente espn   # forzar ESPN
+python3 scripts/import_calendario.py --dry-run       # ver sin escribir
+```
+
+La fuente primaria es la **Liga MX API** (proyecto hermano,
+`https://ligamx-api.onrender.com`, sin key), que expone los fixtures del torneo
+vía `/calendar`. El cliente vive en `src/ligamx_api.py` y es **opcional y
+tolerante a fallos**: si la API está caída o dormida, el script cae a ESPN. Las
+jornadas se re-derivan de las **fechas reales** (regla round-robin), corrigiendo
+cualquier agrupado imperfecto del upstream → **17 jornadas × 9** limpias. Se
+configura con `LIGAMX_API_URL` / `LIGAMX_API_TIMEOUT` (ver `.env.example`) y su
+estado se ve en `GET /health/fuentes`.
+
+Cuando la temporada tenga partidos jugados, esta misma API puede alimentar el
+modelo Poisson con resultados reales: activa `LIGAMX_API_AS_SOURCE=1` y
+`fuentes_datos` la usará como fuente primaria (en pretemporada devuelve vacío y
+cae a ESPN, así que activarla no rompe nada).
+
+### Señales de enriquecimiento (Liga MX API)
+
+`src/ligamx_api.py` también expone señales por equipo y por partido que se
+juntan en un **dossier** vía `GET /analisis-partido?home=America&away=Toluca`:
+predictor de la API (2ª opinión), forma reciente, disciplina/tarjetas
+(jugadores en riesgo de suspensión), rachas, head-to-head, más utilidades de
+liga (proyección de tabla, power-ranking, goleadores, noticias/lesiones). Todo
+es **tolerante a fallos**: cada señal que la API aún no tenga (pretemporada)
+llega en `null`, sin romper el resto. El modelo local (ESPN + Poisson) sigue
+siendo la fuente de verdad del pick; esto es contexto informativo.
 
 ## Herramientas locales (opcionales)
 
