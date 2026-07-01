@@ -386,6 +386,23 @@ def jugadores_en_riesgo() -> Any:
     return _get("/players/discipline")
 
 
+def jugadores_en_riesgo_liga(limit: int = 20) -> Dict[str, Any]:
+    """
+    Versión compacta de /players/discipline: jugadores de TODA la liga en riesgo
+    de suspensión por acumulación de tarjetas. Devuelve {season, count, jugadores}.
+    En pretemporada (sin tarjetas aún) `jugadores` viene vacío. Tolerante.
+    """
+    d = jugadores_en_riesgo()
+    if not isinstance(d, dict):
+        return {"season": "", "count": 0, "jugadores": []}
+    players = d.get("players") or []
+    return {
+        "season": d.get("season", ""),
+        "count": int(d.get("count", len(players)) or 0),
+        "jugadores": players[: max(0, limit)],
+    }
+
+
 # ---------------------------------------------------------------------------
 # Enfrentamiento directo (H2H)
 # ---------------------------------------------------------------------------

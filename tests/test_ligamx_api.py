@@ -173,6 +173,26 @@ class TestPredecir(unittest.TestCase):
             self.assertEqual(kwargs["params"]["away"], 226)
 
 
+class TestJugadoresEnRiesgo(unittest.TestCase):
+    def test_compacto_con_limit(self):
+        raw = {"season": "Apertura 2026", "count": 3, "players": [
+            {"player": "A", "team": "T1", "yellow_cards": 4},
+            {"player": "B", "team": "T2", "yellow_cards": 4},
+            {"player": "C", "team": "T3", "yellow_cards": 4},
+        ]}
+        with mock.patch.object(api, "jugadores_en_riesgo", return_value=raw):
+            out = api.jugadores_en_riesgo_liga(limit=2)
+        self.assertEqual(out["season"], "Apertura 2026")
+        self.assertEqual(out["count"], 3)
+        self.assertEqual(len(out["jugadores"]), 2)
+
+    def test_pretemporada_vacio(self):
+        with mock.patch.object(api, "jugadores_en_riesgo", return_value={"season": "x", "count": 0, "players": []}):
+            out = api.jugadores_en_riesgo_liga()
+        self.assertEqual(out["count"], 0)
+        self.assertEqual(out["jugadores"], [])
+
+
 _TEAMS = [
     {"id": 205, "name": "Club América"},
     {"id": 234, "name": "Pachuca"},

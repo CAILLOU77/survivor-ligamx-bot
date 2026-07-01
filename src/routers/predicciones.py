@@ -296,3 +296,18 @@ def analisis_partido(home: str, away: str, prediccion: bool = True) -> Dict[str,
     except Exception as exc:  # pragma: no cover - fallback defensivo de red
         return {"home": home, "away": away, "error": str(exc),
                 "decision": "INFORMATIVO / REVISIÓN HUMANA"}
+
+
+@router.get("/jugadores-riesgo", summary="Jugadores en riesgo de suspensión (Liga MX API)")
+def jugadores_riesgo(limit: int = 20) -> Dict[str, Any]:
+    """
+    Jugadores de toda la liga en riesgo de suspensión por acumulación de tarjetas
+    (vía Liga MX API /players/discipline). Contexto de riesgo para el pick.
+    En pretemporada viene vacío. Informativo.
+    """
+    try:
+        return {**lmx.jugadores_en_riesgo_liga(limit=limit),
+                "decision": "INFORMATIVO / REVISIÓN HUMANA"}
+    except Exception as exc:  # pragma: no cover - fallback defensivo de red
+        return {"count": 0, "jugadores": [], "error": str(exc),
+                "decision": "INFORMATIVO / REVISIÓN HUMANA"}
