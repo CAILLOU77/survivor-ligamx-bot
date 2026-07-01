@@ -45,10 +45,10 @@ except ImportError:  # pragma: no cover - dependencia opcional ausente
     requests = None  # type: ignore[assignment]
 
 try:
-    from team_normalizer import display_team_name, canonical_team_key, team_aliases, clean_team_name
+    from team_normalizer import display_team_name, canonical_team_key, team_aliases, clean_team_name, teams_match
 except ImportError:  # pragma: no cover - ruta alterna de import
     from src.team_normalizer import (  # type: ignore
-        display_team_name, canonical_team_key, team_aliases, clean_team_name,
+        display_team_name, canonical_team_key, team_aliases, clean_team_name, teams_match,
     )
 
 DEFAULT_BASE_URL = "https://ligamx-api.onrender.com"
@@ -543,6 +543,72 @@ def jugadores_a_seguir(match_id: int) -> Dict[str, Any]:
 def partido_full(match_id: int) -> Dict[str, Any]:
     """/matches/{id}/full — todo el detalle del partido en una respuesta."""
     return _get(f"/matches/{match_id}/full")
+
+
+# ---------------------------------------------------------------------------
+# Alineaciones confirmadas (vía 365Scores) — señal "¿salió con suplentes?".
+# Se publican ~1h antes del inicio; antes de eso vienen vacías.
+# ---------------------------------------------------------------------------
+def eventos_365() -> List[Dict[str, Any]]:
+    """/365scores/matches — fixtures de la temporada actual con event_id de 365Scores."""
+    d = _get("/365scores/matches")
+    return d if isinstance(d, list) else []
+
+
+def evento_365_id(home: str, away: str) -> Optional[int]:
+    """Busca el event_id de 365Scores del partido home vs away (match flexible por nombre)."""
+    for m in eventos_365():
+        if teams_match(m.get("home_team", ""), home) and teams_match(m.get("away_team", ""), away):
+            eid = m.get("event_id")
+            return int(eid) if eid is not None else None
+    return None
+
+
+def _nombre_jugador(p: Dict[str, Any]) -> str:
+    for k in ("name", "player", "player_name", "full_name", "short_name"):
+        v = p.get(k) if isinstance(p, dict) else None
+        if v:
+            return str(v)
+    return ""
+
+
+def alineacion_365(event_id: int) -> Dict[str, Any]:
+    """
+    Alineación de un partido vía /365scores/matches/{id}/lineups, normalizada:
+    {disponible, equipos:[{equipo, condicion, formacion, titulares:[nombres]}]}.
+    `disponible=False` si aún no publican XI (pretemporada o >1h antes).
+    """
+    d = _get(f"/365scores/matches/{event_id}/lineups")
+    equipos: List[Dict[str, Any]] = []
+    disponible = False
+    for t in (d.get("teams", []) if isinstance(d, dict) else []):
+        players = t.get("players") or []
+        if players:
+            disponible = True
+        equipos.append({
+            "equipo": t.get("team_name", ""),
+            "condicion": t.get("home_away", ""),
+            "formacion": t.get("formation"),
+            "titulares": [n for n in (_nombre_jugador(p) for p in players) if n][:11],
+        })
+    return {"disponible": disponible, "equipos": equipos}
+
+
+def alineacion_de_partido(home: str, away: str) -> Dict[str, Any]:
+    """
+    Alineación confirmada de un partido por NOMBRE de equipo. Tolerante: si no se
+    encuentra el evento o aún no hay XI, devuelve disponible=False con nota.
+    """
+    eid = _safe(lambda: evento_365_id(home, away))
+    if not eid:
+        return {"disponible": False, "equipos": [],
+                "nota": "No se encontró el partido en 365Scores (¿nombres o temporada?)."}
+    r = _safe(lambda: alineacion_365(eid), None)
+    if r is None:
+        return {"disponible": False, "equipos": [], "event_id": eid,
+                "nota": "No se pudo leer la alineación (aún no publicada)."}
+    r["event_id"] = eid
+    return r
 
 
 # ---------------------------------------------------------------------------

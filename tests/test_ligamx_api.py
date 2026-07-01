@@ -384,5 +384,48 @@ class TestResumenPartido(unittest.TestCase):
         self.assertEqual(r["noticias"], [])
 
 
+class TestAlineacion(unittest.TestCase):
+    _EVENTOS = [
+        {"event_id": 111, "home_team": "Club América", "away_team": "Toluca"},
+        {"event_id": 222, "home_team": "Necaxa", "away_team": "Atlante"},
+    ]
+
+    def test_evento_365_id_match_flexible(self):
+        with mock.patch.object(api, "eventos_365", return_value=self._EVENTOS):
+            self.assertEqual(api.evento_365_id("America", "Toluca"), 111)
+            self.assertIsNone(api.evento_365_id("Pumas", "Cruz Azul"))
+
+    def test_alineacion_365_normaliza_y_disponible(self):
+        raw = {"teams": [
+            {"team_name": "América", "home_away": "home", "formation": "4-3-3",
+             "players": [{"name": "P1"}, {"name": "P2"}]},
+            {"team_name": "Toluca", "home_away": "away", "formation": None, "players": []},
+        ]}
+        with mock.patch.object(api, "_get", return_value=raw):
+            r = api.alineacion_365(111)
+        self.assertTrue(r["disponible"])            # hay jugadores en un equipo
+        self.assertEqual(r["equipos"][0]["formacion"], "4-3-3")
+        self.assertEqual(r["equipos"][0]["titulares"], ["P1", "P2"])
+
+    def test_alineacion_365_vacia(self):
+        raw = {"teams": [{"team_name": "A", "home_away": "home", "players": []}]}
+        with mock.patch.object(api, "_get", return_value=raw):
+            r = api.alineacion_365(111)
+        self.assertFalse(r["disponible"])
+
+    def test_alineacion_de_partido_sin_evento(self):
+        with mock.patch.object(api, "evento_365_id", return_value=None):
+            r = api.alineacion_de_partido("X", "Y")
+        self.assertFalse(r["disponible"])
+        self.assertIn("nota", r)
+
+    def test_alineacion_de_partido_ok(self):
+        with mock.patch.object(api, "evento_365_id", return_value=111), \
+             mock.patch.object(api, "alineacion_365", return_value={"disponible": True, "equipos": []}):
+            r = api.alineacion_de_partido("America", "Toluca")
+        self.assertTrue(r["disponible"])
+        self.assertEqual(r["event_id"], 111)
+
+
 if __name__ == "__main__":
     unittest.main()

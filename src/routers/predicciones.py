@@ -372,3 +372,22 @@ def noticias(limit: int = 10) -> Dict[str, Any]:
     except Exception as exc:  # pragma: no cover - fallback defensivo de red
         return {"total": 0, "noticias": [], "error": str(exc),
                 "decision": "INFORMATIVO / REVISIÓN HUMANA"}
+
+
+@router.get("/alineacion", summary="Alineación confirmada de un partido (365Scores, ~1h antes)")
+def alineacion(home: str, away: str) -> Dict[str, Any]:
+    """
+    Alineación confirmada de un partido por nombre (ej. ?home=America&away=Toluca).
+    365Scores publica el XI ~1h antes del inicio; antes de eso `disponible=false`.
+    Sirve para detectar si un favorito sale con SUPLENTES antes de hacer el pick.
+    Informativo.
+    """
+    if not home or not away:
+        return {"disponible": False, "error": "Faltan 'home' y 'away'.",
+                "decision": "INFORMATIVO / REVISIÓN HUMANA"}
+    try:
+        return {**lmx.alineacion_de_partido(home, away),
+                "decision": "INFORMATIVO / REVISIÓN HUMANA"}
+    except Exception as exc:  # pragma: no cover - fallback defensivo de red
+        return {"disponible": False, "equipos": [], "error": str(exc),
+                "decision": "INFORMATIVO / REVISIÓN HUMANA"}
