@@ -12,7 +12,7 @@ memoria (TTL) para no golpear ESPN en cada request.
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter
 
@@ -130,6 +130,16 @@ def _usados_combinados(excluir: str) -> list:
     return out
 
 
+def _partidos_jugados_torneo() -> Optional[int]:
+    """Partidos jugados del torneo (para cautela de arranque). None si falla."""
+    try:
+        est = lmx.estado_temporada()
+        fm = est.get("finished_matches")
+        return int(fm) if fm is not None else None
+    except Exception:  # pragma: no cover - API no disponible
+        return None
+
+
 @router.get("/predicciones", summary="Predicciones reales (ESPN + Poisson)")
 def predicciones() -> Dict[str, Any]:
     """1X2 / Over-Under / BTTS / marcador por cada partido próximo."""
@@ -144,12 +154,18 @@ def survivor(excluir: str = "") -> Dict[str, Any]:
     """
     data = _obtener()
     usados = _usados_combinados(excluir)
-    pick = motor.mejor_pick_survivor(data.get("pronosticos", []), usados)
+    est = motor.mejores_picks_estrategico(
+        data.get("pronosticos", []), usados,
+        partidos_jugados_torneo=_partidos_jugados_torneo(), n=1,
+    )
+    pick = est["picks"][0] if est.get("picks") else None
     return {
         "generado_utc": data.get("generado_utc"),
         "fuente_datos": data.get("fuente_datos"),
         "equipos_excluidos": usados,
         "pick_survivor": pick,
+        "cautela": est.get("cautela"),
+        "advertencia": est.get("advertencia"),
         "decision": data.get("decision"),
     }
 
@@ -173,7 +189,11 @@ def jornada(excluir: str = "", contexto: bool = False) -> Dict[str, Any]:
     except Exception:  # pragma: no cover - fallback defensivo de red
         motivacion = {}
     usados = _usados_combinados(excluir)
-    top = motor.mejores_picks_survivor(pronos, usados, motivacion, n=3)
+    est = motor.mejores_picks_estrategico(
+        pronos, usados, motivacion,
+        partidos_jugados_torneo=_partidos_jugados_torneo(), n=3,
+    )
+    top = est.get("picks", [])
     pick = top[0] if top else None
     if contexto and pick:
         pick = {**pick, "contexto_api": _contexto_pick(pick)}
@@ -183,6 +203,8 @@ def jornada(excluir: str = "", contexto: bool = False) -> Dict[str, Any]:
         "equipos_excluidos": usados,
         "pick_survivor": pick,
         "top_picks": top,
+        "cautela": est.get("cautela"),
+        "advertencia": est.get("advertencia"),
         "mercado_habilitado": comp.get("mercado_habilitado", False),
         "partidos_con_momios": comp.get("partidos_con_momios", 0),
         "pronosticos": pronos,

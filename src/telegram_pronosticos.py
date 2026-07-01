@@ -40,6 +40,19 @@ def _usados_persistidos() -> Optional[List[str]]:
         return None
 
 
+def _partidos_jugados_torneo() -> Optional[int]:
+    """Partidos jugados del torneo actual (para la cautela de arranque). None si falla."""
+    try:
+        try:
+            import ligamx_api as lmx
+        except ImportError:  # pragma: no cover
+            from src import ligamx_api as lmx  # type: ignore
+        est = lmx.estado_temporada()
+        return int(est.get("finished_matches")) if est.get("finished_matches") is not None else None
+    except Exception:  # pragma: no cover - API no disponible
+        return None
+
+
 def _formatear_contexto(ctx: Optional[Dict[str, Any]]) -> List[str]:
     """Bloque HTML compacto con el contexto de la Liga MX API para el pick #1."""
     if not ctx or ctx.get("nota"):
@@ -101,11 +114,15 @@ def construir_mensaje(
     equipos_usados: Optional[List[str]] = None,
     motivacion: Optional[Dict[str, Dict[str, Any]]] = None,
     contexto_pick: Optional[Dict[str, Any]] = None,
+    tops: Optional[List[Dict[str, Any]]] = None,
+    advertencia: Optional[str] = None,
 ) -> str:
     """Arma el mensaje (HTML) de pronósticos a partir de la salida del motor.
 
-    `contexto_pick`: dossier compacto de la Liga MX API para el pick #1
-    (opcional; ya resuelto por el orquestador para no meter red aquí).
+    `contexto_pick`: dossier compacto de la Liga MX API para el pick #1.
+    `tops`: picks ya calculados (p. ej. estratégicos con cautela); si es None se
+    calculan con `mejores_picks_survivor` (comportamiento por defecto).
+    `advertencia`: nota de cautela (p. ej. arranque de torneo) a mostrar.
     """
     pronosticos = resultado.get("pronosticos", [])
     fuente = resultado.get("fuente_datos", "?")
@@ -117,9 +134,12 @@ def construir_mensaje(
         "",
     ]
 
-    tops = motor.mejores_picks_survivor(pronosticos, equipos_usados, motivacion, n=3)
+    if tops is None:
+        tops = motor.mejores_picks_survivor(pronosticos, equipos_usados, motivacion, n=3)
     if tops:
         lineas.append("🎯 <b>SURVIVOR — top 3:</b>")
+        if advertencia:
+            lineas.append(f"<i>{advertencia}</i>")
         medallas = ["🥇", "🥈", "🥉"]
         for i, pk in enumerate(tops):
             extra = f" · rival mot.: {pk['rival_motivacion']}" if pk.get("rival_motivacion") else ""
@@ -138,6 +158,8 @@ def construir_mensaje(
             f"➡️ <b>Pick sugerido: {rec['equipo']}</b> "
             f"(confianza {rec.get('nivel', '—')})"
         )
+        if rec.get("razon"):
+            lineas.append(f"    <i>{rec['razon']}</i>")
         contexto_lineas = _formatear_contexto(contexto_pick)
         if contexto_lineas:
             lineas.append("")
@@ -247,13 +269,20 @@ def enviar_pronosticos(equipos_usados: Optional[List[str]] = None,
         contexto_pick = _contexto_top_pick(resultado.get("pronosticos", []),
                                            equipos_usados, motivacion)
 
-    mensaje = construir_mensaje(resultado, equipos_usados, motivacion, contexto_pick)
+    # Pick ESTRATÉGICO (cautela de arranque + anti-sorpresa visitante).
+    est = motor.mejores_picks_estrategico(
+        resultado.get("pronosticos", []), equipos_usados, motivacion,
+        partidos_jugados_torneo=_partidos_jugados_torneo(), n=3,
+    )
+    mensaje = construir_mensaje(resultado, equipos_usados, motivacion, contexto_pick,
+                                tops=est.get("picks"), advertencia=est.get("advertencia"))
     enviado = enviar_mensaje(mensaje)
     return {
         "enviado": enviado,
         "total_pronosticos": resultado.get("total_pronosticos", 0),
         "partidos_con_momios": con_momios,
         "fuente": resultado.get("fuente_datos"),
+        "cautela": est.get("cautela"),
     }
 
 
