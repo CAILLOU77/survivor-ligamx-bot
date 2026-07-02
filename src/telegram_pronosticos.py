@@ -406,6 +406,8 @@ def construir_mensaje(
                 lineas.append(f"     📉 rival mot.: {nivel_mot}")
         if rec.get("razon"):
             lineas.append(f"     💬 <i>Por qué: {rec['razon']}</i>")
+        if rec.get("ajuste_nota"):
+            lineas.append(f"     🔧 <i>Ajustado por: {rec['ajuste_nota']}</i>")
         # Otras opciones (2º y 3º).
         otras = tops[1:3]
         if otras:
@@ -560,6 +562,55 @@ def _fmt_fichajes(mov: Dict[str, Any]) -> str:
     return " · ".join(partes)
 
 
+def _ajustar_pick_top(picks: List[Dict[str, Any]],
+                      pronosticos: List[Dict[str, Any]],
+                      contexto_pick: Optional[Dict[str, Any]]) -> None:
+    """
+    Aplica el ajuste MODERADO (XI + H2H) al pick #1 y refleja el resultado en sus
+    números (no-perder, gana, nivel) y en `razon`. Muta `picks[0]` in situ.
+    No hace nada si no hay señales (XI no publicado / H2H insuficiente).
+    """
+    if not picks or not contexto_pick:
+        return
+    try:
+        import ajuste_pronostico as aj
+    except ImportError:  # pragma: no cover
+        from src import ajuste_pronostico as aj  # type: ignore
+    try:
+        from team_normalizer import canonical_team_key as _k
+    except ImportError:  # pragma: no cover
+        from src.team_normalizer import canonical_team_key as _k  # type: ignore
+
+    rec = picks[0]
+    es_local = rec.get("condicion") == "Local"
+    local = rec["equipo"] if es_local else rec["rival"]
+    visita = rec["rival"] if es_local else rec["equipo"]
+    pron = next(
+        (p for p in pronosticos
+         if _k(p.get("local", "")) == _k(local) and _k(p.get("visitante", "")) == _k(visita)),
+        None,
+    )
+    if not pron:
+        return
+    impacto = contexto_pick.get("impacto_xi")
+    h2h = contexto_pick.get("h2h")
+    ajustado = aj.ajustar_pronostico(pron, impacto_equipos=impacto, h2h=h2h)
+    if not ajustado.get("ajuste", {}).get("aplicado"):
+        return
+    # Reflejar los nuevos números en el pick (según su condición).
+    if es_local:
+        rec["no_perder_pct"] = ajustado["no_perder_local_pct"]
+        rec["prob_victoria_pct"] = ajustado["prob_local_pct"]
+    else:
+        rec["no_perder_pct"] = ajustado["no_perder_visitante_pct"]
+        rec["prob_victoria_pct"] = ajustado["prob_visitante_pct"]
+    notas = "; ".join(ajustado["ajuste"].get("notas", []))
+    if notas:
+        base = ajustado["ajuste"].get("base", {})
+        rec["ajuste_nota"] = notas
+        contexto_pick["ajuste_pick"] = {"notas": notas, "base": base}
+
+
 def _contexto_top_pick(pronosticos: List[Dict[str, Any]],
                        equipos_usados: Optional[List[str]],
                        motivacion: Optional[Dict[str, Dict[str, Any]]]) -> Optional[Dict[str, Any]]:
@@ -702,6 +753,12 @@ def enviar_pronosticos(equipos_usados: Optional[List[str]] = None,
         resultado.get("pronosticos", []), equipos_usados, motivacion,
         partidos_jugados_torneo=_partidos_jugados_torneo(), n=3,
     )
+    # Ajuste MODERADO del pick #1 por XI confirmado + H2H (con tope; nunca voltea).
+    try:
+        _ajustar_pick_top(est.get("picks") or [], resultado.get("pronosticos", []),
+                          contexto_pick)
+    except Exception:  # pragma: no cover - el ajuste nunca debe tumbar el envío
+        pass
     # Jugadores a seguir por partido (goleadores por equipo; una sola llamada).
     goleadores_map = None
     try:
