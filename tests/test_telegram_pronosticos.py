@@ -195,3 +195,66 @@ class TestNivelRiesgoYPlan(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestResumenRentabilidad(unittest.TestCase):
+    def test_sin_resueltos(self):
+        msg = tp.construir_mensaje_rentabilidad({"resueltos": 0, "pendientes": 9})
+        self.assertIn("RESUMEN DE PRONÓSTICOS", msg)
+        self.assertIn("Aún no hay pronósticos resueltos", msg)
+
+    def test_con_datos(self):
+        data = {"resueltos": 20, "pendientes": 9, "aciertos_1x2": 11,
+                "acierto_1x2_pct": 55.0, "aciertos_marcador_exacto": 3,
+                "acierto_marcador_pct": 15.0}
+        msg = tp.construir_mensaje_rentabilidad(data)
+        self.assertIn("11/20", msg)
+        self.assertIn("55.0%", msg)
+        self.assertIn("Marcador exacto", msg)
+
+    def test_enviar_resumen_usa_bd(self):
+        data = {"resueltos": 5, "pendientes": 0, "aciertos_1x2": 3,
+                "acierto_1x2_pct": 60.0, "aciertos_marcador_exacto": 1,
+                "acierto_marcador_pct": 20.0}
+        with mock.patch("database.rentabilidad_pronosticos", return_value=data, create=True):
+            with mock.patch.object(tp, "enviar_mensaje", return_value=True) as menv:
+                r = tp.enviar_resumen_rentabilidad()
+        self.assertTrue(r["enviado"])
+        menv.assert_called_once()
+
+
+class TestRecordatorio(unittest.TestCase):
+    _CAL = [
+        {"jornada": 1, "fecha_inicio": "2026-07-16", "fecha_fin": "2026-07-18",
+         "partidos": [{"home_team": "Necaxa", "away_team": "Atlante"}]},
+        {"jornada": 2, "fecha_inicio": "2026-07-21", "fecha_fin": "2026-07-26", "partidos": []},
+    ]
+
+    def test_proxima_jornada(self):
+        import datetime as dt
+        with mock.patch.object(tp, "_cargar_calendario_local", return_value=self._CAL):
+            j = tp.proxima_jornada(hoy=dt.date(2026, 7, 14))
+        self.assertEqual(j["jornada"], 1)
+
+    def test_recordatorio_dispara_1_dia_antes(self):
+        import datetime as dt
+        with mock.patch.object(tp, "_cargar_calendario_local", return_value=self._CAL):
+            with mock.patch.object(tp, "enviar_mensaje", return_value=True) as menv:
+                r = tp.enviar_recordatorio_si_aplica(dias_antes=1, hoy=dt.date(2026, 7, 15))
+        self.assertTrue(r["enviado"])
+        self.assertEqual(r["jornada"], 1)
+        menv.assert_called_once()
+
+    def test_recordatorio_no_dispara_si_lejos(self):
+        import datetime as dt
+        with mock.patch.object(tp, "_cargar_calendario_local", return_value=self._CAL):
+            with mock.patch.object(tp, "enviar_mensaje", return_value=True) as menv:
+                r = tp.enviar_recordatorio_si_aplica(dias_antes=1, hoy=dt.date(2026, 7, 1))
+        self.assertFalse(r["enviado"])
+        menv.assert_not_called()
+
+    def test_construir_recordatorio_contenido(self):
+        msg = tp.construir_recordatorio(self._CAL[0], dias=1)
+        self.assertIn("JORNADA 1", msg)
+        self.assertIn("/picks", msg)
+        self.assertIn("Necaxa vs Atlante", msg)
