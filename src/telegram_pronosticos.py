@@ -407,6 +407,8 @@ def construir_mensaje(
                 lineas.append(f"     💡 {p['explicacion_ou']}")
             if p.get("precaucion") and p.get("motivos_alerta"):
                 lineas.append(f"     {p['nivel_alerta']}: {' '.join(p['motivos_alerta'])}")
+            if p.get("h2h_nota"):
+                lineas.append(f"     🐆 H2H: {p['h2h_nota']}")
             lineas.extend(_lineas_mercado(p))
             try:
                 cal_ev = calctx.eventos_para_fecha(p.get("fecha"), [p.get("local", ""), p.get("visitante", "")])

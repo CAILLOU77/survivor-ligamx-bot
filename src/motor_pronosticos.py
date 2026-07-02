@@ -194,6 +194,16 @@ def generar_pronosticos(
                 pron["fecha"] = fx.get("fecha", "")
                 pronosticos.append(pron)
 
+    # Señal "bestia negra" (H2H): avisa si el favorito no domina a ese rival.
+    try:
+        try:
+            import matchup_h2h as mh2h
+        except ImportError:  # pragma: no cover
+            from src import matchup_h2h as mh2h  # type: ignore
+        pronosticos = mh2h.anotar_h2h(pronosticos, resultados)
+    except Exception:  # pragma: no cover - nunca tumbar el pipeline
+        pass
+
     return {
         "generado_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "fuente_datos": fuente,
