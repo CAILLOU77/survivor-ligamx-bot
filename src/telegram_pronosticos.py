@@ -224,8 +224,14 @@ def _jugadores_seguir_partido(p: Dict[str, Any],
 
 def _porteros_partido(p: Dict[str, Any],
                       porteros_map: Dict[str, Dict[str, Any]]) -> str:
-    """Portero + vallas invictas (portería a 0) por equipo, si el dato existe."""
-    def _para(equipo: str) -> str:
+    """
+    Portero + vallas invictas, pero SOLO cuando es relevante al pronóstico:
+    - Se espera que un equipo deje su portería a 0 (el rival anota 0 en el
+      marcador probable), o
+    - el partido pinta cerrado (Under 2.5 o BTTS No).
+    Si el modelo espera goles de ambos (p. ej. 2-1), no se muestra (sería absurdo).
+    """
+    def _gk(equipo: str) -> str:
         gk = porteros_map.get(equipo)
         if gk is None:
             eqn = _norm_simple(equipo)
@@ -236,22 +242,50 @@ def _porteros_partido(p: Dict[str, Any],
         if not gk or not gk.get("nombre"):
             return ""
         nom = gk["nombre"]
-        vallas = gk.get("vallas_invictas")
         try:
-            v = int(vallas)
+            v = int(gk.get("vallas_invictas"))
             return f"{nom} ({v} {'valla invicta' if v == 1 else 'vallas invictas'})"
         except (TypeError, ValueError):
             return nom
 
-    loc = _para(p.get("local", ""))
-    vis = _para(p.get("visitante", ""))
-    if not loc and not vis:
-        return ""
-    partes = []
-    if loc:
-        partes.append(f"{p.get('local', '')}: {loc}")
-    if vis:
-        partes.append(f"{p.get('visitante', '')}: {vis}")
+    # Goles esperados del marcador probable ("2-1" -> 2,1).
+    gl = gv = None
+    marcador = str(p.get("marcador_mas_probable", ""))
+    if "-" in marcador:
+        try:
+            gl, gv = (int(x) for x in marcador.split("-", 1))
+        except (TypeError, ValueError):
+            gl = gv = None
+
+    local = p.get("local", "")
+    visita = p.get("visitante", "")
+    partes: List[str] = []
+
+    # Portería a 0 esperada: el rival anota 0.
+    local_cero = gv == 0
+    visita_cero = gl == 0
+    if local_cero:
+        g = _gk(local)
+        if g:
+            partes.append(f"{local}: {g} — se le ve portería a 0")
+    if visita_cero:
+        g = _gk(visita)
+        if g:
+            partes.append(f"{visita}: {g} — se le ve portería a 0")
+
+    # Sin clean sheet claro, pero partido cerrado: destaca el mejor muro.
+    if not partes and (p.get("pick_ou") == "Under" or p.get("pick_btts") == "No"):
+        def _vallas(equipo: str) -> int:
+            gk = porteros_map.get(equipo) or {}
+            try:
+                return int(gk.get("vallas_invictas") or 0)
+            except (TypeError, ValueError):
+                return 0
+        mejor = local if _vallas(local) >= _vallas(visita) else visita
+        g = _gk(mejor)
+        if g:
+            partes.append(f"partido cerrado — {mejor}: {g}")
+
     return " · ".join(partes)
 
 
