@@ -431,3 +431,59 @@ class TestAlineacion(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestJugadoresASeguir(unittest.TestCase):
+    def test_goleadores_por_equipo_agrupa(self):
+        data = [
+            {"player": "A. Vega", "team": "Toluca", "goals": 8},
+            {"player": "P. Aguilar", "team": "Toluca", "goals": 5},
+            {"player": "X. Tercero", "team": "Toluca", "goals": 3},
+            {"player": "H. Herrera", "team": "Cruz Azul", "goals": 6},
+        ]
+        with mock.patch.object(api, "goleadores", return_value=data):
+            mapa = api.goleadores_por_equipo(por_equipo=2)
+        self.assertIn("Toluca", mapa)
+        self.assertEqual(len(mapa["Toluca"]), 2)  # respeta por_equipo=2
+        self.assertEqual(mapa["Toluca"][0]["nombre"], "A. Vega")
+        self.assertIn("Cruz Azul", mapa)
+
+    def test_goleadores_por_equipo_vacio_tolerante(self):
+        with mock.patch.object(api, "goleadores", return_value=[]):
+            self.assertEqual(api.goleadores_por_equipo(), {})
+
+    def test_match_id_de_partido_resuelve(self):
+        proximos = [
+            {"id": 77, "home_team": {"name": "Club América"}, "away_team": {"name": "Toluca"}},
+        ]
+        with mock.patch.object(api, "partidos_proximos", return_value=proximos):
+            self.assertEqual(api.match_id_de_partido("América", "Toluca"), 77)
+
+    def test_match_id_none_si_no_encuentra(self):
+        with mock.patch.object(api, "partidos_proximos", return_value=[]):
+            with mock.patch.object(api, "obtener_partidos", return_value=[]):
+                self.assertIsNone(api.match_id_de_partido("América", "Toluca"))
+
+    def test_jugadores_a_seguir_partido_forma_home_away(self):
+        payload = {"home": [{"player": "A. Vega"}], "away": [{"name": "H. Herrera"}]}
+        with mock.patch.object(api, "match_id_de_partido", return_value=5):
+            with mock.patch.object(api, "jugadores_a_seguir", return_value=payload):
+                res = api.jugadores_a_seguir_partido("Toluca", "Cruz Azul")
+        self.assertEqual(res["local"], ["A. Vega"])
+        self.assertEqual(res["visita"], ["H. Herrera"])
+
+    def test_jugadores_a_seguir_partido_forma_plana(self):
+        payload = {"players_to_watch": [
+            {"player": "A. Vega", "team": "Toluca"},
+            {"player": "H. Herrera", "team": "Cruz Azul"},
+        ]}
+        with mock.patch.object(api, "match_id_de_partido", return_value=5):
+            with mock.patch.object(api, "jugadores_a_seguir", return_value=payload):
+                res = api.jugadores_a_seguir_partido("Toluca", "Cruz Azul")
+        self.assertIn("A. Vega", res["local"])
+        self.assertIn("H. Herrera", res["visita"])
+
+    def test_jugadores_a_seguir_partido_sin_id(self):
+        with mock.patch.object(api, "match_id_de_partido", return_value=None):
+            res = api.jugadores_a_seguir_partido("A", "B")
+        self.assertEqual(res, {"local": [], "visita": []})

@@ -71,7 +71,9 @@ def _formatear_contexto(ctx: Optional[Dict[str, Any]]) -> List[str]:
     noticias = ctx.get("noticias") or []
     ali = ctx.get("alineacion") if isinstance(ctx.get("alineacion"), dict) else None
     ali_ok = bool(ali and ali.get("disponible"))
-    if not (pred or forma_l or forma_v or riesgo_l or riesgo_v or h2h or noticias or ali_ok):
+    js = ctx.get("jugadores_seguir") if isinstance(ctx.get("jugadores_seguir"), dict) else None
+    js_ok = bool(js and (js.get("local") or js.get("visita")))
+    if not (pred or forma_l or forma_v or riesgo_l or riesgo_v or h2h or noticias or ali_ok or js_ok):
         return []  # pretemporada: sin datos aún, no ensuciar el mensaje
 
     lineas.append(f"🔎 <b>Contexto (Liga MX API)</b> — {ctx.get('home')} vs {ctx.get('away')}:")
@@ -107,6 +109,15 @@ def _formatear_contexto(ctx: Optional[Dict[str, Any]]) -> List[str]:
             resumen = r.get("resumen", "")
             if resumen:
                 lineas.append(f"      ⚠️ {eq} [{tipo}]: {resumen}")
+    js = ctx.get("jugadores_seguir") if isinstance(ctx.get("jugadores_seguir"), dict) else None
+    if js and (js.get("local") or js.get("visita")):
+        loc = ", ".join(js.get("local", [])[:3])
+        vis = ", ".join(js.get("visita", [])[:3])
+        lineas.append("    ⭐ Jugadores a seguir:")
+        if loc:
+            lineas.append(f"      {ctx.get('home')}: {loc}")
+        if vis:
+            lineas.append(f"      {ctx.get('away')}: {vis}")
     return lineas
 
 
@@ -166,6 +177,43 @@ def _pick_club(p: Dict[str, Any]) -> str:
     return pick  # "Empate"
 
 
+def _norm_simple(s: str) -> str:
+    return " ".join(str(s or "").lower().split())
+
+
+def _jugadores_seguir_partido(p: Dict[str, Any],
+                              goleadores_map: Dict[str, List[Dict[str, Any]]]) -> str:
+    """'A seguir' de un partido a partir del mapa de goleadores por equipo."""
+    def _para(equipo: str) -> str:
+        # match tolerante por nombre normalizado
+        lst = goleadores_map.get(equipo)
+        if lst is None:
+            eqn = _norm_simple(equipo)
+            for k, v in goleadores_map.items():
+                if _norm_simple(k) == eqn or eqn in _norm_simple(k) or _norm_simple(k) in eqn:
+                    lst = v
+                    break
+        if not lst:
+            return ""
+        nombres = []
+        for j in lst[:2]:
+            nom = j.get("nombre", "")
+            goles = j.get("goles")
+            nombres.append(f"{nom} ({goles}g)" if goles not in (None, "") else nom)
+        return ", ".join(nombres)
+
+    loc = _para(p.get("local", ""))
+    vis = _para(p.get("visitante", ""))
+    if not loc and not vis:
+        return ""
+    partes = []
+    if loc:
+        partes.append(f"{p.get('local', '')}: {loc}")
+    if vis:
+        partes.append(f"{p.get('visitante', '')}: {vis}")
+    return " · ".join(partes)
+
+
 def construir_mensaje(
     resultado: Dict[str, Any],
     equipos_usados: Optional[List[str]] = None,
@@ -173,6 +221,7 @@ def construir_mensaje(
     contexto_pick: Optional[Dict[str, Any]] = None,
     tops: Optional[List[Dict[str, Any]]] = None,
     advertencia: Optional[str] = None,
+    goleadores_map: Optional[Dict[str, List[Dict[str, Any]]]] = None,
 ) -> str:
     """Arma el mensaje (HTML) de pronósticos a partir de la salida del motor.
 
@@ -180,6 +229,7 @@ def construir_mensaje(
     `tops`: picks ya calculados (p. ej. estratégicos con cautela); si es None se
     calculan con `mejores_picks_survivor` (comportamiento por defecto).
     `advertencia`: nota de cautela (p. ej. arranque de torneo) a mostrar.
+    `goleadores_map`: {equipo: [{nombre, goles}]} para 'jugadores a seguir' por partido.
     """
     pronosticos = resultado.get("pronosticos", [])
     fecha = str(resultado.get("generado_utc", "")).replace("T", " ").replace("Z", " UTC")
@@ -274,6 +324,10 @@ def construir_mensaje(
             if cal_ev:
                 nombres = " · ".join(f"{e.get('emoji', '🗓️')} {e.get('nombre')}" for e in cal_ev)
                 lineas.append(f"     🗓️ Calendario: {nombres}")
+            if goleadores_map:
+                estrellas = _jugadores_seguir_partido(p, goleadores_map)
+                if estrellas:
+                    lineas.append(f"     ⭐ A seguir: {estrellas}")
     else:
         lineas.append(div)
         lineas.append("Sin pronósticos disponibles (faltan datos de ESPN o fixtures).")
@@ -406,8 +460,19 @@ def enviar_pronosticos(equipos_usados: Optional[List[str]] = None,
         resultado.get("pronosticos", []), equipos_usados, motivacion,
         partidos_jugados_torneo=_partidos_jugados_torneo(), n=3,
     )
+    # Jugadores a seguir por partido (goleadores por equipo; una sola llamada).
+    goleadores_map = None
+    try:
+        try:
+            import ligamx_api as lmx
+        except ImportError:  # pragma: no cover
+            from src import ligamx_api as lmx  # type: ignore
+        goleadores_map = lmx.goleadores_por_equipo()
+    except Exception:  # pragma: no cover - nunca debe tumbar el envío
+        goleadores_map = None
     mensaje = construir_mensaje(resultado, equipos_usados, motivacion, contexto_pick,
-                                tops=est.get("picks"), advertencia=est.get("advertencia"))
+                                tops=est.get("picks"), advertencia=est.get("advertencia"),
+                                goleadores_map=goleadores_map)
     enviado = enviar_mensaje(mensaje)
     return {
         "enviado": enviado,

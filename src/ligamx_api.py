@@ -384,6 +384,129 @@ def goleadores(limit: int = 20, season: Optional[str] = None) -> List[Dict[str, 
     return _get("/top-scorers", params)
 
 
+def _campo(d: Dict[str, Any], *claves: str) -> Any:
+    """Primer valor no vacío entre varias posibles claves (API tolerante)."""
+    for k in claves:
+        v = d.get(k)
+        if v not in (None, ""):
+            return v
+    return None
+
+
+def goleadores_por_equipo(limit: int = 50, por_equipo: int = 2,
+                          season: Optional[str] = None) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    Mapa {equipo_display: [ {nombre, goles} ]} con los máximos goleadores de cada
+    equipo (para 'jugadores a seguir' por partido, sin llamadas por partido).
+    Tolerante: en pretemporada (sin goles) o si falla, devuelve {}.
+    """
+    try:
+        data = goleadores(limit=limit, season=season)
+    except Exception:  # pragma: no cover - red no disponible
+        return {}
+    if not isinstance(data, list):
+        return {}
+    mapa: Dict[str, List[Dict[str, Any]]] = {}
+    for row in data:
+        if not isinstance(row, dict):
+            continue
+        nombre = _campo(row, "player", "name", "player_name", "full_name")
+        equipo = _campo(row, "team", "team_name", "club")
+        if isinstance(equipo, dict):
+            equipo = equipo.get("name") or equipo.get("team_name")
+        goles = _campo(row, "goals", "goals_count", "total_goals", "g")
+        if not nombre or not equipo:
+            continue
+        clave = display_team_name(str(equipo))
+        entrada = {"nombre": str(nombre), "goles": goles}
+        mapa.setdefault(clave, [])
+        if len(mapa[clave]) < max(1, por_equipo):
+            mapa[clave].append(entrada)
+    return mapa
+
+
+def match_id_de_partido(home: str, away: str) -> Optional[int]:
+    """
+    Resuelve el match_id de la Liga MX API para un partido (por nombres, match
+    flexible). Busca en próximos y luego en /matches. None si no lo encuentra.
+    """
+    def _buscar(lista: Any) -> Optional[int]:
+        if not isinstance(lista, list):
+            return None
+        for m in lista:
+            if not isinstance(m, dict):
+                continue
+            h = (m.get("home_team") or {})
+            a = (m.get("away_team") or {})
+            hn = h.get("name") if isinstance(h, dict) else h
+            an = a.get("name") if isinstance(a, dict) else a
+            if not hn or not an:
+                continue
+            if teams_match(str(hn), home) and teams_match(str(an), away):
+                mid = _campo(m, "id", "match_id", "matchId")
+                try:
+                    return int(mid) if mid is not None else None
+                except (TypeError, ValueError):
+                    return None
+        return None
+
+    mid = _buscar(_safe(lambda: partidos_proximos(limit=50), []))
+    if mid is not None:
+        return mid
+    return _buscar(_safe(lambda: obtener_partidos(limit=100), []))
+
+
+def jugadores_a_seguir_partido(home: str, away: str) -> Dict[str, List[str]]:
+    """
+    'Jugadores a seguir' de un partido (por nombres), vía
+    /matches/{id}/players-to-watch. Devuelve {'local': [...], 'visita': [...]}.
+    Tolerante: si no hay match_id o datos, listas vacías. Parseo defensivo de
+    varias formas posibles de respuesta.
+    """
+    vacio = {"local": [], "visita": []}
+    mid = match_id_de_partido(home, away)
+    if mid is None:
+        return vacio
+    data = _safe(lambda: jugadores_a_seguir(mid), None)
+    if not isinstance(data, dict):
+        return vacio
+
+    def _nombres(bloque: Any) -> List[str]:
+        out: List[str] = []
+        if isinstance(bloque, dict):
+            bloque = bloque.get("players") or bloque.get("jugadores") or list(bloque.values())
+        if isinstance(bloque, list):
+            for pl in bloque:
+                if isinstance(pl, dict):
+                    nom = _campo(pl, "player", "name", "player_name", "nombre", "full_name")
+                    if nom:
+                        out.append(str(nom))
+                elif isinstance(pl, str):
+                    out.append(pl)
+        return out
+
+    local = _nombres(_campo(data, "home", "local", "home_team"))
+    visita = _nombres(_campo(data, "away", "visita", "away_team"))
+    if not local and not visita:
+        # forma plana: {players_to_watch: [{player, team}]}
+        planos = data.get("players_to_watch") or data.get("players") or []
+        if isinstance(planos, list):
+            for pl in planos:
+                if not isinstance(pl, dict):
+                    continue
+                nom = _campo(pl, "player", "name", "player_name", "nombre")
+                eq = _campo(pl, "team", "team_name", "club")
+                if isinstance(eq, dict):
+                    eq = eq.get("name")
+                if not nom:
+                    continue
+                if eq and teams_match(str(eq), away):
+                    visita.append(str(nom))
+                else:
+                    local.append(str(nom))
+    return {"local": local, "visita": visita}
+
+
 def noticias_365() -> List[Dict[str, Any]]:
     """
     Noticias Liga MX desde **365Scores** (/365scores/news, plataforma real).
@@ -747,4 +870,9 @@ def resumen_partido(
     out["noticias"] = _safe(lambda: noticias_de_equipos([out["home"], out["away"]], limit=4), []) or []
     # Alineación confirmada (365Scores, ~1h antes): señal de "¿salió con suplentes?".
     out["alineacion"] = _safe(lambda: alineacion_de_partido(out["home"], out["away"]), None)
+    # Jugadores a seguir del partido (/matches/{id}/players-to-watch).
+    out["jugadores_seguir"] = _safe(
+        lambda: jugadores_a_seguir_partido(out["home"], out["away"]),
+        {"local": [], "visita": []},
+    ) or {"local": [], "visita": []}
     return out
