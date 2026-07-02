@@ -879,6 +879,9 @@ def construir_mensaje_seguimiento(items: List[Dict[str, Any]],
             f"sobrevive {alt_resp['no_perder_pct']}%. Si su XI sale bien lo aseguras "
             "temprano; si no, aún te quedan partidos por jugar."
         )
+        alt_ver = alt_resp.get("veredicto") or {}
+        if alt_ver.get("estado") and alt_ver["estado"] != "PENDIENTE":
+            lineas.append(f"     {alt_ver.get('emoji', '')} {alt_resp['equipo']}: {alt_ver.get('texto', '')}")
     lineas.append("")
     lineas.append("💡 <i>Si te preocupa el internet, puedes meter tu pick en PlayDoit desde ya "
                   "y cambiarlo solo si su alineación sale mermada.</i>")
