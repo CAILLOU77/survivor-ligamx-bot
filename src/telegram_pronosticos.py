@@ -592,14 +592,16 @@ def construir_mensaje_plan(plan: Dict[str, Any]) -> str:
                 f"{DISCLAIMER}")
     lineas = [
         "📅 <b>PLAN SURVIVOR — temporada</b> (modelo · datos ESPN)",
-        f"<i>Sobrevivir toda la temporada: {plan.get('prob_supervivencia_total_pct')}% · "
-        f"victorias esperadas: {plan.get('victorias_esperadas')}</i>",
+        f"<i>🛡️ Sobrevivir las 17 jornadas: {plan.get('prob_supervivencia_total_pct')}% · "
+        f"🏆 victorias esperadas: {plan.get('victorias_esperadas')}</i>",
+        "<i>Idea: gastar equipos flojos en su mejor partido y guardar a los fuertes "
+        "para las jornadas difíciles. Ganar es lo que vale (desempate).</i>",
         "",
     ]
     for p in plan["plan"]:
         lineas.append(
             f"J{p['jornada']}: <b>{p['equipo']}</b> ({p['condicion']} vs {p['rival']}) "
-            f"— gana {p['prob_ganar_pct']}% / no-perder {p['no_perder_pct']}% [{p['nivel']}]"
+            f"— 🏆 gana {p['prob_ganar_pct']}% · 🛡️ sobrevive {p['no_perder_pct']}% [{p['nivel']}]"
         )
     riesgosas = plan.get("jornadas_riesgosas") or []
     if riesgosas:
