@@ -860,6 +860,25 @@ def construir_mensaje_seguimiento(items: List[Dict[str, Any]],
     if otras:
         lineas.append("")
         lineas.append(f"🔁 <i>Respaldo (solo si su XI sale mal): {', '.join(otras)}.</i>")
+    # Aviso de timing: si el pick juega de los últimos, no hay red de seguridad.
+    try:
+        import seguimiento_jornada as _seg
+    except ImportError:  # pragma: no cover
+        from src import seguimiento_jornada as _seg  # type: ignore
+    alt_resp = _seg.alternativa_con_respaldo(items, rec)
+    if alt_resp:
+        lineas.append("")
+        lineas.append(
+            f"⚠️ <b>Ojo con el timing:</b> {rec['equipo']} juega de los últimos"
+            f"{(' (' + cuando + ')') if cuando else ''}. Si su alineación sale mal, "
+            "casi no quedan partidos de respaldo."
+        )
+        alt_cuando = f" ({alt_resp['cuando']})" if alt_resp.get("cuando") else ""
+        lineas.append(
+            f"     🛡️ Opción CON respaldo: <b>{alt_resp['equipo']}</b>{alt_cuando} — "
+            f"sobrevive {alt_resp['no_perder_pct']}%. Si su XI sale bien lo aseguras "
+            "temprano; si no, aún te quedan partidos por jugar."
+        )
     lineas.append("")
     lineas.append("💡 <i>Si te preocupa el internet, puedes meter tu pick en PlayDoit desde ya "
                   "y cambiarlo solo si su alineación sale mermada.</i>")

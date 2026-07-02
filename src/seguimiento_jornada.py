@@ -76,6 +76,29 @@ def veredicto_xi(fuerza_xi_pct: Optional[float]) -> Dict[str, str]:
             "texto": f"XI aceptable ({f}%) — decide con cuidado"}
 
 
+def alternativa_con_respaldo(items: List[Dict[str, Any]],
+                             recomendado: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    Si el pick recomendado juega de los ÚLTIMOS de la jornada (sin partidos de
+    respaldo después), devuelve la mejor opción que juega ANTES (por no-perder),
+    para conservar plan B. None si el pick no juega tarde o no hay alternativa
+    más temprana con hora conocida.
+    """
+    rec_iso = next((it.get("cuando_iso") for it in items
+                    if it.get("equipo") == recomendado.get("equipo")), None)
+    if not rec_iso:
+        return None
+    rec_iso = str(rec_iso)
+    posteriores = [it for it in items if it.get("cuando_iso") and str(it["cuando_iso"]) > rec_iso]
+    if posteriores:
+        return None  # aún hay partidos después del pick: sí hay respaldo, no urge avisar
+    anteriores = [it for it in items if it.get("cuando_iso") and str(it["cuando_iso"]) < rec_iso]
+    if not anteriores:
+        return None
+    anteriores.sort(key=lambda c: c.get("no_perder_pct") or 0.0, reverse=True)
+    return anteriores[0]
+
+
 def lista_seguimiento(
     picks: List[Dict[str, Any]],
     horarios: Optional[Dict[str, str]] = None,

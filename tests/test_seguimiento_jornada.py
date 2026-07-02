@@ -92,3 +92,31 @@ class TestRenderDecisivo(unittest.TestCase):
         self.assertIn("TU PICK DE SURVIVOR", msg)
         self.assertIn("Cruz Azul", msg)          # el recomendado va en el encabezado
         self.assertIn("Respaldo", msg)            # los demás son respaldo, no menú
+
+
+class TestAlternativaConRespaldo(unittest.TestCase):
+    def _items(self):
+        picks = [
+            {"equipo": "Monterrey", "rival": "Santos", "condicion": "Local",
+             "no_perder_pct": 84.0, "prob_victoria_pct": 60.0, "nivel": "ALTA"},
+            {"equipo": "Necaxa", "rival": "Atlante", "condicion": "Local",
+             "no_perder_pct": 74.0, "prob_victoria_pct": 50.0, "nivel": "MEDIA"},
+        ]
+        horarios = {
+            seg.canonical_team_key("Necaxa"): "2026-07-16T19:00:00",     # juega antes
+            seg.canonical_team_key("Monterrey"): "2026-07-18T19:00:00",  # juega al final
+        }
+        return seg.lista_seguimiento(picks, horarios=horarios, n=2)
+
+    def test_pick_tardio_sugiere_alternativa_temprana(self):
+        items = self._items()
+        rec = {"equipo": "Monterrey"}
+        alt = seg.alternativa_con_respaldo(items, rec)
+        self.assertIsNotNone(alt)
+        self.assertEqual(alt["equipo"], "Necaxa")
+
+    def test_pick_temprano_no_sugiere(self):
+        items = self._items()
+        # Si el pick es Necaxa (el que juega antes), hay partidos después -> None.
+        alt = seg.alternativa_con_respaldo(items, {"equipo": "Necaxa"})
+        self.assertIsNone(alt)
