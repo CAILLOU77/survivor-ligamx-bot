@@ -222,6 +222,39 @@ def _jugadores_seguir_partido(p: Dict[str, Any],
     return " · ".join(partes)
 
 
+def _porteros_partido(p: Dict[str, Any],
+                      porteros_map: Dict[str, Dict[str, Any]]) -> str:
+    """Portero + vallas invictas (portería a 0) por equipo, si el dato existe."""
+    def _para(equipo: str) -> str:
+        gk = porteros_map.get(equipo)
+        if gk is None:
+            eqn = _norm_simple(equipo)
+            for k, v in porteros_map.items():
+                if _norm_simple(k) == eqn or eqn in _norm_simple(k) or _norm_simple(k) in eqn:
+                    gk = v
+                    break
+        if not gk or not gk.get("nombre"):
+            return ""
+        nom = gk["nombre"]
+        vallas = gk.get("vallas_invictas")
+        try:
+            v = int(vallas)
+            return f"{nom} ({v} {'valla invicta' if v == 1 else 'vallas invictas'})"
+        except (TypeError, ValueError):
+            return nom
+
+    loc = _para(p.get("local", ""))
+    vis = _para(p.get("visitante", ""))
+    if not loc and not vis:
+        return ""
+    partes = []
+    if loc:
+        partes.append(f"{p.get('local', '')}: {loc}")
+    if vis:
+        partes.append(f"{p.get('visitante', '')}: {vis}")
+    return " · ".join(partes)
+
+
 def construir_mensaje(
     resultado: Dict[str, Any],
     equipos_usados: Optional[List[str]] = None,
@@ -230,6 +263,7 @@ def construir_mensaje(
     tops: Optional[List[Dict[str, Any]]] = None,
     advertencia: Optional[str] = None,
     goleadores_map: Optional[Dict[str, List[Dict[str, Any]]]] = None,
+    porteros_map: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> str:
     """Arma el mensaje (HTML) de pronósticos a partir de la salida del motor.
 
@@ -238,6 +272,7 @@ def construir_mensaje(
     calculan con `mejores_picks_survivor` (comportamiento por defecto).
     `advertencia`: nota de cautela (p. ej. arranque de torneo) a mostrar.
     `goleadores_map`: {equipo: [{nombre, goles}]} para 'jugadores a seguir' por partido.
+    `porteros_map`: {equipo: {nombre, vallas_invictas}} para el dato defensivo (portería a 0).
     """
     pronosticos = resultado.get("pronosticos", [])
     fecha = str(resultado.get("generado_utc", "")).replace("T", " ").replace("Z", " UTC")
@@ -336,6 +371,10 @@ def construir_mensaje(
                 estrellas = _jugadores_seguir_partido(p, goleadores_map)
                 if estrellas:
                     lineas.append(f"     ⭐ A seguir: {estrellas}")
+            if porteros_map:
+                muro = _porteros_partido(p, porteros_map)
+                if muro:
+                    lineas.append(f"     🧤 Muro: {muro}")
     else:
         lineas.append(div)
         lineas.append("Sin pronósticos disponibles (faltan datos de ESPN o fixtures).")
@@ -478,9 +517,18 @@ def enviar_pronosticos(equipos_usados: Optional[List[str]] = None,
         goleadores_map = lmx.goleadores_por_equipo()
     except Exception:  # pragma: no cover - nunca debe tumbar el envío
         goleadores_map = None
+    porteros_map = None
+    try:
+        try:
+            import ligamx_api as lmx
+        except ImportError:  # pragma: no cover
+            from src import ligamx_api as lmx  # type: ignore
+        porteros_map = lmx.porteros_por_equipo()
+    except Exception:  # pragma: no cover - nunca debe tumbar el envío
+        porteros_map = None
     mensaje = construir_mensaje(resultado, equipos_usados, motivacion, contexto_pick,
                                 tops=est.get("picks"), advertencia=est.get("advertencia"),
-                                goleadores_map=goleadores_map)
+                                goleadores_map=goleadores_map, porteros_map=porteros_map)
     enviado = enviar_mensaje(mensaje)
     return {
         "enviado": enviado,

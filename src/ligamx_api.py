@@ -425,6 +425,53 @@ def goleadores_por_equipo(limit: int = 50, por_equipo: int = 2,
     return mapa
 
 
+def porteros() -> List[Dict[str, Any]]:
+    """/365scores/goalkeepers — porteros: vallas invictas, goles recibidos, salvadas."""
+    d = _get("/365scores/goalkeepers")
+    if isinstance(d, dict):
+        d = d.get("goalkeepers") or d.get("rows") or d.get("data") or []
+    return d if isinstance(d, list) else []
+
+
+def porteros_por_equipo() -> Dict[str, Dict[str, Any]]:
+    """
+    Mapa {equipo_display: {nombre, vallas_invictas, goles_recibidos}} con el
+    mejor portero (más vallas invictas) de cada equipo. Tolerante: {} si falla o
+    en pretemporada (sin datos aún).
+    """
+    try:
+        data = porteros()
+    except Exception:  # pragma: no cover - red no disponible
+        return {}
+    mapa: Dict[str, Dict[str, Any]] = {}
+    for row in data:
+        if not isinstance(row, dict):
+            continue
+        nombre = _campo(row, "player", "name", "player_name", "goalkeeper", "nombre")
+        equipo = _campo(row, "team", "team_name", "club")
+        if isinstance(equipo, dict):
+            equipo = equipo.get("name") or equipo.get("team_name")
+        vallas = _campo(row, "clean_sheets", "cleanSheets", "vallas_invictas",
+                        "clean_sheet", "shutouts")
+        recibidos = _campo(row, "goals_conceded", "goalsConceded", "goals_against",
+                           "goles_recibidos", "conceded")
+        if not nombre or not equipo:
+            continue
+        clave = display_team_name(str(equipo))
+        entrada = {"nombre": str(nombre), "vallas_invictas": vallas, "goles_recibidos": recibidos}
+        # nos quedamos con el de más vallas invictas por equipo
+        prev = mapa.get(clave)
+        if prev is None:
+            mapa[clave] = entrada
+        else:
+            try:
+                if (int(vallas or 0)) > int(prev.get("vallas_invictas") or 0):
+                    mapa[clave] = entrada
+            except (TypeError, ValueError):
+                pass
+    return mapa
+
+
 def match_id_de_partido(home: str, away: str) -> Optional[int]:
     """
     Resuelve el match_id de la Liga MX API para un partido (por nombres, match
