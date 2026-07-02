@@ -7,6 +7,7 @@
 data/*
 !data/jornadas.json
 !data/calendario.json
+!data/fichajes.json
 
 # Python
 __pycache__/

@@ -77,7 +77,9 @@ def _formatear_contexto(ctx: Optional[Dict[str, Any]]) -> List[str]:
     ali_ok = bool(ali and ali.get("disponible"))
     js = ctx.get("jugadores_seguir") if isinstance(ctx.get("jugadores_seguir"), dict) else None
     js_ok = bool(js and (js.get("local") or js.get("visita")))
-    if not (pred or forma_l or forma_v or riesgo_l or riesgo_v or h2h or noticias or ali_ok or js_ok):
+    fichajes = ctx.get("fichajes") if isinstance(ctx.get("fichajes"), dict) else None
+    fichajes_ok = bool(fichajes and (fichajes.get("local") or fichajes.get("visita")))
+    if not (pred or forma_l or forma_v or riesgo_l or riesgo_v or h2h or noticias or ali_ok or js_ok or fichajes_ok):
         return []  # pretemporada: sin datos aún, no ensuciar el mensaje
 
     lineas.append(f"🔎 <b>Contexto (Liga MX API)</b> — {ctx.get('home')} vs {ctx.get('away')}:")
@@ -122,6 +124,13 @@ def _formatear_contexto(ctx: Optional[Dict[str, Any]]) -> List[str]:
             lineas.append(f"      {ctx.get('home')}: {loc}")
         if vis:
             lineas.append(f"      {ctx.get('away')}: {vis}")
+    fichajes = ctx.get("fichajes") if isinstance(ctx.get("fichajes"), dict) else None
+    if fichajes and (fichajes.get("local") or fichajes.get("visita")):
+        lineas.append("    🔄 Altas/Bajas (Transfermarkt):")
+        if fichajes.get("local"):
+            lineas.append(f"      {ctx.get('home')} — {fichajes['local']}")
+        if fichajes.get("visita"):
+            lineas.append(f"      {ctx.get('away')} — {fichajes['visita']}")
     return lineas
 
 
@@ -484,6 +493,19 @@ def _contexto_top_pick(pronosticos: List[Dict[str, Any]],
                     dossier.get("noticias", []),
                 )
         except Exception:  # pragma: no cover - IA nunca debe tumbar el pick
+            pass
+        # Altas/bajas (Transfermarkt, importación asistida). Opcional/tolerante.
+        try:
+            try:
+                import fichajes as fich
+            except ImportError:  # pragma: no cover
+                from src import fichajes as fich  # type: ignore
+            if isinstance(dossier, dict):
+                loc = fich.linea_equipo(dossier.get("home", home))
+                vis = fich.linea_equipo(dossier.get("away", away))
+                if loc or vis:
+                    dossier["fichajes"] = {"local": loc, "visita": vis}
+        except Exception:  # pragma: no cover - nunca debe tumbar el pick
             pass
         return dossier
     except Exception:  # pragma: no cover - nunca debe tumbar el envío

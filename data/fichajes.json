@@ -1,0 +1,5 @@
+{
+  "_nota": "Altas/bajas por equipo (Apertura 2026). Fuente: Transfermarkt, importado de forma ASISTIDA (el usuario valida; no hay scraping). Formato: nombre de equipo -> {altas:[...], bajas:[...]}. Vacío = sin datos aún.",
+  "temporada": "Apertura 2026",
+  "equipos": {}
+}

@@ -136,6 +136,30 @@ def alerts_recordatorio(request: Request, dias_antes: int = 1,
     return telegram_pronosticos.enviar_recordatorio_si_aplica(dias_antes=dias_antes)
 
 
+@app.post("/fichajes", summary="Importar altas/bajas de un equipo (asistido, sin scraping)", tags=["Datos"])
+@limiter.limit("30/minute")
+def set_fichajes(request: Request, equipo: str, altas: str = "", bajas: str = "",
+                 api_key: str = Depends(verify_api_key)):
+    """
+    Guarda altas/bajas de un equipo (datos de Transfermarkt que TÚ validas; no se
+    scrapea). `altas`/`bajas` separadas por coma. Ej:
+    POST /fichajes?equipo=America&altas=Jugador A,Jugador B&bajas=Jugador C
+    """
+    from src import fichajes
+    a = [x for x in altas.split(",") if x.strip()]
+    b = [x for x in bajas.split(",") if x.strip()]
+    guardado = fichajes.guardar_equipo(equipo, a, b)
+    return {"equipo": equipo, "guardado": guardado}
+
+
+@app.get("/fichajes", summary="Ver altas/bajas de un equipo", tags=["Datos"])
+@limiter.limit("30/minute")
+def get_fichajes(request: Request, equipo: str):
+    """Devuelve las altas/bajas guardadas de un equipo (informativo, público)."""
+    from src import fichajes
+    return {"equipo": equipo, **fichajes.resumen_equipo(equipo)}
+
+
 # ---------------------------------------------------------------------------
 # Equipos usados en el Survivor (persisten en la BD; el pick los excluye).
 # ---------------------------------------------------------------------------
