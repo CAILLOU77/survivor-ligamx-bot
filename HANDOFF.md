@@ -3,8 +3,15 @@
 ## 1. Identidad
 - **Repo:** `BRUCEWAYNE0180/survivor-ligamx-bot` · rama principal `main`
 - **Stack:** Python **3.12**, FastAPI (web en **Render**: `survivor-ligamx-bot.onrender.com`), Postgres (prod) / SQLite (local)
-- **Estado:** **379 tests** ✅ · **ruff** limpio · **CI corre lint+tests** en cada PR
-- **Objetivo:** asistir decisiones de **Survivor Liga MX** + pronósticos (1X2, O/U, BTTS) para el **Apertura 2026** (arranca ~17 de julio).
+- **Estado:** **434 tests** ✅ · **ruff** limpio · **CI corre lint+tests** en cada PR
+- **Objetivo:** asistir decisiones de **Survivor Liga MX** + pronósticos (1X2, O/U, BTTS) para el **Apertura 2026** (arranca 16 de julio).
+
+## 1b. Infraestructura / bases de datos (IMPORTANTE — sin caducidad)
+- **Bot Survivor** → código en Render (free, duerme a los 15 min) · BD en **Neon** (Postgres, plan gratis **permanente**, no caduca).
+- **API hermana `ligamx-api`** (`ligamx-api.onrender.com`) → código en Render (free) · BD **migrada de Render Postgres a Neon** (jul 2026) para evitar la caducidad de 30 días del Postgres gratis de Render. Se re-pobló con `POST /sync` (Apertura 2026, 153 partidos) y `POST /sync/backfill` (Apertura 2025, histórico).
+- **Neon Auth**: NO se usa (es para login de usuarios; el bot no lo necesita).
+- El plan **web** gratis de Render **no** caduca a los 30 días (eso era el Postgres gratis de Render, ya evitado). 750 h/mes colectivas; como los servicios duermen, sobra.
+- Calendario Apertura 2026 validado contra fuentes oficiales (365scores/onefootball); 18 equipos con **Atlante** (sin Mazatlán, regla 2026).
 
 ## 2. REGLA MÁXIMA (no negociable)
 **Informativo.** No apuesta, no envía picks automáticos, **no inventa datos**. Toda salida lleva `INFORMATIVO / REVISIÓN HUMANA`. **Cero scraping** a sitios con login/anti-bot. Cero momios o métricas fabricadas.
@@ -30,7 +37,13 @@ Modelos: `poisson_model` (default) y `dixon_coles_mle` (alternativa opcional, va
 
 > **Track-record:** `GET /historial/pronosticos` (marcador predicho vs real + aciertos) y `GET /historial/rentabilidad` (% acierto 1X2 y marcador exacto). Se llena solo: cada envío de Telegram registra los pronósticos y el cron diario (`/cron/backtest`) los resuelve con resultados reales.
 
-> **Telegram (comandos):** webhook activo (`/telegram/webhook`). Comandos del dueño: `/pick` (genera y envía pronóstico + pick), `/usado <equipo>`, `/usados`, `/quitar <equipo>`, `/reset`, `/ayuda`. Además `auto-alerts.yml` envía el pronóstico cada 6h automáticamente.
+> **Telegram (comandos):** webhook activo (`/telegram/webhook`). Comandos del dueño: `/pick` (o `/picks`, `/survivor`, `/jornada`, `/pronostico`) genera y envía pronóstico + pick; `/usado <equipo>`, `/usados`, `/quitar <equipo>`, `/reset`, `/ayuda`.
+
+> **Recordatorio + resumen (automáticos):** `POST /alerts/recordatorio?dias_antes=1` avisa por Telegram cuando la próxima jornada está por arrancar (workflow `recordatorio.yml`, cron diario; lee data/calendario.json, no spamea). `POST /alerts/resumen` manda el track-record (aciertos 1X2 y marcador), enganchado al `cron-backtest.yml`.
+
+> **Contenido del mensaje de Telegram (rediseñado):** SURVIVOR con pick destacado (partido completo local 🏠/visita ✈️, **Sobrevive** = gana o empata vs **Gana** = victoria/punto, confianza, motivación del rival, porqué) + otras opciones. PARTIDOS numerados con pick por **nombre del club** (no "Gana Local"), probabilidades, goles/BTTS/marcador, explicaciones, alertas 🚨/⚠️, **momios reales** (odds-api.io), **⭐ jugadores a seguir** (goleadores) y **🧤 muro** (portero + vallas invictas, solo si se espera portería a 0 / partido cerrado). Sección **🗓️ CONTEXTO DE CALENDARIO** (Leagues Cup, fechas FIFA, Campeón/Campeones Cup, Intercontinental) que afecta disponibilidad de jugadores. Ver `src/calendario_contexto.py`.
+
+> **Estrategia (valora VICTORIAS):** el pick estratégico ordena por `score = no_perder + PESO_VICTORIA*prob_victoria − pen_visitante`. Sobrevivir es prioridad #1, pero entre picks seguros se prefiere el que MÁS gana (desempate del Survivor = más victorias/menos empates). El empate es push (no aporta al score). En arranque el peso de ganar baja (cautela).
 
 ## 5. Lo que se hizo en sesiones previas (todo en `main`)
 **Modelo (lo grande):**
