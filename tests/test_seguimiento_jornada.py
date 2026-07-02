@@ -41,6 +41,14 @@ class TestVeredicto(unittest.TestCase):
     def test_duda_intermedio(self):
         self.assertEqual(seg.veredicto_xi(78.0)["estado"], "DUDA")
 
+    def test_frontera_confirma(self):
+        self.assertEqual(seg.veredicto_xi(88.0)["estado"], "CONFIRMA")
+        self.assertEqual(seg.veredicto_xi(87.9)["estado"], "DUDA")
+
+    def test_frontera_descarta(self):
+        self.assertEqual(seg.veredicto_xi(74.9)["estado"], "DESCARTA")
+        self.assertEqual(seg.veredicto_xi(75.0)["estado"], "DUDA")
+
 
 class TestListaSeguimiento(unittest.TestCase):
     def test_ordena_por_hora(self):

@@ -25,9 +25,10 @@ except ImportError:  # pragma: no cover
 
 _DIAS = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"]
 
-# Umbrales de veredicto por fuerza del XI confirmado.
-_XI_CONFIRMA = 85.0   # XI casi completo -> quédate
-_XI_DESCARTA = 70.0   # XI muy mermado -> descarta, espera al siguiente
+# Umbrales de veredicto por fuerza del XI confirmado (cautelosos: en Survivor una
+# derrota elimina, así que solo "confirma" con XI casi completo).
+_XI_CONFIRMA = 88.0   # XI casi completo -> quédate
+_XI_DESCARTA = 75.0   # XI mermado -> descarta, espera al siguiente
 
 
 def _parse_dt(iso: Any) -> Optional[datetime]:
