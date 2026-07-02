@@ -11,7 +11,10 @@ Mensaje informativo, con disclaimer de revisión humana. No es consejo de apuest
 """
 from __future__ import annotations
 
+import json
 import os
+from datetime import date, datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 try:
@@ -31,6 +34,7 @@ except ImportError:  # pragma: no cover
 
 DISCLAIMER = "ℹ️ Informativo / revisión humana. No es consejo de apuesta."
 _MAX_PARTIDOS = 9
+_CALENDARIO_PATH = Path(__file__).resolve().parents[1] / "data" / "calendario.json"
 
 
 def _usados_persistidos() -> Optional[List[str]]:
@@ -645,6 +649,130 @@ def enviar_plan(equipos_usados: Optional[List[str]] = None,
     enviado = enviar_mensaje(mensaje)
     return {"enviado": enviado, "jornadas": len(plan.get("plan", [])),
             "calendario_incompleto": bool(plan.get("calendario_incompleto"))}
+
+
+# ---------------------------------------------------------------------------
+# Resumen de rentabilidad (track-record) por Telegram
+# ---------------------------------------------------------------------------
+def construir_mensaje_rentabilidad(data: Dict[str, Any]) -> str:
+    """Mensaje (HTML) con el track-record de pronósticos (aciertos 1X2 y marcador)."""
+    resueltos = int(data.get("resueltos") or 0)
+    pend = int(data.get("pendientes") or 0)
+    if resueltos == 0:
+        return ("📊 <b>RESUMEN DE PRONÓSTICOS</b>\n\n"
+                f"Aún no hay pronósticos resueltos (pendientes: {pend}). "
+                "Se llenará cuando se jueguen las jornadas.\n\n"
+                f"{DISCLAIMER}")
+    a1 = data.get("aciertos_1x2") or 0
+    p1 = data.get("acierto_1x2_pct")
+    am = data.get("aciertos_marcador_exacto") or 0
+    pm = data.get("acierto_marcador_pct")
+    lineas = [
+        "📊 <b>RESUMEN DE PRONÓSTICOS</b> (track-record)",
+        f"<i>Resueltos: {resueltos} · Pendientes: {pend}</i>",
+        "",
+        f"🎯 Aciertos 1X2: <b>{a1}/{resueltos}</b>" + (f" ({p1}%)" if p1 is not None else ""),
+        f"🎯 Marcador exacto: <b>{am}/{resueltos}</b>" + (f" ({pm}%)" if pm is not None else ""),
+        "",
+        DISCLAIMER,
+    ]
+    return "\n".join(lineas)
+
+
+def enviar_resumen_rentabilidad() -> Dict[str, Any]:
+    """Envía por Telegram el resumen de aciertos del modelo. Tolerante (BD)."""
+    try:
+        try:
+            from database import rentabilidad_pronosticos
+        except ImportError:  # pragma: no cover
+            from src.database import rentabilidad_pronosticos  # type: ignore
+        data = rentabilidad_pronosticos()
+    except Exception as exc:  # pragma: no cover - BD no disponible
+        return {"enviado": False, "error": str(exc)}
+    enviado = enviar_mensaje(construir_mensaje_rentabilidad(data))
+    return {"enviado": enviado, "resueltos": data.get("resueltos"), "pendientes": data.get("pendientes")}
+
+
+# ---------------------------------------------------------------------------
+# Recordatorio automático antes de la jornada
+# ---------------------------------------------------------------------------
+def _cargar_calendario_local() -> List[Dict[str, Any]]:
+    """Lee data/calendario.json (lista de jornadas). [] si no existe/falla."""
+    try:
+        if _CALENDARIO_PATH.exists():
+            with open(_CALENDARIO_PATH, encoding="utf-8") as fh:
+                data = json.load(fh)
+            return data if isinstance(data, list) else []
+    except Exception:  # pragma: no cover
+        pass
+    return []
+
+
+def _fecha(valor: Any) -> Optional[date]:
+    try:
+        return datetime.strptime(str(valor)[:10], "%Y-%m-%d").date()
+    except (TypeError, ValueError):
+        return None
+
+
+def proxima_jornada(hoy: Optional[date] = None) -> Optional[Dict[str, Any]]:
+    """Jornada cuya fecha_inicio es la más próxima a partir de hoy (o None)."""
+    hoy = hoy or datetime.now(timezone.utc).date()
+    candidatas = []
+    for j in _cargar_calendario_local():
+        ini = _fecha(j.get("fecha_inicio"))
+        if ini is not None and ini >= hoy:
+            candidatas.append((ini, j))
+    if not candidatas:
+        return None
+    candidatas.sort(key=lambda t: t[0])
+    return candidatas[0][1]
+
+
+def construir_recordatorio(jornada: Dict[str, Any], dias: int) -> str:
+    """Mensaje (HTML) de recordatorio de que se acerca una jornada."""
+    n = jornada.get("jornada", "?")
+    ini = jornada.get("fecha_inicio", "")
+    cuando = "hoy" if dias == 0 else ("mañana" if dias == 1 else f"en {dias} días")
+    lineas = [
+        f"⏰ <b>SE ACERCA LA JORNADA {n}</b>",
+        f"<i>Arranca {cuando} ({ini}).</i>",
+        "",
+        "Mándame <b>/picks</b> ~1 hora antes de los partidos y te doy el pick de "
+        "Survivor + los pronósticos de la jornada con datos frescos.",
+    ]
+    partidos = jornada.get("partidos") or []
+    if partidos:
+        lineas.append("")
+        lineas.append("📋 Partidos:")
+        for p in partidos[:_MAX_PARTIDOS]:
+            h = p.get("home_team", "")
+            a = p.get("away_team", "")
+            if h and a:
+                lineas.append(f"  • {h} vs {a}")
+    lineas += ["", DISCLAIMER]
+    return "\n".join(lineas)
+
+
+def enviar_recordatorio_si_aplica(dias_antes: int = 1,
+                                  hoy: Optional[date] = None) -> Dict[str, Any]:
+    """
+    Envía un recordatorio SOLO si la próxima jornada arranca dentro de `dias_antes`
+    días (0..dias_antes). Pensado para un cron diario: no spamea porque solo
+    dispara al acercarse el inicio. Devuelve si envió y a cuántos días.
+    """
+    hoy = hoy or datetime.now(timezone.utc).date()
+    j = proxima_jornada(hoy)
+    if not j:
+        return {"enviado": False, "motivo": "sin próxima jornada"}
+    ini = _fecha(j.get("fecha_inicio"))
+    if ini is None:
+        return {"enviado": False, "motivo": "fecha inválida"}
+    dias = (ini - hoy).days
+    if not (0 <= dias <= dias_antes):
+        return {"enviado": False, "motivo": f"faltan {dias} días", "jornada": j.get("jornada")}
+    enviado = enviar_mensaje(construir_recordatorio(j, dias))
+    return {"enviado": enviado, "jornada": j.get("jornada"), "dias": dias}
 
 
 if __name__ == "__main__":

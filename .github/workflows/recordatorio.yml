@@ -1,0 +1,16 @@
+name: Recordatorio de Jornada
+
+on:
+  schedule:
+    - cron: '0 15 * * *'  # Cada día 15:00 UTC (~9-10 AM MX)
+  workflow_dispatch:  # Ejecución manual
+
+jobs:
+  recordatorio:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Recordatorio si se acerca la jornada
+        run: |
+          curl -fsS -X POST "https://survivor-ligamx-bot.onrender.com/alerts/recordatorio?dias_antes=1" \
+            -H "X-API-Key: ${{ secrets.API_KEY }}" \
+            -H "Content-Type: application/json"

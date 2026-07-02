@@ -116,6 +116,26 @@ def alerts_plan(request: Request, api_key: str = Depends(verify_api_key)):
     return telegram_pronosticos.enviar_plan()
 
 
+@app.post("/alerts/resumen", summary="Enviar resumen de rentabilidad (track-record) por Telegram", tags=["Alerts"])
+@limiter.limit("6/minute")
+def alerts_resumen(request: Request, api_key: str = Depends(verify_api_key)):
+    """Envía por Telegram el track-record del modelo (aciertos 1X2 y marcador)."""
+    from src import telegram_pronosticos
+    return telegram_pronosticos.enviar_resumen_rentabilidad()
+
+
+@app.post("/alerts/recordatorio", summary="Recordar por Telegram que se acerca la jornada", tags=["Alerts"])
+@limiter.limit("6/minute")
+def alerts_recordatorio(request: Request, dias_antes: int = 1,
+                        api_key: str = Depends(verify_api_key)):
+    """
+    Envía un recordatorio SOLO si la próxima jornada arranca dentro de `dias_antes`
+    días. Pensado para un cron diario (no spamea: solo dispara al acercarse).
+    """
+    from src import telegram_pronosticos
+    return telegram_pronosticos.enviar_recordatorio_si_aplica(dias_antes=dias_antes)
+
+
 # ---------------------------------------------------------------------------
 # Equipos usados en el Survivor (persisten en la BD; el pick los excluye).
 # ---------------------------------------------------------------------------

@@ -12,3 +12,9 @@ jobs:
       - name: Trigger backtest
         run: |
           curl -X POST https://survivor-ligamx-bot.onrender.com/cron/backtest
+
+      - name: Enviar resumen de rentabilidad por Telegram
+        run: |
+          curl -fsS -X POST https://survivor-ligamx-bot.onrender.com/alerts/resumen \
+            -H "X-API-Key: ${{ secrets.API_KEY }}" \
+            -H "Content-Type: application/json" || true
