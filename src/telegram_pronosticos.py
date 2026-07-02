@@ -812,7 +812,8 @@ def enviar_pronosticos(equipos_usados: Optional[List[str]] = None,
 
 def construir_mensaje_seguimiento(items: List[Dict[str, Any]],
                                   descartados: Optional[List[str]] = None,
-                                  recomendado: Optional[Dict[str, Any]] = None) -> str:
+                                  recomendado: Optional[Dict[str, Any]] = None,
+                                  nota_plan: Optional[str] = None) -> str:
     """
     Mensaje (HTML) centrado en UN pick claro y UN momento para actuar (no un menú).
     El respaldo solo se menciona; el día del partido, el veredicto del XI decide
@@ -839,6 +840,8 @@ def construir_mensaje_seguimiento(items: List[Dict[str, Any]],
         f"✅ <b>{rec['equipo']}</b> ({_sede(rec)} vs {rec['rival']})",
         f"     sobrevive {rec['no_perder_pct']}%{gtxt} · confianza <b>{rec.get('nivel', '—')}</b>",
     ]
+    if nota_plan:
+        lineas.append(f"     {nota_plan}")
     if cuando:
         lineas.append(f"     📅 Juega: <b>{cuando}</b>")
     lineas.append("")
@@ -911,6 +914,51 @@ def _mapa_horarios(lmx) -> Dict[str, str]:
     return out
 
 
+def _plan_temporada(equipos_usados: Optional[List[str]]) -> Dict[str, Any]:
+    """Construye el plan óptimo de temporada (reserva fuertes). {} si no se puede."""
+    try:
+        try:
+            import planificador_survivor as plan_mod
+            import fuentes_datos
+            import poisson_model as pm
+        except ImportError:  # pragma: no cover
+            from src import planificador_survivor as plan_mod  # type: ignore
+            from src import fuentes_datos, poisson_model as pm  # type: ignore
+        calendario = plan_mod.cargar_calendario()
+        if not calendario:
+            return {}
+        datos = fuentes_datos.obtener_resultados(meses=18)
+        fuerzas = pm.calcular_fuerzas(datos["resultados"])
+        odds = plan_mod.construir_odds_por_partido(calendario)
+        return plan_mod.planificar(calendario, fuerzas, equipos_usados=equipos_usados,
+                                   peso_victoria=0.5, odds_por_partido=odds)
+    except Exception:  # pragma: no cover - nunca debe tumbar /seguir
+        return {}
+
+
+def _jornada_actual_num() -> Optional[int]:
+    """Número de la próxima jornada por jugar (según data/calendario.json)."""
+    try:
+        j = proxima_jornada()
+        return int(j.get("jornada")) if j else None
+    except Exception:  # pragma: no cover
+        return None
+
+
+def _rec_desde_plan(plan: Dict[str, Any], jornada_num: Optional[int]) -> Optional[Dict[str, Any]]:
+    """Entrada del plan para la jornada actual, mapeada al formato de pick."""
+    if not plan or jornada_num is None:
+        return None
+    for p in plan.get("plan", []):
+        if p.get("jornada") == jornada_num:
+            return {
+                "equipo": p["equipo"], "rival": p["rival"], "condicion": p["condicion"],
+                "no_perder_pct": p["no_perder_pct"], "prob_victoria_pct": p.get("prob_ganar_pct"),
+                "nivel": p.get("nivel"),
+            }
+    return None
+
+
 def enviar_seguimiento(equipos_usados: Optional[List[str]] = None, n: int = 5) -> Dict[str, Any]:
     """
     Envía por Telegram la lista de seguimiento (candidatos priorizados, ordenados
@@ -964,8 +1012,29 @@ def enviar_seguimiento(equipos_usados: Optional[List[str]] = None, n: int = 5) -
         p.get("local", "") for p in pronosticos
         if _k(p.get("local", "")) not in seguidos and _k(p.get("local", "")) not in usados_set
     ][:6]
+    # Recomendación PLAN-AWARE: el plan de temporada reserva a los fuertes.
     recomendado = picks[0] if picks else None
-    mensaje = construir_mensaje_seguimiento(items, descartados=descartados, recomendado=recomendado)
+    nota_plan = None
+    try:
+        plan = _plan_temporada(equipos_usados)
+        rec_plan = _rec_desde_plan(plan, _jornada_actual_num())
+        if rec_plan:
+            miope = picks[0]["equipo"] if picks else None
+            if miope and _k(rec_plan["equipo"]) != _k(miope):
+                nota_plan = (f"📅 Plan de temporada: usa <b>{rec_plan['equipo']}</b> esta jornada "
+                             f"y GUARDA a {miope} para una jornada más difícil.")
+            else:
+                nota_plan = (f"📅 Plan de temporada: <b>{rec_plan['equipo']}</b> es tu equipo de esta "
+                             "jornada (mirando las 17 completas, sin quemar fuertes).")
+            recomendado = rec_plan
+            # Asegurar que el equipo del plan esté en la lista (para XI/hora/veredicto).
+            if not any(_k(it["equipo"]) == _k(rec_plan["equipo"]) for it in items):
+                extra = seg.lista_seguimiento([rec_plan], horarios=horarios, fuerza_xi=fuerza_xi, n=1)
+                items = extra + items
+    except Exception:  # pragma: no cover - nunca debe tumbar /seguir
+        pass
+    mensaje = construir_mensaje_seguimiento(items, descartados=descartados,
+                                            recomendado=recomendado, nota_plan=nota_plan)
     enviado = enviar_mensaje(mensaje)
     return {"enviado": enviado, "candidatos": len(items)}
 
