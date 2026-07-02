@@ -1063,6 +1063,23 @@ def construir_mensaje_plan(plan: Dict[str, Any]) -> str:
     if riesgosas:
         lineas.append("")
         lineas.append(f"⚠️ Jornadas riesgosas: {', '.join('J'+str(j) for j in riesgosas)}")
+    no_usados = plan.get("equipos_no_usados") or []
+    if no_usados:
+        lineas.append("")
+        if len(no_usados) == 1:
+            lineas.append(
+                f"🚫 Equipo que NO usarás (sacrificado): <b>{no_usados[0]}</b> — "
+                f"no tiene una jornada suficientemente buena, sale del plan."
+            )
+        else:
+            lineas.append(
+                "🚫 Equipos que NO usarás (sacrificados): "
+                f"<b>{', '.join(no_usados)}</b> — sin jornada lo bastante buena."
+            )
+        lineas.append(
+            "<i>El resto de los flojos ya está colocado en su partido menos malo "
+            "(de local vs rival débil).</i>"
+        )
     lineas += ["", DISCLAIMER]
     return "\n".join(lineas)
 

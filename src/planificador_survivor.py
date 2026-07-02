@@ -224,7 +224,11 @@ def planificar(
     vict_esp = sum(p["prob_ganar_pct"] / 100.0 for p in plan)
     emp_esp = sum(p["prob_empate_pct"] / 100.0 for p in plan)
     riesgosas = [p["jornada"] for p in plan if p["nivel"] == "RIESGOSA"]
-    no_usados = [e for e in equipos if e not in asignados]
+    # Mapa nombre_normalizado -> nombre de display (para mostrar bonito al usuario).
+    display = {}
+    for (_jnum, eq_norm), c in celdas.items():
+        display.setdefault(eq_norm, c["equipo"])
+    no_usados = [display.get(e, e) for e in equipos if e not in asignados]
 
     return {
         "plan": plan,
