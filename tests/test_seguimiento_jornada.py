@@ -41,6 +41,13 @@ class TestVeredicto(unittest.TestCase):
     def test_duda_intermedio(self):
         self.assertEqual(seg.veredicto_xi(78.0)["estado"], "DUDA")
 
+    def test_umbrales_cautelosos_frontera(self):
+        # Cautelosos: confirma solo >=88, descarta <75.
+        self.assertEqual(seg.veredicto_xi(88.0)["estado"], "CONFIRMA")
+        self.assertEqual(seg.veredicto_xi(87.9)["estado"], "DUDA")
+        self.assertEqual(seg.veredicto_xi(75.0)["estado"], "DUDA")
+        self.assertEqual(seg.veredicto_xi(74.9)["estado"], "DESCARTA")
+
     def test_frontera_confirma(self):
         self.assertEqual(seg.veredicto_xi(88.0)["estado"], "CONFIRMA")
         self.assertEqual(seg.veredicto_xi(87.9)["estado"], "DUDA")
