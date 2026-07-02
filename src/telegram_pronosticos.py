@@ -24,6 +24,11 @@ try:
 except ImportError:  # pragma: no cover
     from src import motor_pronosticos as motor  # type: ignore
 
+try:
+    import calendario_contexto as calctx
+except ImportError:  # pragma: no cover
+    from src import calendario_contexto as calctx  # type: ignore
+
 DISCLAIMER = "ℹ️ Informativo / revisión humana. No es consejo de apuesta."
 _MAX_PARTIDOS = 9
 
@@ -229,6 +234,18 @@ def construir_mensaje(
             lineas.append("")
             lineas.extend(contexto_lineas)
 
+    # Contexto de calendario a nivel jornada (Leagues Cup, fechas FIFA, etc.).
+    try:
+        cal_lineas = calctx.resumen_jornada(pronosticos)
+    except Exception:  # pragma: no cover - nunca debe tumbar el mensaje
+        cal_lineas = []
+    if cal_lineas:
+        lineas.append(div)
+        lineas.append("🗓️ <b>CONTEXTO DE CALENDARIO</b>")
+        lineas.append("<i>Afecta disponibilidad/desgaste de jugadores:</i>")
+        for c in cal_lineas:
+            lineas.append(f"  {c}")
+
     if pronosticos:
         lineas.append(div)
         lineas.append("📋 <b>PARTIDOS DE LA JORNADA</b>")
@@ -250,6 +267,13 @@ def construir_mensaje(
             if p.get("precaucion") and p.get("motivos_alerta"):
                 lineas.append(f"     {p['nivel_alerta']}: {' '.join(p['motivos_alerta'])}")
             lineas.extend(_lineas_mercado(p))
+            try:
+                cal_ev = calctx.eventos_para_fecha(p.get("fecha"), [p.get("local", ""), p.get("visitante", "")])
+            except Exception:  # pragma: no cover
+                cal_ev = []
+            if cal_ev:
+                nombres = " · ".join(f"{e.get('emoji', '🗓️')} {e.get('nombre')}" for e in cal_ev)
+                lineas.append(f"     🗓️ Calendario: {nombres}")
     else:
         lineas.append(div)
         lineas.append("Sin pronósticos disponibles (faltan datos de ESPN o fixtures).")
