@@ -791,6 +791,121 @@ def enviar_pronosticos(equipos_usados: Optional[List[str]] = None,
     }
 
 
+def construir_mensaje_seguimiento(items: List[Dict[str, Any]],
+                                  descartados: Optional[List[str]] = None) -> str:
+    """Mensaje (HTML) con la lista de seguimiento secuencial del Survivor."""
+    if not items:
+        return ("📋 <b>LISTA DE SEGUIMIENTO</b>\n\n"
+                "Aún no hay candidatos (faltan datos de la jornada).\n\n"
+                f"{DISCLAIMER}")
+    lineas = [
+        "📋 <b>LISTA DE SEGUIMIENTO — SURVIVOR</b>",
+        "<i>Plan: revisa uno por uno ~1h antes de su partido. Si su alineación "
+        "convence, úsalo; si no, descártalo y espera al siguiente hasta cerrar uno.</i>",
+        "",
+    ]
+    medallas = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣"]
+    for i, it in enumerate(items):
+        n = medallas[i] if i < len(medallas) else "•"
+        cuando = f" — {it['cuando']}" if it.get("cuando") else ""
+        gana = it.get("prob_victoria_pct")
+        gtxt = f" · gana {gana}%" if gana is not None else ""
+        lineas.append(
+            f"{n} <b>{it['equipo']}</b> ({it['condicion']} vs {it['rival']}){cuando}"
+        )
+        lineas.append(
+            f"     ✅ sobrevive {it['no_perder_pct']}%{gtxt} · confianza <b>{it.get('nivel', '—')}</b>"
+        )
+        ver = it.get("veredicto") or {}
+        if ver:
+            lineas.append(f"     {ver.get('emoji', '⏳')} {ver.get('texto', '')}")
+    if descartados:
+        lineas.append("")
+        lineas.append(f"🚫 <b>Descartados esta jornada:</b> {', '.join(descartados)}")
+    lineas += ["", DISCLAIMER]
+    return "\n".join(lineas)
+
+
+def _mapa_horarios(lmx) -> Dict[str, str]:
+    """{clave_equipo: match_date_iso} desde /matches/upcoming. {} si falla."""
+    try:
+        from team_normalizer import canonical_team_key as _k
+    except ImportError:  # pragma: no cover
+        from src.team_normalizer import canonical_team_key as _k  # type: ignore
+    out: Dict[str, str] = {}
+    try:
+        for m in lmx.partidos_proximos(limit=20) or []:
+            if not isinstance(m, dict):
+                continue
+            fecha = m.get("match_date")
+            for lado in ("home_team", "away_team"):
+                eq = m.get(lado) or {}
+                nombre = eq.get("name") if isinstance(eq, dict) else eq
+                if nombre and fecha:
+                    out[_k(str(nombre))] = str(fecha)
+    except Exception:  # pragma: no cover
+        pass
+    return out
+
+
+def enviar_seguimiento(equipos_usados: Optional[List[str]] = None, n: int = 5) -> Dict[str, Any]:
+    """
+    Envía por Telegram la lista de seguimiento (candidatos priorizados, ordenados
+    por hora de partido) para decidir el Survivor de forma secuencial.
+    """
+    try:
+        import seguimiento_jornada as seg
+    except ImportError:  # pragma: no cover
+        from src import seguimiento_jornada as seg  # type: ignore
+    try:
+        import ligamx_api as lmx
+    except ImportError:  # pragma: no cover
+        from src import ligamx_api as lmx  # type: ignore
+
+    resultado = motor.generar_pronosticos()
+    pronosticos = resultado.get("pronosticos", [])
+    if equipos_usados is None:
+        equipos_usados = _usados_persistidos()
+    try:
+        motivacion = motor.motivacion_por_equipo()
+    except Exception:  # pragma: no cover
+        motivacion = {}
+    est = motor.mejores_picks_estrategico(
+        pronosticos, equipos_usados, motivacion,
+        partidos_jugados_torneo=_partidos_jugados_torneo(), n=max(n, 5),
+    )
+    picks = est.get("picks") or []
+    horarios = _mapa_horarios(lmx)
+    # Fuerza del XI por equipo candidato (solo los que ya tengan alineación).
+    fuerza_xi: Dict[str, float] = {}
+    try:
+        from team_normalizer import canonical_team_key as _k
+    except ImportError:  # pragma: no cover
+        from src.team_normalizer import canonical_team_key as _k  # type: ignore
+    for pk in picks[:n]:
+        es_local = pk.get("condicion") == "Local"
+        home = pk["equipo"] if es_local else pk["rival"]
+        away = pk["rival"] if es_local else pk["equipo"]
+        try:
+            imp = lmx.lineup_impact_partido(home, away)
+            if isinstance(imp, dict) and imp.get("disponible"):
+                for eq, info in (imp.get("equipos") or {}).items():
+                    if isinstance(info, dict) and info.get("fuerza_xi_pct") is not None:
+                        fuerza_xi[_k(eq)] = info["fuerza_xi_pct"]
+        except Exception:  # pragma: no cover - nunca tumbar el envío
+            pass
+    items = seg.lista_seguimiento(picks, horarios=horarios, fuerza_xi=fuerza_xi, n=n)
+    usados_set = {_k(e) for e in (equipos_usados or [])}
+    seguidos = {_k(it["equipo"]) for it in items}
+    descartados = [
+        p.get("local", "") for p in pronosticos
+        if _k(p.get("local", "")) not in seguidos and _k(p.get("local", "")) not in usados_set
+    ][:6]
+    mensaje = construir_mensaje_seguimiento(items, descartados=descartados)
+    enviado = enviar_mensaje(mensaje)
+    return {"enviado": enviado, "candidatos": len(items)}
+
+
 def construir_mensaje_plan(plan: Dict[str, Any]) -> str:
     """Mensaje (HTML) con el plan de temporada del Survivor."""
     if plan.get("calendario_incompleto") or not plan.get("plan"):

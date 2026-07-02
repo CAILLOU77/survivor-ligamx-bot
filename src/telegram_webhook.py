@@ -24,6 +24,7 @@ from typing import Any, Dict, Optional, Tuple
 AYUDA = (
     "🤖 <b>Comandos Survivor</b>\n"
     "/pick (o /picks) — pronóstico + pick recomendado de la jornada\n"
+    "/seguir — lista de seguimiento: candidatos por hora para decidir secuencial\n"
     "/usado &lt;equipo&gt; — marca un equipo como usado (lo excluye)\n"
     "/usados — lista tus equipos usados\n"
     "/quitar &lt;equipo&gt; — quita un equipo de la lista\n"
@@ -34,6 +35,9 @@ AYUDA = (
 
 # Comandos que disparan la generación/envío del pronóstico (pesado -> background).
 CMDS_PICK = {"pick", "picks", "survivor", "jornada", "pronostico", "pronosticos"}
+
+# Comandos de la lista de seguimiento secuencial (pesado -> background).
+CMDS_SEGUIMIENTO = {"seguir", "seguimiento", "candidatos", "watchlist"}
 
 
 def parsear_comando(texto: str) -> Tuple[Optional[str], str]:
