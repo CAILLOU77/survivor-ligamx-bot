@@ -252,6 +252,9 @@ async def telegram_webhook(
         # Generación pesada (ESPN+modelo) en segundo plano; responde rápido.
         background_tasks.add_task(tp.enviar_pronosticos)
         tp.enviar_mensaje("🔄 Generando tu pronóstico y pick de la jornada...")
+    elif cmd in tw.CMDS_PLAN:
+        background_tasks.add_task(tp.enviar_plan)
+        tp.enviar_mensaje("🔄 Armando tu plan de temporada (las 17 jornadas)...")
     elif cmd in tw.CMDS_SEGUIMIENTO:
         background_tasks.add_task(tp.enviar_seguimiento)
         tp.enviar_mensaje("🔄 Armando tu lista de seguimiento de la jornada...")
