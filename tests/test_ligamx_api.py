@@ -550,3 +550,20 @@ class TestLineupImpact(unittest.TestCase):
     def test_lineup_impact_partido_sin_evento(self):
         with mock.patch.object(api, "evento_365_id", return_value=None):
             self.assertEqual(api.lineup_impact_partido("A", "B"), {})
+
+
+class TestProbableLineup(unittest.TestCase):
+    def test_probable_lineup_partido_resuelve(self):
+        payload = {"disponible": True, "fuente": "365scores",
+                   "equipos": [{"equipo": "América", "condicion": "home",
+                                "formacion": "4-3-3", "confirmada": False,
+                                "titulares_probables": ["A", "B"]}]}
+        with mock.patch.object(api, "evento_365_id", return_value=99):
+            with mock.patch.object(api, "probable_lineup", return_value=payload):
+                r = api.probable_lineup_partido("América", "Toluca")
+        self.assertTrue(r["disponible"])
+        self.assertEqual(r["equipos"][0]["formacion"], "4-3-3")
+
+    def test_probable_lineup_partido_sin_evento(self):
+        with mock.patch.object(api, "evento_365_id", return_value=None):
+            self.assertEqual(api.probable_lineup_partido("A", "B"), {})

@@ -334,3 +334,29 @@ class TestH2HDossier(unittest.TestCase):
         # No debe fallar ni renderizar H2H.
         msg = "\n".join(tp._formatear_contexto(ctx))
         self.assertNotIn("🤝 H2H", msg)
+
+
+class TestXIProbable(unittest.TestCase):
+    def test_render_xi_probable_sin_confirmado(self):
+        ctx = {
+            "home": "América", "away": "Toluca",
+            "alineacion_probable": [
+                {"equipo": "América", "condicion": "home", "formacion": "4-3-3"},
+                {"equipo": "Toluca", "condicion": "away", "formacion": "4-2-3-1"},
+            ],
+        }
+        msg = "\n".join(tp._formatear_contexto(ctx))
+        self.assertIn("XI PROBABLE", msg)
+        self.assertIn("aún no confirmado", msg)
+
+    def test_confirmado_tiene_prioridad_sobre_probable(self):
+        ctx = {
+            "home": "América", "away": "Toluca",
+            "alineacion": {"disponible": True, "equipos": [
+                {"equipo": "América", "condicion": "home", "formacion": "4-3-3", "titulares": ["H. Martín"]},
+            ]},
+            "alineacion_probable": [{"equipo": "América", "formacion": "3-5-2"}],
+        }
+        msg = "\n".join(tp._formatear_contexto(ctx))
+        self.assertIn("XI CONFIRMADO", msg)
+        self.assertNotIn("XI PROBABLE", msg)  # si ya hay confirmado, no muestra el probable

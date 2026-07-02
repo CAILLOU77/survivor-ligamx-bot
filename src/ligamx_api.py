@@ -832,6 +832,20 @@ def lineup_impact_partido(home: str, away: str) -> Dict[str, Any]:
     return _safe(lambda: lineup_impact(eid), {}) or {}
 
 
+def probable_lineup(game_id: int) -> Dict[str, Any]:
+    """/365scores/matches/{id}/probable-lineup — XI probable (no confirmado). {} si falla."""
+    d = _get(f"/365scores/matches/{game_id}/probable-lineup")
+    return d if isinstance(d, dict) else {}
+
+
+def probable_lineup_partido(home: str, away: str) -> Dict[str, Any]:
+    """XI probable de un partido (por NOMBRE). {} tolerante si no hay evento/datos."""
+    eid = _safe(lambda: evento_365_id(home, away))
+    if not eid:
+        return {}
+    return _safe(lambda: probable_lineup(eid), {}) or {}
+
+
 def alineacion_de_partido(home: str, away: str) -> Dict[str, Any]:
     """
     Alineación confirmada de un partido por NOMBRE de equipo. Tolerante: si no se

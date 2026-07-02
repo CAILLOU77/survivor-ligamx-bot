@@ -85,7 +85,9 @@ def _formatear_contexto(ctx: Optional[Dict[str, Any]]) -> List[str]:
     fichajes = ctx.get("fichajes") if isinstance(ctx.get("fichajes"), dict) else None
     fichajes_ok = bool(fichajes and (fichajes.get("local") or fichajes.get("visita")))
     impacto_ok = bool(ctx.get("impacto_xi"))
-    if not (pred or forma_l or forma_v or riesgo_l or riesgo_v or h2h or noticias or ali_ok or js_ok or fichajes_ok or impacto_ok):
+    probable = ctx.get("alineacion_probable") if isinstance(ctx.get("alineacion_probable"), list) else None
+    probable_ok = bool(probable)
+    if not (pred or forma_l or forma_v or riesgo_l or riesgo_v or h2h or noticias or ali_ok or js_ok or fichajes_ok or impacto_ok or probable_ok):
         return []  # pretemporada: sin datos aún, no ensuciar el mensaje
 
     lineas.append(f"🔎 <b>Contexto (Liga MX API)</b> — {ctx.get('home')} vs {ctx.get('away')}:")
@@ -103,6 +105,13 @@ def _formatear_contexto(ctx: Optional[Dict[str, Any]]) -> List[str]:
                     lineas.append(f"    🚨 OJO: {equipo} SIN titular clave — {', '.join(faltan)} (banca/fuera)")
         else:
             lineas.append("    ✅ XI sin ausencias clave detectadas")
+    elif probable_ok:
+        forms = " · ".join(
+            f"{e.get('equipo', '')} {e.get('formacion') or ''}".strip()
+            for e in probable if isinstance(e, dict) and e.get("equipo")
+        )
+        lineas.append(f"    🔮 XI PROBABLE (aún no confirmado) — {forms}")
+        lineas.append("    <i>Es una alineación esperada de 365Scores; confirma ~1h antes.</i>")
     impacto = ctx.get("impacto_xi") if isinstance(ctx.get("impacto_xi"), dict) else None
     if impacto:
         for equipo, info in list(impacto.items())[:2]:
@@ -679,6 +688,16 @@ def _contexto_top_pick(pronosticos: List[Dict[str, Any]],
                 imp = lmx.lineup_impact_partido(dossier.get("home", home), dossier.get("away", away))
                 if isinstance(imp, dict) and imp.get("disponible"):
                     dossier["impacto_xi"] = imp.get("equipos") or {}
+        except Exception:  # pragma: no cover
+            pass
+        # XI PROBABLE (365Scores) si aún no hay confirmado — idea temprana de quién juega.
+        try:
+            ali = dossier.get("alineacion") if isinstance(dossier, dict) else None
+            ya_confirmado = bool(ali and ali.get("disponible"))
+            if isinstance(dossier, dict) and not ya_confirmado:
+                prob = lmx.probable_lineup_partido(dossier.get("home", home), dossier.get("away", away))
+                if isinstance(prob, dict) and prob.get("disponible"):
+                    dossier["alineacion_probable"] = prob.get("equipos") or []
         except Exception:  # pragma: no cover
             pass
         return dossier
