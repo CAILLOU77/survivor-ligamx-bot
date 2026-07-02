@@ -199,7 +199,15 @@ def _jugadores_seguir_partido(p: Dict[str, Any],
         for j in lst[:2]:
             nom = j.get("nombre", "")
             goles = j.get("goles")
-            nombres.append(f"{nom} ({goles}g)" if goles not in (None, "") else nom)
+            if goles not in (None, ""):
+                try:
+                    g = int(goles)
+                    etiqueta = f"{nom} ({g} {'gol' if g == 1 else 'goles'})"
+                except (TypeError, ValueError):
+                    etiqueta = f"{nom} ({goles} goles)"
+            else:
+                etiqueta = nom
+            nombres.append(etiqueta)
         return ", ".join(nombres)
 
     loc = _para(p.get("local", ""))
