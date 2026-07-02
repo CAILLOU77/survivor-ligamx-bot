@@ -487,3 +487,21 @@ class TestJugadoresASeguir(unittest.TestCase):
         with mock.patch.object(api, "match_id_de_partido", return_value=None):
             res = api.jugadores_a_seguir_partido("A", "B")
         self.assertEqual(res, {"local": [], "visita": []})
+
+
+class TestPorteros(unittest.TestCase):
+    def test_porteros_por_equipo_mejor_valla(self):
+        data = [
+            {"player": "K. Mier", "team": "Cruz Azul", "clean_sheets": 6, "goals_conceded": 8},
+            {"player": "Suplente CAZ", "team": "Cruz Azul", "clean_sheets": 1},
+            {"player": "L. Malagón", "team": "Club América", "clean_sheets": 5},
+        ]
+        with mock.patch.object(api, "porteros", return_value=data):
+            mapa = api.porteros_por_equipo()
+        self.assertEqual(mapa["Cruz Azul"]["nombre"], "K. Mier")  # el de más vallas
+        self.assertEqual(mapa["Cruz Azul"]["vallas_invictas"], 6)
+        self.assertIn("América", mapa)
+
+    def test_porteros_por_equipo_vacio_tolerante(self):
+        with mock.patch.object(api, "porteros", return_value=[]):
+            self.assertEqual(api.porteros_por_equipo(), {})
