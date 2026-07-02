@@ -536,3 +536,17 @@ class TestTransfers365(unittest.TestCase):
     def test_transfers_365_tolerante(self):
         # Con data vacía, transfers_equipo devuelve listas vacías (no rompe).
         self.assertEqual(api.transfers_equipo("América", {}), {"altas": [], "bajas": []})
+
+
+class TestLineupImpact(unittest.TestCase):
+    def test_lineup_impact_partido_resuelve(self):
+        payload = {"disponible": True, "equipos": {"América": {"fuerza_xi_pct": 82.5}}}
+        with mock.patch.object(api, "evento_365_id", return_value=99):
+            with mock.patch.object(api, "lineup_impact", return_value=payload):
+                r = api.lineup_impact_partido("América", "Toluca")
+        self.assertTrue(r["disponible"])
+        self.assertIn("América", r["equipos"])
+
+    def test_lineup_impact_partido_sin_evento(self):
+        with mock.patch.object(api, "evento_365_id", return_value=None):
+            self.assertEqual(api.lineup_impact_partido("A", "B"), {})

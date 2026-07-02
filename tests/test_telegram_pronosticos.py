@@ -300,3 +300,19 @@ class TestAlertaXI(unittest.TestCase):
         self.assertIn("XI CONFIRMADO", msg)
         self.assertIn("SIN titular clave", msg)
         self.assertIn("A. Zendejas", msg)
+
+
+class TestImpactoXI(unittest.TestCase):
+    def test_render_impacto_xi(self):
+        ctx = {
+            "home": "América", "away": "Toluca",
+            "impacto_xi": {
+                "América": {"fuerza_xi_pct": 82.5,
+                            "ausentes_clave": [{"jugador": "A. Zendejas", "importancia_pct": 11.2}]},
+                "Toluca": {"fuerza_xi_pct": 100.0, "ausentes_clave": []},
+            },
+        }
+        msg = "\n".join(tp._formatear_contexto(ctx))
+        self.assertIn("Fuerza XI América: 82.5%", msg)
+        self.assertIn("A. Zendejas (11.2%)", msg)
+        self.assertIn("Fuerza XI Toluca: 100.0%", msg)

@@ -814,6 +814,24 @@ def alineacion_365(event_id: int) -> Dict[str, Any]:
     return {"disponible": disponible, "equipos": equipos}
 
 
+def lineup_impact(game_id: int) -> Dict[str, Any]:
+    """/365scores/matches/{id}/lineup-impact — fuerza del XI y ausentes clave. {} si falla."""
+    d = _get(f"/365scores/matches/{game_id}/lineup-impact")
+    return d if isinstance(d, dict) else {}
+
+
+def lineup_impact_partido(home: str, away: str) -> Dict[str, Any]:
+    """
+    Impacto del XI de un partido (por NOMBRE): resuelve el event_id de 365Scores
+    y devuelve {disponible, equipos:{equipo:{fuerza_xi_pct, ausentes_clave,...}}}.
+    {} tolerante si no hay evento/datos.
+    """
+    eid = _safe(lambda: evento_365_id(home, away))
+    if not eid:
+        return {}
+    return _safe(lambda: lineup_impact(eid), {}) or {}
+
+
 def alineacion_de_partido(home: str, away: str) -> Dict[str, Any]:
     """
     Alineación confirmada de un partido por NOMBRE de equipo. Tolerante: si no se

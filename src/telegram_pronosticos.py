@@ -84,7 +84,8 @@ def _formatear_contexto(ctx: Optional[Dict[str, Any]]) -> List[str]:
     js_ok = bool(js and (js.get("local") or js.get("visita")))
     fichajes = ctx.get("fichajes") if isinstance(ctx.get("fichajes"), dict) else None
     fichajes_ok = bool(fichajes and (fichajes.get("local") or fichajes.get("visita")))
-    if not (pred or forma_l or forma_v or riesgo_l or riesgo_v or h2h or noticias or ali_ok or js_ok or fichajes_ok):
+    impacto_ok = bool(ctx.get("impacto_xi"))
+    if not (pred or forma_l or forma_v or riesgo_l or riesgo_v or h2h or noticias or ali_ok or js_ok or fichajes_ok or impacto_ok):
         return []  # pretemporada: sin datos aún, no ensuciar el mensaje
 
     lineas.append(f"🔎 <b>Contexto (Liga MX API)</b> — {ctx.get('home')} vs {ctx.get('away')}:")
@@ -102,6 +103,22 @@ def _formatear_contexto(ctx: Optional[Dict[str, Any]]) -> List[str]:
                     lineas.append(f"    🚨 OJO: {equipo} SIN titular clave — {', '.join(faltan)} (banca/fuera)")
         else:
             lineas.append("    ✅ XI sin ausencias clave detectadas")
+    impacto = ctx.get("impacto_xi") if isinstance(ctx.get("impacto_xi"), dict) else None
+    if impacto:
+        for equipo, info in list(impacto.items())[:2]:
+            if not isinstance(info, dict):
+                continue
+            fuerza = info.get("fuerza_xi_pct")
+            ausentes = info.get("ausentes_clave") or []
+            if fuerza is not None:
+                txt = f"    🧮 Fuerza XI {equipo}: {fuerza}%"
+                if ausentes:
+                    nombres = ", ".join(
+                        f"{a.get('jugador')} ({a.get('importancia_pct')}%)" if isinstance(a, dict) else str(a)
+                        for a in ausentes[:3]
+                    )
+                    txt += f" — falta {nombres}"
+                lineas.append(txt)
     if pred:
         lineas.append(
             f"    2ª opinión API: L{pred['prob_local_pct']}/E{pred['prob_empate_pct']}/"
@@ -593,6 +610,14 @@ def _contexto_top_pick(pronosticos: List[Dict[str, Any]],
                 alerta = _alerta_xi(dossier)
                 if alerta:
                     dossier["alerta_xi"] = alerta
+        except Exception:  # pragma: no cover
+            pass
+        # Impacto del XI (endpoint real: fuerza_xi_pct + ausentes clave por importancia).
+        try:
+            if isinstance(dossier, dict):
+                imp = lmx.lineup_impact_partido(dossier.get("home", home), dossier.get("away", away))
+                if isinstance(imp, dict) and imp.get("disponible"):
+                    dossier["impacto_xi"] = imp.get("equipos") or {}
         except Exception:  # pragma: no cover
             pass
         return dossier
