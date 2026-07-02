@@ -15,7 +15,8 @@ Fuentes de las fechas (2026):
 - Leagues Cup: 4 ago – 6 sep (los 18 equipos de Liga MX). [Concacaf/Leagues Cup]
 - Campeón de Campeones: 25 jul, Toluca vs Cruz Azul (Carson, CA). [Wikipedia/PDF]
 - Campeones Cup: 16 sep, Inter Miami vs campeón Liga MX (Toluca o Cruz Azul). [Wikipedia]
-- Fecha FIFA: hueco entre J10 y J11 (fin sep–inicio oct) y 9–17 nov. [PDF oficial]
+- Fecha FIFA: ventana única de 16 días 21 sep–6 oct (nueva a partir de 2026, la
+  J10 cae dentro) y 9–17 nov. [FIFA Council / PDF oficial]
 - Copa Intercontinental: diciembre (ya en Liguilla; fuera de fase regular). [PDF]
 """
 from __future__ import annotations
@@ -66,14 +67,15 @@ EVENTOS_EXTERNOS: List[Dict[str, Any]] = [
                  "Cruz Azul) viaja a jugar vs Inter Miami. Desgaste/viaje en jornada cercana."),
     },
     {
-        "nombre": "Fecha FIFA (octubre)",
-        "inicio": "2026-09-28",
-        "fin": "2026-10-08",
+        "nombre": "Fecha FIFA (sep–oct)",
+        "inicio": "2026-09-21",
+        "fin": "2026-10-06",
         "equipos": [],
         "tipo": "fecha_fifa",
         "emoji": "🌐",
-        "nota": ("Fecha FIFA (fin sep–inicio oct): jugadores de selección se van con "
-                 "sus países; pueden regresar con desgaste o llegar justos a la jornada."),
+        "nota": ("Ventana FIFA de 16 días (21 sep–6 oct, nueva a partir de 2026). La "
+                 "J10 cae DENTRO de esta ventana: varios equipos con seleccionados "
+                 "ausentes o recién llegados con desgaste/viaje. Ojo con rotaciones."),
     },
     {
         "nombre": "Fecha FIFA (noviembre)",

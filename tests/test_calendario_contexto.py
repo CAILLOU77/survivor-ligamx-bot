@@ -27,6 +27,11 @@ class TestEventosParaFecha(unittest.TestCase):
         evs = cc.eventos_para_fecha("2026-11-16", ["Tigres UANL", "América"])
         self.assertTrue(any(e["tipo"] == "fecha_fifa" for e in evs))
 
+    def test_fecha_fifa_septiembre_octubre_cubre_j10(self):
+        # J10 (25-27 sep) cae dentro de la ventana FIFA de 16 días (21 sep-6 oct).
+        evs = cc.eventos_para_fecha("2026-09-26", ["Necaxa", "Atlas"])
+        self.assertTrue(any(e["tipo"] == "fecha_fifa" for e in evs))
+
     def test_fuera_de_ventana_no_devuelve(self):
         # Un partido en mayo no debe cruzar con ningún evento de 2026 Apertura.
         self.assertEqual(cc.eventos_para_fecha("2026-05-01", ["América", "Toluca"]), [])
