@@ -24,6 +24,7 @@ from typing import Any, Dict, Optional, Tuple
 AYUDA = (
     "🤖 <b>Comandos Survivor</b>\n"
     "/pick (o /picks) — pronóstico + pick recomendado de la jornada\n"
+    "/plan — plan de temporada: qué equipo usar en cada jornada (todas las 17)\n"
     "/seguir — lista de seguimiento: candidatos por hora para decidir secuencial\n"
     "/usado &lt;equipo&gt; — marca un equipo como usado (lo excluye)\n"
     "/usados — lista tus equipos usados\n"
@@ -35,6 +36,9 @@ AYUDA = (
 
 # Comandos que disparan la generación/envío del pronóstico (pesado -> background).
 CMDS_PICK = {"pick", "picks", "survivor", "jornada", "pronostico", "pronosticos"}
+
+# Comandos del plan de temporada (pesado -> background).
+CMDS_PLAN = {"plan", "temporada", "calendario"}
 
 # Comandos de la lista de seguimiento secuencial (pesado -> background).
 CMDS_SEGUIMIENTO = {"seguir", "seguimiento", "candidatos", "watchlist"}
