@@ -155,8 +155,8 @@ class TestMercadoYMotivacion(unittest.TestCase):
 class TestNivelRiesgoYPlan(unittest.TestCase):
     def test_top3_incluye_nivel_y_ganar(self):
         msg = tp.construir_mensaje(_resultado())
-        self.assertIn("gana ", msg)      # probabilidad de victoria visible
-        self.assertIn("no-perder", msg)
+        self.assertIn("🏆 Gana:", msg)                 # prob. de ganar (punto)
+        self.assertIn("Sobrevive (gana o empata):", msg)  # no-perder, claro
         # nivel entre corchetes (ALTA/MEDIA/RIESGOSA)
         self.assertTrue(any(n in msg for n in ("[ALTA]", "[MEDIA]", "[RIESGOSA]")))
 

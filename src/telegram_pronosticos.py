@@ -328,14 +328,24 @@ def construir_mensaje(
         # Pick recomendado (destacado) — mostrar partido completo con sede clara.
         rec = tops[0]
         gana = rec.get("prob_victoria_pct")
-        gtxt = f" · gana {gana}%" if gana is not None else ""
         if rec.get("condicion") == "Local":
             local_eq, visita_eq = rec["equipo"], rec["rival"]
         else:
             local_eq, visita_eq = rec["rival"], rec["equipo"]
         lineas.append(f"⚽ <b>{local_eq}</b> (🏠 local) vs <b>{visita_eq}</b> (✈️ visita)")
         lineas.append(f"🥇 <b>PICK: {rec['equipo']}</b> — juega de {rec['condicion'].lower()}")
-        lineas.append(f"     ✅ no-perder <b>{rec['no_perder_pct']}%</b>{gtxt} · confianza <b>{rec.get('nivel', '—')}</b>")
+        noperder = rec.get("no_perder_pct")
+        # empate = no-perder − gana (sobrevivir = ganar o empatar)
+        emp = None
+        if noperder is not None and gana is not None:
+            emp = round(float(noperder) - float(gana), 1)
+        lineas.append(f"     ✅ Sobrevive (gana o empata): <b>{noperder}%</b>")
+        if gana is not None:
+            linea_g = f"     🏆 Gana: <b>{gana}%</b>"
+            if emp is not None:
+                linea_g += f"  ·  🤝 solo empata: {emp}%"
+            lineas.append(linea_g)
+        lineas.append(f"     🎯 Confianza: <b>{rec.get('nivel', '—')}</b>")
         if motivacion:
             mot_rival = motivacion.get(str(rec.get("rival", "")).lower(), {})
             nivel_mot = mot_rival.get("motivacion_nivel")
@@ -354,7 +364,7 @@ def construir_mensaje(
                 sede = "de local vs" if pk.get("condicion") == "Local" else "de visita vs"
                 lineas.append(
                     f"{medallas[i]} <b>{pk['equipo']}</b> ({sede} {pk['rival']}) "
-                    f"— no-perder {pk['no_perder_pct']}%{nivel}"
+                    f"— sobrevive {pk['no_perder_pct']}%{nivel}"
                 )
         contexto_lineas = _formatear_contexto(contexto_pick)
         if contexto_lineas:
