@@ -463,6 +463,20 @@ def enviar_mensaje(mensaje: str) -> bool:
         return False
 
 
+def _fmt_fichajes(mov: Dict[str, Any]) -> str:
+    """De {altas:[...], bajas:[...]} arma 'Altas: A, B · Bajas: C' o '' si vacío."""
+    if not isinstance(mov, dict):
+        return ""
+    partes: List[str] = []
+    altas = mov.get("altas") or []
+    bajas = mov.get("bajas") or []
+    if altas:
+        partes.append("Altas: " + ", ".join(str(x) for x in altas[:4]))
+    if bajas:
+        partes.append("Bajas: " + ", ".join(str(x) for x in bajas[:4]))
+    return " · ".join(partes)
+
+
 def _contexto_top_pick(pronosticos: List[Dict[str, Any]],
                        equipos_usados: Optional[List[str]],
                        motivacion: Optional[Dict[str, Dict[str, Any]]]) -> Optional[Dict[str, Any]]:
@@ -494,15 +508,25 @@ def _contexto_top_pick(pronosticos: List[Dict[str, Any]],
                 )
         except Exception:  # pragma: no cover - IA nunca debe tumbar el pick
             pass
-        # Altas/bajas (Transfermarkt, importación asistida). Opcional/tolerante.
+        # Altas/bajas: primero la API 365Scores (automático), si no, archivo local (asistido).
         try:
-            try:
-                import fichajes as fich
-            except ImportError:  # pragma: no cover
-                from src import fichajes as fich  # type: ignore
             if isinstance(dossier, dict):
-                loc = fich.linea_equipo(dossier.get("home", home))
-                vis = fich.linea_equipo(dossier.get("away", away))
+                loc = vis = ""
+                try:
+                    tdata = lmx.transfers_365()
+                    tl = lmx.transfers_equipo(dossier.get("home", home), tdata)
+                    tv = lmx.transfers_equipo(dossier.get("away", away), tdata)
+                    loc = _fmt_fichajes(tl)
+                    vis = _fmt_fichajes(tv)
+                except Exception:  # pragma: no cover - API no disponible
+                    pass
+                if not loc and not vis:  # fallback al modo asistido (data/fichajes.json)
+                    try:
+                        import fichajes as fich
+                    except ImportError:  # pragma: no cover
+                        from src import fichajes as fich  # type: ignore
+                    loc = fich.linea_equipo(dossier.get("home", home))
+                    vis = fich.linea_equipo(dossier.get("away", away))
                 if loc or vis:
                     dossier["fichajes"] = {"local": loc, "visita": vis}
         except Exception:  # pragma: no cover - nunca debe tumbar el pick

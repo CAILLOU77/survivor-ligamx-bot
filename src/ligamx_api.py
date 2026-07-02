@@ -433,6 +433,47 @@ def porteros() -> List[Dict[str, Any]]:
     return d if isinstance(d, list) else []
 
 
+def transfers_365() -> Dict[str, Any]:
+    """/365scores/transfers — altas/bajas por equipo (agrupado). {} si no hay/falla."""
+    d = _get("/365scores/transfers")
+    return d if isinstance(d, dict) else {}
+
+
+def _fmt_movimientos(lst: Any, campo_club: str) -> List[str]:
+    """Formatea una lista de movimientos a strings 'Jugador (club)'."""
+    out: List[str] = []
+    for m in lst or []:
+        if isinstance(m, dict):
+            nom = m.get("jugador") or m.get("nombre") or m.get("player")
+            club = m.get(campo_club)
+            if nom:
+                out.append(f"{nom} ({club})" if club else str(nom))
+        elif isinstance(m, str):
+            out.append(m)
+    return out
+
+
+def transfers_equipo(nombre: str, data: Optional[Dict[str, Any]] = None) -> Dict[str, List[str]]:
+    """
+    Altas/bajas de un equipo desde /365scores/transfers (match tolerante por
+    nombre). `data` = respuesta ya bajada (para no llamar por cada equipo).
+    Devuelve {'altas': [...], 'bajas': [...]} (listas de strings). Vacío si no hay.
+    """
+    data = data if data is not None else transfers_365()
+    equipos = (data or {}).get("equipos") or {}
+    eq: Optional[Dict[str, Any]] = None
+    for k, v in equipos.items():
+        if teams_match(str(k), nombre):
+            eq = v or {}
+            break
+    if not eq:
+        return {"altas": [], "bajas": []}
+    return {
+        "altas": _fmt_movimientos(eq.get("altas"), "desde"),
+        "bajas": _fmt_movimientos(eq.get("bajas"), "hacia"),
+    }
+
+
 def porteros_por_equipo() -> Dict[str, Dict[str, Any]]:
     """
     Mapa {equipo_display: {nombre, vallas_invictas, goles_recibidos}} con el

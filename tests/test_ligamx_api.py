@@ -505,3 +505,34 @@ class TestPorteros(unittest.TestCase):
     def test_porteros_por_equipo_vacio_tolerante(self):
         with mock.patch.object(api, "porteros", return_value=[]):
             self.assertEqual(api.porteros_por_equipo(), {})
+
+
+class TestTransfers365(unittest.TestCase):
+    _DATA = {
+        "season": "Apertura 2026", "disponible": True,
+        "equipos": {
+            "América": {
+                "altas": [{"jugador": "Borja Iglesias", "desde": "Celta", "tipo": "transfer"}],
+                "bajas": [{"jugador": "Kevin Álvarez", "hacia": "Pachuca", "tipo": "transfer"}],
+            },
+            "Guadalajara": {"altas": [], "bajas": []},
+        },
+    }
+
+    def test_transfers_equipo_formatea(self):
+        r = api.transfers_equipo("América", self._DATA)
+        self.assertEqual(r["altas"], ["Borja Iglesias (Celta)"])
+        self.assertEqual(r["bajas"], ["Kevin Álvarez (Pachuca)"])
+
+    def test_transfers_equipo_alias(self):
+        # "Club América" empareja con "América".
+        r = api.transfers_equipo("Club América", self._DATA)
+        self.assertTrue(r["altas"])
+
+    def test_transfers_equipo_sin_datos(self):
+        r = api.transfers_equipo("Toluca", self._DATA)
+        self.assertEqual(r, {"altas": [], "bajas": []})
+
+    def test_transfers_365_tolerante(self):
+        # Con data vacía, transfers_equipo devuelve listas vacías (no rompe).
+        self.assertEqual(api.transfers_equipo("América", {}), {"altas": [], "bajas": []})
