@@ -231,10 +231,14 @@ def mejores_picks_survivor(
     equipos_usados: Optional[Sequence[str]] = None,
     motivacion: Optional[Dict[str, Dict[str, Any]]] = None,
     n: int = 3,
+    uno_por_partido: bool = True,
 ) -> List[Dict[str, Any]]:
     """
     Devuelve los `n` mejores candidatos de Survivor, ordenados de mejor a peor,
     excluyendo los ya usados.
+
+    `uno_por_partido`: si True (default), deja un solo candidato por partido (no
+    recomienda a un equipo y a su rival del mismo juego como alternativas).
 
     Orden (alineado con las reglas PlayDoit):
       1) mayor prob. de NO perder (sobrevivir es prioridad #1: derrota = eliminado),
@@ -275,7 +279,31 @@ def mejores_picks_survivor(
         ),
         reverse=True,
     )
+    if uno_por_partido:
+        candidatos = _uno_por_partido(candidatos)
     return candidatos[: max(0, n)]
+
+
+def _clave_partido(c: Dict[str, Any]) -> frozenset:
+    """Clave del partido (ignora quién es local): {equipo, rival} normalizados."""
+    return frozenset({_norm(c.get("equipo", "")), _norm(c.get("rival", ""))})
+
+
+def _uno_por_partido(candidatos: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Deja UN solo candidato por partido (el mejor ya ordenado). Evita recomendar a
+    la vez a un equipo y a su rival del MISMO juego (no pueden ser alternativas
+    entre sí: uno le gana al otro).
+    """
+    vistos: set = set()
+    salida: List[Dict[str, Any]] = []
+    for c in candidatos:
+        k = _clave_partido(c)
+        if k in vistos:
+            continue
+        vistos.add(k)
+        salida.append(c)
+    return salida
 
 
 # Umbrales del nivel de confianza del pick (en %), coherentes con el planificador.
@@ -387,7 +415,8 @@ def mejores_picks_estrategico(
     pen = PEN_VISITANTE_CAUTELA if cautela else PEN_VISITANTE
     peso_victoria = PESO_VICTORIA_PICK_CAUTELA if cautela else PESO_VICTORIA_PICK
 
-    base = list(mejores_picks_survivor(pronosticos, equipos_usados, motivacion, n=10_000))
+    base = list(mejores_picks_survivor(pronosticos, equipos_usados, motivacion,
+                                       n=10_000, uno_por_partido=False))
     for c in base:
         es_local = c.get("condicion") == "Local"
         no_perder = float(c.get("no_perder_pct") or 0.0)
@@ -401,6 +430,9 @@ def mejores_picks_estrategico(
         key=lambda c: (c["_score"], c.get("prob_victoria_pct") or 0.0, _rank_motivacion(c.get("rival_motivacion"))),
         reverse=True,
     )
+    # Un solo candidato por partido: nunca ofrecer un equipo y a su rival como
+    # alternativas entre sí (uno le gana al otro).
+    base = _uno_por_partido(base)
     for c in base:
         c.pop("_score", None)
 

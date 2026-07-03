@@ -154,7 +154,17 @@ class TestMercadoYMotivacion(unittest.TestCase):
 
 class TestNivelRiesgoYPlan(unittest.TestCase):
     def test_top3_incluye_nivel_y_ganar(self):
-        msg = tp.construir_mensaje(_resultado())
+        # Dos partidos DISTINTOS: así hay una "otra opción" legítima (de otro juego),
+        # no el rival del mismo partido.
+        res = _resultado()
+        res["pronosticos"].append({
+            "local": "Monterrey", "visitante": "Santos", "pick_1x2": "Gana Local",
+            "prob_local_pct": 60.0, "prob_empate_pct": 22.0, "prob_visitante_pct": 18.0,
+            "pick_ou": "Over", "prob_over_pct": 62.0, "pick_btts": "Sí",
+            "prob_btts_si_pct": 55.0, "marcador_mas_probable": "2-1",
+            "no_perder_local_pct": 82.0, "no_perder_visitante_pct": 40.0,
+        })
+        msg = tp.construir_mensaje(res)
         self.assertIn("🏆 Gana:", msg)                 # prob. de ganar (punto)
         self.assertIn("Sobrevive (gana o empata):", msg)  # no-perder, claro
         # nivel entre corchetes (ALTA/MEDIA/RIESGOSA)
