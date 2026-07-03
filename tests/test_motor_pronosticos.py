@@ -172,11 +172,23 @@ class TestSurvivor(unittest.TestCase):
             {"local": "Pumas", "visitante": "Atlas", "no_perder_local_pct": 70.0,
              "no_perder_visitante_pct": 35.0},
         ]
+        # Un solo candidato por partido: Toluca (rival de América en el MISMO juego)
+        # NO debe aparecer junto a América como alternativa.
         top = mp.mejores_picks_survivor(pronos, n=3)
-        self.assertEqual([c["equipo"] for c in top], ["América", "Pumas", "Toluca"])
+        self.assertEqual([c["equipo"] for c in top], ["América", "Pumas"])
         self.assertEqual(top[0]["no_perder_pct"], 80.0)
         # mejor_pick_survivor es el #1 de la lista
         self.assertEqual(mp.mejor_pick_survivor(pronos)["equipo"], top[0]["equipo"])
+
+    def test_no_recomienda_equipo_y_su_rival_del_mismo_partido(self):
+        # Ambos lados del mismo juego son fuertes: solo debe salir UNO.
+        pronos = [
+            {"local": "Tijuana", "visitante": "Tigres", "no_perder_local_pct": 78.0,
+             "no_perder_visitante_pct": 76.0},
+        ]
+        top = mp.mejores_picks_survivor(pronos, n=3)
+        self.assertEqual(len(top), 1)
+        self.assertEqual(top[0]["equipo"], "Tijuana")
 
     def test_campos_de_riesgo_presentes(self):
         # Con pronósticos completos, cada candidato trae victoria/empate/nivel.
