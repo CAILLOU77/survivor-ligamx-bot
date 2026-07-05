@@ -265,7 +265,10 @@ def construir_odds_por_partido(
     except ImportError:  # pragma: no cover
         from src import comparador_mercado as cm  # type: ignore
 
-    momios = momios_crudos if momios_crudos is not None else cm.obtener_momios_liga_mx()
+    if momios_crudos is not None:
+        momios = momios_crudos
+    else:
+        momios, _fuente = cm.momios_para_uso()
     if not momios:
         return {}
     out: Dict[Tuple[str, str], Tuple[float, float, float]] = {}
