@@ -29,23 +29,17 @@ import comparador_mercado as cm  # noqa: E402
 
 
 def main() -> int:
-    if not cm.mercado_habilitado():
-        print("⚠️  ODDS_API_IO_KEY no configurada: no hay de dónde bajar momios.")
-        print("    Configúrala en el entorno (Render) y vuelve a correr esto.")
-        return 1
-
-    print("💰 Bajando momios de Liga MX desde odds-api.io...")
-    momios = cm.obtener_momios_liga_mx()
+    print("💰 Bajando momios de Liga MX (odds-api.io con key, o ESPN gratis)...")
+    momios, fuente = cm.momios_para_uso(guardar_si_hay=True, incluir_espn=True)
     if not momios:
-        print("ℹ️  odds-api.io no devolvió momios todavía (líneas aún no publicadas).")
+        print("ℹ️  Todavía no hay líneas publicadas (ni odds-api.io ni ESPN).")
         print("    Vuelve a intentarlo más cerca de los partidos.")
         return 0
 
-    path = cm.guardar_momios(momios)
     n_ml = sum(1 for m in momios.values() if m.get("ml"))
     n_tot = sum(1 for m in momios.values() if m.get("totals"))
     n_hdp = sum(1 for m in momios.values() if m.get("handicap"))
-    print(f"✅ Guardados {len(momios)} partidos en {path}")
+    print(f"✅ {len(momios)} partidos desde {fuente} (guardados en data/momios.json)")
     print(f"   1X2: {n_ml} · Over/Under: {n_tot} · Hándicap: {n_hdp}")
     print("   El pick y el plan ya los usarán (en vivo o desde este archivo).")
     return 0

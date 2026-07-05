@@ -1200,18 +1200,12 @@ def enviar_resumen_rentabilidad() -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Momios: actualizar (bajar de odds-api.io + guardar) y reportar cobertura
 # ---------------------------------------------------------------------------
-def construir_mensaje_momios(momios: Dict[str, Any], fuente: Optional[str],
-                             habilitado: bool) -> str:
+def construir_mensaje_momios(momios: Dict[str, Any], fuente: Optional[str]) -> str:
     """Mensaje (HTML) con el estado/cobertura de los momios por mercado."""
-    if not habilitado:
-        return ("💰 <b>MOMIOS</b>\n\n"
-                "La capa de momios está apagada (falta <code>ODDS_API_IO_KEY</code>). "
-                "El pick usa solo el modelo.\n\n"
-                f"{DISCLAIMER}")
     if not momios:
         return ("💰 <b>MOMIOS</b>\n\n"
-                "odds-api.io aún no publica líneas para estos partidos "
-                "(o no hay guardadas). El pick usa solo el modelo por ahora; "
+                "Todavía no hay líneas publicadas para estos partidos (ni odds-api.io "
+                "ni ESPN, ni guardadas). El pick usa solo el modelo por ahora; "
                 "vuelve a intentar más cerca de la jornada.\n\n"
                 f"{DISCLAIMER}")
     n_ml = sum(1 for m in momios.values() if isinstance(m, dict) and m.get("ml"))
@@ -1241,11 +1235,10 @@ def enviar_momios_estado() -> Dict[str, Any]:
             import comparador_mercado as cm
         except ImportError:  # pragma: no cover
             from src import comparador_mercado as cm  # type: ignore
-        habilitado = cm.mercado_habilitado()
-        momios, fuente = cm.momios_para_uso(guardar_si_hay=True)
+        momios, fuente = cm.momios_para_uso(guardar_si_hay=True, incluir_espn=True)
     except Exception as exc:  # pragma: no cover - nunca tumbar el envío
         return {"enviado": False, "error": str(exc)}
-    enviado = enviar_mensaje(construir_mensaje_momios(momios, fuente, habilitado))
+    enviado = enviar_mensaje(construir_mensaje_momios(momios, fuente))
     return {"enviado": enviado, "partidos_con_momios": len(momios), "fuente": fuente}
 
 
