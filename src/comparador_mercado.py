@@ -18,16 +18,24 @@ humana. Fuente: odds-api.io (tier gratis, cubre Liga MX). Sin scraping.
 """
 from __future__ import annotations
 
+import json
 import os
 import unicodedata
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
 try:
     import requests
 except ImportError:  # pragma: no cover
     requests = None  # type: ignore[assignment]
+
+# Persistencia de momios en disco (caché reutilizable por el pick y el plan).
+BASE_DIR = Path(__file__).resolve().parents[1]
+MOMIOS_PATH = BASE_DIR / "data" / "momios.json"
+# Antigüedad máxima (horas) de los momios guardados para seguir usándolos.
+MOMIOS_MAX_EDAD_HORAS = float(os.getenv("MOMIOS_MAX_EDAD_HORAS", "72"))
 
 # --- Configuración (todo por env, apagado por defecto) ---------------------
 ENV_KEY = "ODDS_API_IO_KEY"
@@ -587,6 +595,75 @@ def obtener_momios_liga_mx() -> Dict[str, Dict[str, Any]]:
     return out
 
 
+# ---------------------------------------------------------------------------
+# Persistencia: guardar/cargar momios en data/momios.json (caché reutilizable).
+# ---------------------------------------------------------------------------
+def guardar_momios(momios: Dict[str, Dict[str, Any]], path: Path = MOMIOS_PATH) -> str:
+    """Guarda los momios (ml/totals/handicap por partido) con timestamp UTC."""
+    payload = {
+        "generado_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "fuente": "odds-api.io",
+        "partidos": len(momios),
+        "momios": momios,
+    }
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    Path(path).write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    return str(path)
+
+
+def cargar_momios(
+    max_edad_horas: float = MOMIOS_MAX_EDAD_HORAS, path: Path = MOMIOS_PATH
+) -> Dict[str, Dict[str, Any]]:
+    """
+    Carga los momios guardados. Devuelve {} si no existe, está corrupto, vacío o
+    más viejo que `max_edad_horas` (0/None = sin límite de antigüedad).
+    """
+    p = Path(path)
+    if not p.exists():
+        return {}
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+    momios = data.get("momios")
+    if not isinstance(momios, dict) or not momios:
+        return {}
+    if max_edad_horas and max_edad_horas > 0:
+        try:
+            dt = datetime.strptime(str(data.get("generado_utc")), "%Y-%m-%dT%H:%M:%SZ")
+            dt = dt.replace(tzinfo=timezone.utc)
+            edad_h = (datetime.now(timezone.utc) - dt).total_seconds() / 3600.0
+            if edad_h > max_edad_horas:
+                return {}
+        except (ValueError, TypeError):
+            pass
+    return momios
+
+
+def momios_para_uso(guardar_si_hay: bool = False) -> tuple:
+    """
+    Momios listos para el pick/plan: intenta en vivo (odds-api.io) y, si no hay
+    líneas todavía, cae al archivo guardado (caché). Devuelve (momios, fuente).
+    Sin key => ({}, None) (no toca el archivo: la caché es de odds-api.io).
+    """
+    if not mercado_habilitado():
+        return {}, None
+    live = obtener_momios_liga_mx()
+    if live:
+        if guardar_si_hay:
+            try:
+                guardar_momios(live)
+            except OSError:  # pragma: no cover - disco no escribible
+                pass
+        return live, "odds-api.io"
+    guardados = cargar_momios()
+    if guardados:
+        return guardados, "cache (data/momios.json)"
+    return {}, None
+
+
 def diagnostico_mercado() -> Dict[str, Any]:
     """
     Diagnóstico en vivo de la conexión a odds-api.io (para depurar). Devuelve
@@ -673,10 +750,10 @@ def comparar_pronosticos(pronosticos: Sequence[Dict[str, Any]]) -> Dict[str, Any
     mercado si está habilitada. Si no, devuelve los pronósticos sin cambios.
     """
     habilitado = mercado_habilitado()
-    momios = obtener_momios_liga_mx() if habilitado else {}
+    momios, fuente = momios_para_uso()
     return {
         "mercado_habilitado": habilitado,
-        "fuente_mercado": "odds-api.io" if habilitado else None,
+        "fuente_mercado": fuente,
         "partidos_con_momios": len(momios),
         "pronosticos": anotar_pronosticos(pronosticos, momios),
         "decision": DISCLAIMER,
