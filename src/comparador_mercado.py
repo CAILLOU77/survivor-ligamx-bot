@@ -37,6 +37,14 @@ MOMIOS_PATH = BASE_DIR / "data" / "momios.json"
 # Antigüedad máxima (horas) de los momios guardados para seguir usándolos.
 MOMIOS_MAX_EDAD_HORAS = float(os.getenv("MOMIOS_MAX_EDAD_HORAS", "72"))
 
+# ESPN como fuente de momios GRATIS y sin key (misma familia que ya usamos).
+# El scoreboard da la jornada próxima; el core-API da el 1X2 completo (home/draw/
+# away moneyline en americano) + total O/U. Proveedor tipo DraftKings.
+ESPN_LIGA = os.getenv("ESPN_ODDS_LIGA", "mex.1")
+ESPN_SCOREBOARD_URL = "https://site.api.espn.com/apis/site/v2/sports/soccer/{liga}/scoreboard"
+ESPN_ODDS_URL = ("https://sports.core.api.espn.com/v2/sports/soccer/leagues/{liga}"
+                 "/events/{eid}/competitions/{cid}/odds")
+
 # --- Configuración (todo por env, apagado por defecto) ---------------------
 ENV_KEY = "ODDS_API_IO_KEY"
 BASE_URL = os.getenv("ODDS_API_IO_URL", "https://api.odds-api.io/v3")
@@ -642,22 +650,105 @@ def cargar_momios(
     return momios
 
 
-def momios_para_uso(guardar_si_hay: bool = False) -> tuple:
+def _americano_a_decimal(momio: Any) -> Optional[float]:
+    """Momio americano (-110, +275) -> decimal (1.91, 3.75). None si inválido."""
+    m = _f(momio)
+    if m is None or m == 0:
+        return None
+    return (m / 100.0 + 1.0) if m > 0 else (100.0 / (-m) + 1.0)
+
+
+def _parsear_odds_espn(items: Any) -> Dict[str, Any]:
+    """De los items del core-API de ESPN saca {ml, totals} (decimales)."""
+    if not isinstance(items, list):
+        return {}
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        h = _americano_a_decimal((it.get("homeTeamOdds") or {}).get("moneyLine"))
+        a = _americano_a_decimal((it.get("awayTeamOdds") or {}).get("moneyLine"))
+        d = _americano_a_decimal((it.get("drawOdds") or {}).get("moneyLine"))
+        if not (h and d and a):
+            continue  # necesitamos el 1X2 completo
+        out: Dict[str, Any] = {"ml": {"local": h, "empate": d, "visita": a}}
+        total = it.get("total") or {}
+        linea = _f(it.get("overUnder"))
+        ov = total.get("over") or {}
+        un = total.get("under") or {}
+        ov_odds = _americano_a_decimal((ov.get("close") or ov.get("open") or {}).get("odds"))
+        un_odds = _americano_a_decimal((un.get("close") or un.get("open") or {}).get("odds"))
+        if linea is not None and ov_odds and un_odds:
+            out["totals"] = {"linea": round(linea, 2), "over": ov_odds, "under": un_odds}
+        return out
+    return {}
+
+
+def obtener_momios_espn(liga: str = ESPN_LIGA, max_eventos: int = MAX_EVENTOS) -> Dict[str, Dict[str, Any]]:
     """
-    Momios listos para el pick/plan: intenta en vivo (odds-api.io) y, si no hay
-    líneas todavía, cae al archivo guardado (caché). Devuelve (momios, fuente).
-    Sin key => ({}, None) (no toca el archivo: la caché es de odds-api.io).
+    Momios de la jornada próxima desde ESPN (gratis, sin key). Devuelve
+    {clave_partido: {ml, totals}}. Ante cualquier fallo devuelve {} (no-op).
     """
-    if not mercado_habilitado():
-        return {}, None
-    live = obtener_momios_liga_mx()
-    if live:
-        if guardar_si_hay:
-            try:
-                guardar_momios(live)
-            except OSError:  # pragma: no cover - disco no escribible
-                pass
-        return live, "odds-api.io"
+    if requests is None:
+        return {}
+    out: Dict[str, Dict[str, Any]] = {}
+    try:
+        sb = _get(ESPN_SCOREBOARD_URL.format(liga=liga), {})
+    except RuntimeError:
+        return {}
+    eventos = sb.get("events", []) if isinstance(sb, dict) else []
+    for ev in eventos[:max_eventos]:
+        if not isinstance(ev, dict):
+            continue
+        comps = ev.get("competitions") or [{}]
+        comp = comps[0] if comps else {}
+        cid = comp.get("id") or ev.get("id")
+        eid = ev.get("id")
+        if not eid or not cid:
+            continue
+        home = away = ""
+        for c in comp.get("competitors", []):
+            nm = (c.get("team") or {}).get("displayName", "")
+            if c.get("homeAway") == "home":
+                home = nm
+            elif c.get("homeAway") == "away":
+                away = nm
+        if not home or not away:
+            continue
+        try:
+            odds_resp = _get(ESPN_ODDS_URL.format(liga=liga, eid=eid, cid=cid), {})
+        except RuntimeError:
+            continue
+        mercado = _parsear_odds_espn(odds_resp.get("items") if isinstance(odds_resp, dict) else None)
+        if mercado:
+            out[_clave_partido(home, away)] = mercado
+    return out
+
+
+def momios_para_uso(guardar_si_hay: bool = False, incluir_espn: bool = False) -> tuple:
+    """
+    Momios listos para el pick/plan. Orden: odds-api.io (si hay key) -> ESPN
+    (si `incluir_espn`, gratis y sin key) -> archivo guardado (caché).
+    Devuelve (momios, fuente). El pick NO activa ESPN (evita red en cada pick);
+    ESPN se baja bajo demanda con /momios o scripts/fetch_momios.py y se cachea.
+    """
+    if mercado_habilitado():
+        live = obtener_momios_liga_mx()
+        if live:
+            if guardar_si_hay:
+                try:
+                    guardar_momios(live)
+                except OSError:  # pragma: no cover - disco no escribible
+                    pass
+            return live, "odds-api.io"
+    if incluir_espn:
+        esp = obtener_momios_espn()
+        if esp:
+            if guardar_si_hay:
+                try:
+                    guardar_momios(esp)
+                except OSError:  # pragma: no cover
+                    pass
+            return esp, "ESPN (DraftKings)"
     guardados = cargar_momios()
     if guardados:
         return guardados, "cache (data/momios.json)"
