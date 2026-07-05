@@ -124,6 +124,17 @@ def alerts_resumen(request: Request, api_key: str = Depends(verify_api_key)):
     return telegram_pronosticos.enviar_resumen_rentabilidad()
 
 
+@app.post("/alerts/momios", summary="Bajar momios (odds-api.io) y reportar cobertura por Telegram", tags=["Alerts"])
+@limiter.limit("6/minute")
+def alerts_momios(request: Request, api_key: str = Depends(verify_api_key)):
+    """
+    Baja los momios de Liga MX (1X2/OU/hándicap), los guarda como caché y envía
+    por Telegram un resumen de cobertura. El pick y el plan los usan al instante.
+    """
+    from src import telegram_pronosticos
+    return telegram_pronosticos.enviar_momios_estado()
+
+
 @app.post("/alerts/recordatorio", summary="Recordar por Telegram que se acerca la jornada", tags=["Alerts"])
 @limiter.limit("6/minute")
 def alerts_recordatorio(request: Request, dias_antes: int = 1,
@@ -255,6 +266,9 @@ async def telegram_webhook(
     elif cmd in tw.CMDS_PLAN:
         background_tasks.add_task(tp.enviar_plan)
         tp.enviar_mensaje("🔄 Armando tu plan de temporada (las 17 jornadas)...")
+    elif cmd in tw.CMDS_MOMIOS:
+        background_tasks.add_task(tp.enviar_momios_estado)
+        tp.enviar_mensaje("🔄 Bajando momios y revisando cobertura...")
     elif cmd in tw.CMDS_SEGUIMIENTO:
         background_tasks.add_task(tp.enviar_seguimiento)
         tp.enviar_mensaje("🔄 Armando tu lista de seguimiento de la jornada...")

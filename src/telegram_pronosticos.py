@@ -1198,6 +1198,58 @@ def enviar_resumen_rentabilidad() -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Momios: actualizar (bajar de odds-api.io + guardar) y reportar cobertura
+# ---------------------------------------------------------------------------
+def construir_mensaje_momios(momios: Dict[str, Any], fuente: Optional[str],
+                             habilitado: bool) -> str:
+    """Mensaje (HTML) con el estado/cobertura de los momios por mercado."""
+    if not habilitado:
+        return ("💰 <b>MOMIOS</b>\n\n"
+                "La capa de momios está apagada (falta <code>ODDS_API_IO_KEY</code>). "
+                "El pick usa solo el modelo.\n\n"
+                f"{DISCLAIMER}")
+    if not momios:
+        return ("💰 <b>MOMIOS</b>\n\n"
+                "odds-api.io aún no publica líneas para estos partidos "
+                "(o no hay guardadas). El pick usa solo el modelo por ahora; "
+                "vuelve a intentar más cerca de la jornada.\n\n"
+                f"{DISCLAIMER}")
+    n_ml = sum(1 for m in momios.values() if isinstance(m, dict) and m.get("ml"))
+    n_tot = sum(1 for m in momios.values() if isinstance(m, dict) and m.get("totals"))
+    n_hdp = sum(1 for m in momios.values() if isinstance(m, dict) and m.get("handicap"))
+    lineas = [
+        "💰 <b>MOMIOS ACTUALIZADOS</b>",
+        f"<i>Fuente: {fuente or '—'} · {len(momios)} partidos</i>",
+        "",
+        f"🧮 1X2 (mueve el Survivor): <b>{n_ml}</b>",
+        f"⚽ Over/Under 2.5: <b>{n_tot}</b>",
+        f"⚖️ Hándicap: <b>{n_hdp}</b>",
+        "",
+        "<i>El pick y el plan ya los mezclan con el modelo.</i>",
+        DISCLAIMER,
+    ]
+    return "\n".join(lineas)
+
+
+def enviar_momios_estado() -> Dict[str, Any]:
+    """
+    Baja momios en vivo (odds-api.io), los guarda como caché si hay, y envía por
+    Telegram un resumen de cobertura por mercado. Tolerante: nunca rompe.
+    """
+    try:
+        try:
+            import comparador_mercado as cm
+        except ImportError:  # pragma: no cover
+            from src import comparador_mercado as cm  # type: ignore
+        habilitado = cm.mercado_habilitado()
+        momios, fuente = cm.momios_para_uso(guardar_si_hay=True)
+    except Exception as exc:  # pragma: no cover - nunca tumbar el envío
+        return {"enviado": False, "error": str(exc)}
+    enviado = enviar_mensaje(construir_mensaje_momios(momios, fuente, habilitado))
+    return {"enviado": enviado, "partidos_con_momios": len(momios), "fuente": fuente}
+
+
+# ---------------------------------------------------------------------------
 # Recordatorio automático antes de la jornada
 # ---------------------------------------------------------------------------
 def _cargar_calendario_local() -> List[Dict[str, Any]]:
