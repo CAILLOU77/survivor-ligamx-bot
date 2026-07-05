@@ -126,13 +126,16 @@ def alerts_resumen(request: Request, api_key: str = Depends(verify_api_key)):
 
 @app.post("/alerts/momios", summary="Bajar momios (odds-api.io) y reportar cobertura por Telegram", tags=["Alerts"])
 @limiter.limit("6/minute")
-def alerts_momios(request: Request, api_key: str = Depends(verify_api_key)):
+def alerts_momios(request: Request, solo_si_hay: bool = False, api_key: str = Depends(verify_api_key)):
     """
     Baja los momios de Liga MX (1X2/OU/hándicap), los guarda como caché y envía
     por Telegram un resumen de cobertura. El pick y el plan los usan al instante.
+
+    `solo_si_hay=true` (para el cron): refresca en silencio y solo avisa por
+    Telegram si YA hay líneas (evita spam en pretemporada).
     """
     from src import telegram_pronosticos
-    return telegram_pronosticos.enviar_momios_estado()
+    return telegram_pronosticos.enviar_momios_estado(solo_si_hay=solo_si_hay)
 
 
 @app.post("/alerts/recordatorio", summary="Recordar por Telegram que se acerca la jornada", tags=["Alerts"])

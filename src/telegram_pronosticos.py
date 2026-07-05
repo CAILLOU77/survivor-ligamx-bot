@@ -1225,10 +1225,14 @@ def construir_mensaje_momios(momios: Dict[str, Any], fuente: Optional[str]) -> s
     return "\n".join(lineas)
 
 
-def enviar_momios_estado() -> Dict[str, Any]:
+def enviar_momios_estado(solo_si_hay: bool = False) -> Dict[str, Any]:
     """
-    Baja momios en vivo (odds-api.io), los guarda como caché si hay, y envía por
-    Telegram un resumen de cobertura por mercado. Tolerante: nunca rompe.
+    Baja momios en vivo (odds-api.io/Pinnacle/ESPN), los guarda como caché si hay,
+    y envía por Telegram un resumen de cobertura. Tolerante: nunca rompe.
+
+    `solo_si_hay`: si True (para el cron), NO envía mensaje cuando no hay líneas
+    todavía (solo refresca la caché en silencio). Así el cron no spamea en
+    pretemporada; solo te avisa cuando por fin aparecen momios.
     """
     try:
         try:
@@ -1238,6 +1242,8 @@ def enviar_momios_estado() -> Dict[str, Any]:
         momios, fuente = cm.momios_para_uso(guardar_si_hay=True, incluir_gratis=True)
     except Exception as exc:  # pragma: no cover - nunca tumbar el envío
         return {"enviado": False, "error": str(exc)}
+    if solo_si_hay and not momios:
+        return {"enviado": False, "silencioso": True, "partidos_con_momios": 0}
     enviado = enviar_mensaje(construir_mensaje_momios(momios, fuente))
     return {"enviado": enviado, "partidos_con_momios": len(momios), "fuente": fuente}
 

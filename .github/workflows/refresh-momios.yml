@@ -1,0 +1,21 @@
+name: Refrescar Momios
+
+# Refresca los momios de Liga MX (odds-api.io / Pinnacle / ESPN) y los guarda en
+# la caché para que el pick y el plan los usen. Corre cada 12 h. Con
+# solo_si_hay=true NO manda Telegram si aún no hay líneas (pretemporada): solo
+# te avisa cuando por fin aparecen momios. Así no spamea.
+
+on:
+  schedule:
+    - cron: '0 */12 * * *'  # 00:00 y 12:00 UTC
+  workflow_dispatch:  # ejecución manual
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Refrescar momios (silencioso si no hay líneas)
+        run: |
+          curl -fsS -X POST "https://survivor-ligamx-bot.onrender.com/alerts/momios?solo_si_hay=true" \
+            -H "X-API-Key: ${{ secrets.API_KEY }}" \
+            -H "Content-Type: application/json" || true
