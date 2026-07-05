@@ -1235,7 +1235,7 @@ def enviar_momios_estado() -> Dict[str, Any]:
             import comparador_mercado as cm
         except ImportError:  # pragma: no cover
             from src import comparador_mercado as cm  # type: ignore
-        momios, fuente = cm.momios_para_uso(guardar_si_hay=True, incluir_espn=True)
+        momios, fuente = cm.momios_para_uso(guardar_si_hay=True, incluir_gratis=True)
     except Exception as exc:  # pragma: no cover - nunca tumbar el envío
         return {"enviado": False, "error": str(exc)}
     enviado = enviar_mensaje(construir_mensaje_momios(momios, fuente))

@@ -29,8 +29,8 @@ import comparador_mercado as cm  # noqa: E402
 
 
 def main() -> int:
-    print("💰 Bajando momios de Liga MX (odds-api.io con key, o ESPN gratis)...")
-    momios, fuente = cm.momios_para_uso(guardar_si_hay=True, incluir_espn=True)
+    print("💰 Bajando momios de Liga MX (odds-api.io con key, o Pinnacle/ESPN gratis)...")
+    momios, fuente = cm.momios_para_uso(guardar_si_hay=True, incluir_gratis=True)
     if not momios:
         print("ℹ️  Todavía no hay líneas publicadas (ni odds-api.io ni ESPN).")
         print("    Vuelve a intentarlo más cerca de los partidos.")
