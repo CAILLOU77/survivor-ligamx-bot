@@ -37,6 +37,15 @@ MOMIOS_PATH = BASE_DIR / "data" / "momios.json"
 # Antigüedad máxima (horas) de los momios guardados para seguir usándolos.
 MOMIOS_MAX_EDAD_HORAS = float(os.getenv("MOMIOS_MAX_EDAD_HORAS", "72"))
 
+# Pinnacle (API "guest", GRATIS y sin key de paga): la casa más afilada, cubre
+# Liga MX y da 1X2 + totales. Se prueba OK desde este proyecto. Su key "guest"
+# es pública (viene del front de Pinnacle); se puede sobreescribir por env.
+PINNACLE_BASE = "https://guest.api.arcadia.pinnacle.com/0.1"
+PINNACLE_KEY = os.getenv("PINNACLE_API_KEY", "CmX2KcMrXuFmNg6YFbmTxE0y9CIrOi0R")
+PINNACLE_SOCCER_ID = int(os.getenv("PINNACLE_SOCCER_ID", "29"))
+# Nombre de la liga en Pinnacle (aparece cuando ya hay partidos con líneas).
+PINNACLE_LIGA = os.getenv("PINNACLE_LIGA", "Mexico - Liga MX")
+
 # ESPN como fuente de momios GRATIS y sin key (misma familia que ya usamos).
 # El scoreboard da la jornada próxima; el core-API da el 1X2 completo (home/draw/
 # away moneyline en americano) + total O/U. Proveedor tipo DraftKings.
@@ -683,6 +692,101 @@ def _parsear_odds_espn(items: Any) -> Dict[str, Any]:
     return {}
 
 
+def _get_pinnacle(path: str) -> Any:
+    """GET a la API guest de Pinnacle (con su header de key). Lanza RuntimeError."""
+    if requests is None:
+        raise RuntimeError("La dependencia 'requests' no está instalada.")
+    resp = requests.get(
+        f"{PINNACLE_BASE}{path}",
+        headers={"User-Agent": "Mozilla/5.0", "X-API-Key": PINNACLE_KEY},
+        timeout=20,
+    )
+    if resp.status_code != 200:
+        raise RuntimeError(f"Pinnacle respondió HTTP {resp.status_code} en {path}.")
+    return resp.json()
+
+
+def _pinnacle_liga_id(nombre: str = PINNACLE_LIGA) -> Optional[int]:
+    """Id de la liga en Pinnacle por nombre (match flexible). None si no está."""
+    try:
+        ligas = _get_pinnacle(f"/sports/{PINNACLE_SOCCER_ID}/leagues?brandId=0")
+    except RuntimeError:
+        return None
+    if not isinstance(ligas, list):
+        return None
+    objetivo = _norm(nombre)
+    for lg in ligas:
+        if _norm(lg.get("name", "")) == objetivo:
+            return lg.get("id")
+    # Respaldo: cualquier liga de México que no sea femenil/reservas/expansión.
+    excluir = ("women", "femenil", "reserv", "u20", "u19", "u23", "expansion")
+    for lg in ligas:
+        n = _norm(lg.get("name", ""))
+        if "mexico" in n and "liga mx" in n and not any(x in n for x in excluir):
+            return lg.get("id")
+    return None
+
+
+def _pinnacle_odds_matchup(mid: Any) -> Dict[str, Any]:
+    """1X2 + total 2.5 (decimales) de un matchup de Pinnacle. {} si no hay."""
+    try:
+        mkts = _get_pinnacle(f"/matchups/{mid}/markets/related/straight")
+    except RuntimeError:
+        return {}
+    if not isinstance(mkts, list):
+        return {}
+    out: Dict[str, Any] = {}
+    for mk in mkts:
+        if not isinstance(mk, dict) or mk.get("period") != 0:
+            continue
+        precios = {p.get("designation"): p.get("price") for p in (mk.get("prices") or [])}
+        if mk.get("type") == "moneyline":
+            h = _americano_a_decimal(precios.get("home"))
+            d = _americano_a_decimal(precios.get("draw"))
+            a = _americano_a_decimal(precios.get("away"))
+            if h and d and a:
+                out["ml"] = {"local": h, "empate": d, "visita": a}
+        elif mk.get("type") == "total" and str(mk.get("key", "")).endswith(";2.5"):
+            ov = _americano_a_decimal(precios.get("over"))
+            un = _americano_a_decimal(precios.get("under"))
+            if ov and un:
+                out["totals"] = {"linea": 2.5, "over": ov, "under": un}
+    return out
+
+
+def obtener_momios_pinnacle(
+    liga_nombre: str = PINNACLE_LIGA, max_eventos: int = MAX_EVENTOS
+) -> Dict[str, Dict[str, Any]]:
+    """
+    Momios de Liga MX desde Pinnacle (gratis, sin key de paga). Devuelve
+    {clave_partido: {ml, totals}}. {} si la liga aún no tiene líneas o ante fallo.
+    """
+    lid = _pinnacle_liga_id(liga_nombre)
+    if lid is None:
+        return {}
+    try:
+        matchups = _get_pinnacle(f"/leagues/{lid}/matchups?brandId=0")
+    except RuntimeError:
+        return {}
+    if not isinstance(matchups, list):
+        return {}
+    out: Dict[str, Dict[str, Any]] = {}
+    for m in matchups:
+        if not isinstance(m, dict) or m.get("type") != "matchup" or m.get("parent"):
+            continue
+        parts = m.get("participants") or []
+        home = next((p.get("name", "") for p in parts if p.get("alignment") == "home"), "")
+        away = next((p.get("name", "") for p in parts if p.get("alignment") == "away"), "")
+        if not home or not away:
+            continue
+        mercado = _pinnacle_odds_matchup(m.get("id"))
+        if mercado:
+            out[_clave_partido(home, away)] = mercado
+        if len(out) >= max_eventos:
+            break
+    return out
+
+
 def obtener_momios_espn(liga: str = ESPN_LIGA, max_eventos: int = MAX_EVENTOS) -> Dict[str, Dict[str, Any]]:
     """
     Momios de la jornada próxima desde ESPN (gratis, sin key). Devuelve
@@ -724,31 +828,36 @@ def obtener_momios_espn(liga: str = ESPN_LIGA, max_eventos: int = MAX_EVENTOS) -
     return out
 
 
-def momios_para_uso(guardar_si_hay: bool = False, incluir_espn: bool = False) -> tuple:
+def momios_para_uso(guardar_si_hay: bool = False, incluir_gratis: bool = False) -> tuple:
     """
-    Momios listos para el pick/plan. Orden: odds-api.io (si hay key) -> ESPN
-    (si `incluir_espn`, gratis y sin key) -> archivo guardado (caché).
-    Devuelve (momios, fuente). El pick NO activa ESPN (evita red en cada pick);
-    ESPN se baja bajo demanda con /momios o scripts/fetch_momios.py y se cachea.
+    Momios listos para el pick/plan. Orden de preferencia:
+      odds-api.io (si hay key) -> Pinnacle (gratis) -> ESPN (gratis) -> caché.
+    Devuelve (momios, fuente). El pick NO activa las fuentes gratis (evita red en
+    cada pick); se bajan bajo demanda con /momios o scripts/fetch_momios.py y se
+    cachean en data/momios.json, que el pick sí lee.
     """
+    def _quizas_guardar(m: Dict[str, Any]) -> None:
+        if guardar_si_hay:
+            try:
+                guardar_momios(m)
+            except OSError:  # pragma: no cover - disco no escribible
+                pass
+
     if mercado_habilitado():
         live = obtener_momios_liga_mx()
         if live:
-            if guardar_si_hay:
-                try:
-                    guardar_momios(live)
-                except OSError:  # pragma: no cover - disco no escribible
-                    pass
+            _quizas_guardar(live)
             return live, "odds-api.io"
-    if incluir_espn:
-        esp = obtener_momios_espn()
-        if esp:
-            if guardar_si_hay:
-                try:
-                    guardar_momios(esp)
-                except OSError:  # pragma: no cover
-                    pass
-            return esp, "ESPN (DraftKings)"
+    if incluir_gratis:
+        for fetch, nombre in ((obtener_momios_pinnacle, "Pinnacle"),
+                              (obtener_momios_espn, "ESPN (DraftKings)")):
+            try:
+                data = fetch()
+            except Exception:  # pragma: no cover - fuente caída: probar la siguiente
+                data = {}
+            if data:
+                _quizas_guardar(data)
+                return data, nombre
     guardados = cargar_momios()
     if guardados:
         return guardados, "cache (data/momios.json)"
