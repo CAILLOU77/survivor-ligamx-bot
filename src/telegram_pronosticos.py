@@ -1394,9 +1394,11 @@ def construir_mensaje_ganadores(rep: Dict[str, Any]) -> str:
     ]
     for c in rep.get("comparacion", [])[:10]:
         perfecto = "✅ sí" if c.get("oracle_completo") else f"máx {c.get('oracle_max_supervivencia')}"
-        bot = ("ganó TODO" if c.get("bot_completo")
-               else f"cayó en la {c.get('bot_sobrevividas')}ª")
-        lineas.append(f"• <b>{c.get('torneo')}</b>: perfecto={perfecto} · bot={bot}")
+        # Cayó en la jornada (sobrevividas + 1): si sobrevivió 0, cayó en la J1.
+        cayo_en = int(c.get("bot_sobrevividas") or 0) + 1
+        bot = "ganó TODO" if c.get("bot_completo") else f"cayó en la J{cayo_en}"
+        lineas.append(f"• <b>{c.get('torneo')}</b>: perfecto={perfecto} · bot={bot} "
+                      f"(sobrevivió {c.get('bot_sobrevividas')})")
     lineas += [
         div,
         "📊 <b>Resumen:</b>",
