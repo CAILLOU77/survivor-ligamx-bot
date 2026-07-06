@@ -411,7 +411,7 @@ def construir_mensaje(
     div = "━━━━━━━━━━"
     lineas = [
         "🔮 <b>PRONÓSTICOS LIGA MX</b>",
-        f"<i>Modelo ESPN + Poisson</i>",
+        "<i>Modelo ESPN + Poisson</i>",
         f"<i>{fecha}</i>",
         div,
     ]
@@ -1158,6 +1158,138 @@ def enviar_plan(equipos_usados: Optional[List[str]] = None,
     enviado = enviar_mensaje(mensaje)
     return {"enviado": enviado, "jornadas": len(plan.get("plan", [])),
             "calendario_incompleto": bool(plan.get("calendario_incompleto"))}
+
+
+# ---------------------------------------------------------------------------
+# "Prueba" de la estrategia (backtest en lenguaje simple) por Telegram
+# ---------------------------------------------------------------------------
+def construir_mensaje_prueba(comp: Dict[str, Any]) -> str:
+    """Mensaje (HTML, simple) del backtest de estrategias, para el comando /prueba."""
+    div = "━━━━━━━━━━"
+    por = (comp or {}).get("por_estrategia", {})
+    real = por.get("real", {})
+    ingenua = por.get("ingenua", {})
+
+    if not real or real.get("torneos_evaluados", 0) == 0:
+        return ("🧪 <b>PRUEBA DE LA ESTRATEGIA</b>\n\n"
+                "Todavía no hay suficiente historial de temporadas para probarla "
+                "(hace falta más calendario/resultados de ESPN). Vuelve a intentar "
+                "cuando el torneo ya tenga jornadas jugadas.\n\n"
+                f"{DISCLAIMER}")
+
+    n = real.get("torneos_evaluados")
+    lineas = [
+        "🧪 <b>PRUEBA DE LA ESTRATEGIA</b>",
+        f"<i>Jugué el Survivor en {n} torneos pasados con datos reales</i>",
+        div,
+        "🤖 <b>La estrategia del bot</b> (la que usas):",
+        f"✅ Sobrevivió completo: <b>{real.get('torneos_sobrevividos_completos')}/{n}</b>"
+        f" ({real.get('tasa_supervivencia_torneo_pct')}%)",
+        f"📊 Aguantó en promedio: <b>{real.get('jornadas_sobrevividas_prom')}</b> jornadas",
+        f"🏆 Victorias por torneo: <b>{real.get('victorias_prom_por_torneo')}</b>",
+    ]
+    if ingenua and ingenua.get("torneos_evaluados"):
+        lineas += [
+            "",
+            "🎲 <b>Elegir a lo simple</b> (solo 'no perder'):",
+            f"✅ Sobrevivió: <b>{ingenua.get('torneos_sobrevividos_completos')}/"
+            f"{ingenua.get('torneos_evaluados')}</b> ({ingenua.get('tasa_supervivencia_torneo_pct')}%)",
+        ]
+        r_tasa = real.get("tasa_supervivencia_torneo_pct") or 0
+        i_tasa = ingenua.get("tasa_supervivencia_torneo_pct") or 0
+        if r_tasa > i_tasa:
+            concl = "👉 La estrategia del bot aguantó MÁS. Buena señal para confiar en ella."
+        elif r_tasa == i_tasa:
+            concl = ("👉 Empataron en supervivencia; el bot suma por las victorias "
+                     "(desempate del Survivor).")
+        else:
+            concl = ("👉 Ojo: en el pasado la versión simple aguantó más. Conviene "
+                     "revisar la estrategia antes de confiarte.")
+        lineas += ["", concl]
+    lineas += [div, DISCLAIMER]
+    return "\n".join(lineas)
+
+
+def enviar_prueba() -> Dict[str, Any]:
+    """
+    Corre el backtest (compara estrategias sobre temporadas pasadas de ESPN) y
+    envía el resultado en lenguaje simple. Tolerante: nunca rompe.
+    """
+    try:
+        import fuentes_datos
+        import backtest_estrategias as be
+    except ImportError:  # pragma: no cover
+        from src import fuentes_datos  # type: ignore
+        from src import backtest_estrategias as be  # type: ignore
+    try:
+        datos = fuentes_datos.obtener_resultados(meses=18)
+        comp = be.comparar_estrategias(datos["resultados"])
+    except Exception as exc:  # pragma: no cover
+        comp = {}
+        _ = exc
+    enviado = enviar_mensaje(construir_mensaje_prueba(comp))
+    return {"enviado": enviado, "mejor": (comp or {}).get("mejor")}
+
+
+# ---------------------------------------------------------------------------
+# "Confianza" del bot (calibración en lenguaje simple) por Telegram
+# ---------------------------------------------------------------------------
+def construir_mensaje_confianza(rep: Dict[str, Any]) -> str:
+    """Mensaje (HTML, simple) del reporte de calibración, para el comando /confianza."""
+    div = "━━━━━━━━━━"
+    if not rep or rep.get("n_muestras", 0) < 20:
+        return ("📐 <b>¿LA CONFIANZA DEL BOT ES HONESTA?</b>\n\n"
+                "Aún no hay suficientes pronósticos pasados para revisarlo. "
+                "Vuelve a intentar cuando el torneo tenga más jornadas jugadas.\n\n"
+                f"{DISCLAIMER}")
+
+    alpha = rep.get("alpha_sugerido", 0.0)
+    ayuda = rep.get("calibracion_ayuda")
+    if alpha <= 0.0:
+        diagnostico = "🟢 El modelo ya está bien calibrado: su confianza es de fiar."
+        recomendacion = "👉 No hace falta ajustar nada."
+    else:
+        diagnostico = ("🟡 El modelo es un poco OPTIMISTA: a veces dice más confianza "
+                       "de la real.")
+        recomendacion = ("👉 Conviene bajarle un poco la confianza. Si quieres, dime "
+                         "y activo el ajuste.")
+    lineas = [
+        "📐 <b>¿LA CONFIANZA DEL BOT ES HONESTA?</b>",
+        f"<i>Revisé {rep.get('n_muestras')} pronósticos pasados vs lo que pasó</i>",
+        div,
+        diagnostico,
+        f"🔧 Ajuste sugerido: <b>{int(round(alpha * 100))}%</b> menos de confianza",
+    ]
+    if rep.get("brier_sin_calibrar_eval") is not None:
+        mejora = "sí" if ayuda else "no cambia"
+        lineas.append(
+            f"📊 ¿Mejora al ajustar? <b>{mejora}</b> "
+            f"(error {rep.get('brier_sin_calibrar_eval')} → {rep.get('brier_calibrado_eval')}, "
+            "más bajo = mejor)"
+        )
+    lineas += ["", recomendacion, div, DISCLAIMER]
+    return "\n".join(lineas)
+
+
+def enviar_confianza() -> Dict[str, Any]:
+    """
+    Mide la calibración del modelo (walk-forward sobre ESPN) y envía el reporte
+    en lenguaje simple. Tolerante: nunca rompe.
+    """
+    try:
+        import fuentes_datos
+        import calibracion as cal
+    except ImportError:  # pragma: no cover
+        from src import fuentes_datos  # type: ignore
+        from src import calibracion as cal  # type: ignore
+    try:
+        datos = fuentes_datos.obtener_resultados(meses=18)
+        rep = cal.evaluar_calibracion(datos["resultados"])
+    except Exception as exc:  # pragma: no cover
+        rep = {}
+        _ = exc
+    enviado = enviar_mensaje(construir_mensaje_confianza(rep))
+    return {"enviado": enviado, "alpha": (rep or {}).get("alpha_sugerido")}
 
 
 # ---------------------------------------------------------------------------

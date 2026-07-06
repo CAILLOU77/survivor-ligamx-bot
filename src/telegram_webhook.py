@@ -27,6 +27,8 @@ AYUDA = (
     "/plan — plan de temporada: qué equipo usar en cada jornada (todas las 17)\n"
     "/momios — baja los momios (1X2/OU/hándicap) y muestra la cobertura\n"
     "/seguir — lista de seguimiento: candidatos por hora para decidir secuencial\n"
+    "/prueba — pone a prueba la estrategia con torneos pasados (¿sobrevive?)\n"
+    "/confianza — revisa si la confianza del bot es honesta o exagerada\n"
     "/usado &lt;equipo&gt; — marca un equipo como usado (lo excluye)\n"
     "/usados — lista tus equipos usados\n"
     "/quitar &lt;equipo&gt; — quita un equipo de la lista\n"
@@ -46,6 +48,12 @@ CMDS_MOMIOS = {"momios", "cuotas", "odds", "mercado"}
 
 # Comandos de la lista de seguimiento secuencial (pesado -> background).
 CMDS_SEGUIMIENTO = {"seguir", "seguimiento", "candidatos", "watchlist"}
+
+# "Prueba" de la estrategia = backtest sobre temporadas pasadas (pesado -> background).
+CMDS_PRUEBA = {"prueba", "probar", "backtest", "historial", "simular"}
+
+# "Confianza" del bot = calibración del modelo (pesado -> background).
+CMDS_CONFIANZA = {"confianza", "honestidad", "calibracion", "calibrar", "revisar"}
 
 
 def parsear_comando(texto: str) -> Tuple[Optional[str], str]:
