@@ -134,6 +134,81 @@ def tunear_hiperparametros(
     }
 
 
+def _brier_altitud(
+    train: Sequence[Dict[str, Any]],
+    evalset: Sequence[Dict[str, Any]],
+    k_altitud: float,
+) -> Tuple[Optional[float], int]:
+    """Brier prediciendo `evalset` con el modelo + ajuste de altitud (coef k)."""
+    try:
+        import altitud as alt
+    except ImportError:  # pragma: no cover
+        from src import altitud as alt  # type: ignore
+    try:
+        fuerzas = pm.calcular_fuerzas(train)
+    except ValueError:
+        return (None, 0)
+    eq = fuerzas.get("equipos", {})
+    total = 0.0
+    n = 0
+    for m in evalset:
+        h, a = m.get("home_team", ""), m.get("away_team", "")
+        if pm._norm(h) not in eq or pm._norm(a) not in eq:
+            continue
+        try:
+            hg, ag = int(m["home_goals"]), int(m["away_goals"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        pr = pm.pronostico(h, a, fuerzas)
+        if k_altitud > 0:
+            pl, pe, pv = alt.ajustar_1x2_por_altitud(pr, k=k_altitud)
+        else:
+            pl, pe, pv = pr["prob_local_pct"], pr["prob_empate_pct"], pr["prob_visitante_pct"]
+        probs = [pl / 100.0, pe / 100.0, pv / 100.0]
+        total += brier_score(probs, _resultado_1x2(hg, ag))
+        n += 1
+    return (total / n if n else None, n)
+
+
+def medir_altitud(
+    resultados: Sequence[Dict[str, Any]],
+    grid_k: Sequence[float] = (0.0, 0.03, 0.06, 0.10, 0.15),
+) -> Dict[str, Any]:
+    """
+    ¿Ayuda el factor de altitud? Elige el coeficiente k en validación (Brier) y
+    confirma en holdout no visto vs SIN altitud (k=0). Aplica solo si mejora real.
+    """
+    ordenados = sorted(resultados, key=lambda r: str(r.get("fecha", "")))
+    n = len(ordenados)
+    if n < 120:
+        return {"n": n, "mensaje": "Datos insuficientes.", "decision": DEC_INFORMATIVA}
+    a, b = int(n * 0.6), int(n * 0.8)
+    train, val, holdout = ordenados[:a], ordenados[a:b], ordenados[b:]
+
+    mejor_k, mejor_br = 0.0, None
+    for k in grid_k:
+        br, cnt = _brier_altitud(train, val, k)
+        if br is None or cnt == 0:
+            continue
+        if mejor_br is None or br < mejor_br:
+            mejor_k, mejor_br = k, br
+
+    trainval = ordenados[:b]
+    br_alt, _ = _brier_altitud(trainval, holdout, mejor_k)
+    br_off, _ = _brier_altitud(trainval, holdout, 0.0)
+    mejora = (round(br_off - br_alt, 4) if (br_alt is not None and br_off is not None)
+              else None)
+    return {
+        "n": n,
+        "k_sugerido": mejor_k,
+        "brier_holdout_sin_altitud": round(br_off, 4) if br_off is not None else None,
+        "brier_holdout_con_altitud": round(br_alt, 4) if br_alt is not None else None,
+        "mejora_holdout": mejora,
+        "aplicar": bool(mejora is not None and mejora > MEJORA_MINIMA_BRIER and mejor_k > 0),
+        "decision": DEC_INFORMATIVA,
+    }
+
+
 def main() -> int:
     try:
         import fuentes_datos
