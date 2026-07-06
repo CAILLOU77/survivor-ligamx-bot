@@ -360,8 +360,9 @@ def main() -> int:
         import fuentes_datos
     except ImportError:  # pragma: no cover
         from src import fuentes_datos  # type: ignore
-    print("🧪 Comparando estrategias de Survivor (datos reales ESPN, por torneo)...")
-    datos = fuentes_datos.obtener_resultados(meses=18)
+    print("🧪 Comparando estrategias de Survivor (historial largo, por torneo)...")
+    datos = fuentes_datos.obtener_historico_largo()
+    print(f"Fuente historial: {datos.get('fuente')} | partidos: {datos.get('total')}")
     r = comparar_estrategias(datos["resultados"])
     print(f"Fuente: {datos['fuente']}")
     for nombre, res in r["por_estrategia"].items():

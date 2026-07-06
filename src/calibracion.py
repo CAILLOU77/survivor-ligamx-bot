@@ -247,8 +247,8 @@ def main() -> int:
         import fuentes_datos
     except ImportError:  # pragma: no cover
         from src import fuentes_datos  # type: ignore
-    print("📐 Midiendo calibración del modelo (walk-forward, datos reales ESPN)...")
-    datos = fuentes_datos.obtener_resultados(meses=18)
+    print("📐 Midiendo calibración del modelo (walk-forward, historial largo)...")
+    datos = fuentes_datos.obtener_historico_largo()
     r = evaluar_calibracion(datos["resultados"])
     if r.get("n_muestras", 0) < 20:
         print(f"⚠️ {r.get('mensaje')}")

@@ -1202,14 +1202,19 @@ def construir_mensaje_prueba(comp: Dict[str, Any]) -> str:
         ]
         r_tasa = real.get("tasa_supervivencia_torneo_pct") or 0
         i_tasa = ingenua.get("tasa_supervivencia_torneo_pct") or 0
-        if r_tasa > i_tasa:
-            concl = "👉 La estrategia del bot aguantó MÁS. Buena señal para confiar en ella."
-        elif r_tasa == i_tasa:
-            concl = ("👉 Empataron en supervivencia; el bot suma por las victorias "
-                     "(desempate del Survivor).")
+        r_vic = real.get("victorias_prom_por_torneo") or 0
+        i_vic = ingenua.get("victorias_prom_por_torneo") or 0
+        r_jor = real.get("jornadas_sobrevividas_prom") or 0
+        if r_tasa == 0 and i_tasa == 0:
+            concl = ("👉 <b>La verdad del Survivor:</b> sobrevivir las 17 jornadas es MUY "
+                     "difícil. En el histórico NINGUNA estrategia lo logró completo; el bot "
+                     f"aguantó ~{r_jor} jornadas en promedio antes de caer. Te da la mejor "
+                     "chance cada semana, pero no hay garantía: una derrota elimina.")
+        elif r_tasa > i_tasa or (r_tasa == i_tasa and r_vic >= i_vic):
+            concl = "👉 La estrategia del bot va igual o mejor que elegir a lo simple."
         else:
-            concl = ("👉 Ojo: en el pasado la versión simple aguantó más. Conviene "
-                     "revisar la estrategia antes de confiarte.")
+            concl = ("👉 En este histórico, elegir a lo simple no salió peor. La estrategia "
+                     "del bot prioriza SEGURIDAD (menos sorpresas), no más victorias.")
         lineas += ["", concl]
     lineas += [div, DISCLAIMER]
     return "\n".join(lineas)
@@ -1227,7 +1232,7 @@ def enviar_prueba() -> Dict[str, Any]:
         from src import fuentes_datos  # type: ignore
         from src import backtest_estrategias as be  # type: ignore
     try:
-        datos = fuentes_datos.obtener_resultados(meses=18)
+        datos = fuentes_datos.obtener_historico_largo()
         comp = be.comparar_estrategias(datos["resultados"])
     except Exception as exc:  # pragma: no cover
         comp = {}
@@ -1288,7 +1293,7 @@ def enviar_confianza() -> Dict[str, Any]:
         from src import fuentes_datos  # type: ignore
         from src import calibracion as cal  # type: ignore
     try:
-        datos = fuentes_datos.obtener_resultados(meses=18)
+        datos = fuentes_datos.obtener_historico_largo()
         rep = cal.evaluar_calibracion(datos["resultados"])
     except Exception as exc:  # pragma: no cover
         rep = {}

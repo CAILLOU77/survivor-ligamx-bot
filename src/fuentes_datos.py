@@ -147,6 +147,36 @@ def obtener_resultados(meses: int = 6, minimo: int = MIN_ACEPTABLE) -> Dict[str,
     return {"fuente": "cache", "resultados": cache, "total": len(cache)}
 
 
+def obtener_historico_largo(min_espn_meses: int = 18,
+                            minimo: int = MIN_ACEPTABLE) -> Dict[str, Any]:
+    """
+    Historial LARGO (varias temporadas) para backtest y calibración, donde tener
+    MUCHOS torneos hace el veredicto confiable.
+
+    Prefiere la **Liga MX API** (proyecto hermano), que trae temporadas
+    backfilleadas desde ~2022 (~1200+ partidos). Si falla o trae poco, cae a
+    ESPN (~18 meses) y luego a la caché local. NO mezcla fuentes: usa la que
+    tenga MÁS datos, para no duplicar partidos por diferencias de nombres entre
+    fuentes (lo que corrompería la estimación de fuerzas del modelo).
+    """
+    try:
+        lmx = ligamx_api.resultados_historicos(max_partidos=5000)
+    except Exception:
+        lmx = []
+    try:
+        espn = espn_data.obtener_resultados(min_espn_meses)
+    except Exception:
+        espn = []
+    if len(lmx) >= minimo and len(lmx) >= len(espn):
+        guardar_cache(lmx)
+        return {"fuente": "LigaMX-API", "resultados": lmx, "total": len(lmx)}
+    if len(espn) >= minimo:
+        guardar_cache(espn)
+        return {"fuente": "ESPN", "resultados": espn, "total": len(espn)}
+    cache = leer_cache()
+    return {"fuente": "cache", "resultados": cache, "total": len(cache)}
+
+
 def _combinar(a: List[Dict[str, Any]], b: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     vistos = set()
     out: List[Dict[str, Any]] = []
