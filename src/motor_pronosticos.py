@@ -353,6 +353,12 @@ PEN_VISITANTE_CAUTELA = 8.0
 # empates": por eso ganar debe valer, no solo no-perder. El empate es push (no
 # suma), así que un pick que sobrevive GANANDO vale más que uno que sobrevive por
 # empate. En arranque (cautela) bajamos el peso: sobrevivir manda aún más.
+#
+# NOTA (medido en backtest_estrategias, 7 torneos): probamos peso=0 ("puro
+# sobrevivir"). NO mejoró la supervivencia (igual 5.14 jornadas) y rompe la regla
+# de preferir ganar sobre empatar cuando el no-perder es casi igual. La "mejora"
+# aparente (6.3) venía de una variante simplificada = ruido de muestra chica. Por
+# eso se conservan estos valores (sobrevivir domina, ganar desempata).
 PESO_VICTORIA_PICK = 0.5
 PESO_VICTORIA_PICK_CAUTELA = 0.25
 

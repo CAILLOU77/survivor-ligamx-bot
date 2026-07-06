@@ -149,6 +149,12 @@ def estrategia_real(
          and pm._norm(pr.get("visitante", "")) == pm._norm(partido.get("away_team", ""))),
         None,
     )
+    goles_esp = None
+    if prono is not None:
+        gl = prono.get("goles_esperados_local")
+        gv = prono.get("goles_esperados_visitante")
+        if gl is not None and gv is not None:
+            goles_esp = round(float(gl) + float(gv), 2)
     return {
         "equipo": pick.get("equipo"),
         "rival": pick.get("rival"),
@@ -160,6 +166,7 @@ def estrategia_real(
         "nivel": pick.get("nivel"),
         "nivel_alerta": (prono or {}).get("nivel_alerta"),
         "motivos_alerta": (prono or {}).get("motivos_alerta") or [],
+        "goles_esperados": goles_esp,
     }
 
 
@@ -291,6 +298,7 @@ def _correr(
             "prob_empate_pct": cand.get("prob_empate_pct"),
             "nivel_alerta": cand.get("nivel_alerta"),
             "motivos_alerta": cand.get("motivos_alerta") or [],
+            "goles_esperados": cand.get("goles_esperados"),
             "resultado": f"{p_.get('home_team')} {p_.get('home_goals')}-"
                          f"{p_.get('away_goals')} {p_.get('away_team')}",
             "sobrevivio": vivo,
@@ -631,6 +639,93 @@ def analizar_ganadores(
         "comparacion": comparacion,
         "lecciones": lecciones,
         "decision": DEC_INFORMATIVA,
+    }
+
+
+def analizar_causas_derrotas(
+    resultados: Sequence[Dict[str, Any]],
+    min_train: int = MIN_TRAIN,
+    umbral_cerrado: float = 2.3,
+    umbral_favorito: float = 55.0,
+) -> Dict[str, Any]:
+    """
+    Clasifica POR QUÉ cae el bot en cada eliminación:
+      - partido CERRADO/under (pocos goles esperados: propenso a sorpresa/empate),
+      - era FAVORITO fuerte que igual perdió,
+      - era de VISITANTE,
+      - ya traía ALERTA del modelo.
+    Un mismo caso puede tener varias etiquetas. Responde "¿under o favorito?".
+    """
+    torneos = _correr(resultados, estrategia_real, min_train)
+    derrotas: List[Dict[str, Any]] = []
+    for t in torneos:
+        perdidos = [d for d in t["detalle"] if not d.get("sobrevivio")]
+        if perdidos:
+            derrotas.append(perdidos[-1])
+    n = len(derrotas)
+    if n == 0:
+        return {"total_derrotas": 0, "mensaje": "Sin eliminaciones.", "decision": DEC_INFORMATIVA}
+
+    def _pct(cond) -> float:
+        return round(100.0 * sum(1 for d in derrotas if cond(d)) / n, 1)
+
+    cerrado = _pct(lambda d: d.get("goles_esperados") is not None
+                   and d["goles_esperados"] < umbral_cerrado)
+    favorito = _pct(lambda d: (d.get("prob_victoria_pct") or 0) >= umbral_favorito)
+    visitante = _pct(lambda d: d.get("condicion") == "Visitante")
+    con_alerta = _pct(lambda d: bool(d.get("motivos_alerta")))
+
+    causa_dominante = max(
+        [("partido cerrado/under", cerrado), ("favorito que perdió", favorito),
+         ("de visitante", visitante)],
+        key=lambda kv: kv[1],
+    )[0]
+    return {
+        "total_derrotas": n,
+        "en_partido_cerrado_pct": cerrado,
+        "era_favorito_fuerte_pct": favorito,
+        "de_visitante_pct": visitante,
+        "con_alerta_previa_pct": con_alerta,
+        "causa_dominante": causa_dominante,
+        "detalle": [
+            {"torneo": d.get("torneo"), "pick": d.get("pick"),
+             "condicion": d.get("condicion"), "rival": d.get("rival"),
+             "goles_esperados": d.get("goles_esperados"),
+             "prob_victoria_pct": d.get("prob_victoria_pct"),
+             "resultado": d.get("resultado")}
+            for d in derrotas
+        ],
+        "decision": DEC_INFORMATIVA,
+    }
+
+
+def estrategia_supervivencia(
+    partidos: Sequence[Dict[str, Any]],
+    fuerzas: Dict[str, Any],
+    usados: set,
+    partidos_jugados_torneo: int = 0,
+) -> Optional[Dict[str, Any]]:
+    """
+    PURO SOBREVIVIR: elige el mayor no-perder (ganar+empatar), pero con el castigo
+    al favorito VISITANTE (los locales sorprenden menos). NO premia ganar: el único
+    objetivo es no ser eliminado. Prueba la idea del usuario: ¿maximizar
+    supervivencia (sin importar victorias) aguanta más el Survivor?
+    """
+    PEN = 4.0
+    cands = _no_perder_candidatos(partidos, fuerzas)
+    disp = [c for c in cands if pm._norm(c["equipo"]) not in usados]
+    if not disp:
+        return None
+
+    def _score(c):
+        pen = 0.0 if c["es_local"] else PEN
+        return c["no_perder_pct"] - pen
+
+    elegido = max(disp, key=_score)
+    return {
+        "equipo": elegido["equipo"], "rival": elegido["rival"],
+        "es_local": elegido["es_local"], "partido": elegido["partido"],
+        "no_perder_pct": elegido["no_perder_pct"],
     }
 
 
