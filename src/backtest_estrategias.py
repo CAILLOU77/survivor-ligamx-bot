@@ -158,23 +158,39 @@ ESTRATEGIAS: Dict[str, Estrategia] = {
 # ---------------------------------------------------------------------------
 # Simulación walk-forward por torneo
 # ---------------------------------------------------------------------------
-def _nuevo_torneo() -> Dict[str, Any]:
-    return {"jugadas": 0, "sobrevividas": 0, "victorias": 0,
-            "eliminado_en": None, "detalle": []}
+def _nuevo_torneo(torneo_id: Optional[str] = None) -> Dict[str, Any]:
+    return {"torneo_id": torneo_id, "jugadas": 0, "sobrevividas": 0, "victorias": 0,
+            "eliminado_en": None, "parcial": False, "detalle": []}
+
+
+def _torneo_id(f: Optional[date]) -> Optional[str]:
+    """
+    Identifica el torneo de Liga MX por la fecha: Apertura (jul-dic) o Clausura
+    (ene-jun), por año. Ej: 2025-08-... -> '2025A'; 2026-03-... -> '2026C'.
+    Es más robusto que detectar por hueco de fechas (el descanso invierno es corto).
+    """
+    if f is None:
+        return None
+    return f"{f.year}{'A' if f.month >= 7 else 'C'}"
 
 
 def simular_estrategia(
     resultados: Sequence[Dict[str, Any]],
     estrategia: Estrategia = estrategia_real,
     min_train: int = MIN_TRAIN,
-    gap_torneo_dias: int = GAP_TORNEO_DIAS,
 ) -> Dict[str, Any]:
     """
     Corre Survivor sobre los resultados reales (walk-forward), reiniciando los
-    equipos usados en cada torneo. Devuelve el desglose por torneo y agregados.
+    equipos usados en cada TORNEO (Apertura/Clausura, por semestre). Devuelve el
+    desglose por torneo y agregados.
 
     Para cada jornada entrena la fuerza SOLO con lo anterior, deja que la
     estrategia elija, y revisa qué pasó de verdad (ganó / empató / perdió).
+
+    Un torneo se marca `parcial` cuando NO se pudo evaluar desde su inicio (por
+    falta de histórico de entrenamiento, típico del torneo más antiguo de la
+    ventana). Los parciales NO cuentan para la tasa de supervivencia (sería
+    injusto: no se jugó completo).
     """
     jornadas = agrupar_jornadas(resultados)
     ordenados = sorted(resultados, key=lambda r: str(r.get("fecha", "")))
@@ -182,26 +198,29 @@ def simular_estrategia(
     historico: List[Dict[str, Any]] = []
     idx = 0
     usados: set = set()
-    prev_f: Optional[date] = None
     jugados_torneo = 0
     eliminado_flag = False
 
     torneos: List[Dict[str, Any]] = []
     cur = _nuevo_torneo()
-    torneo_iniciado = False
+    cur_id: Optional[str] = None
+    jugo_en_cur = False
 
     for j in jornadas:
         f = _fecha_semana_iso(j["jornada"])
-        # ¿Nuevo torneo? (hueco de fechas grande)
-        if prev_f is not None and f is not None and (f - prev_f).days > gap_torneo_dias:
-            if torneo_iniciado:
-                torneos.append(cur)
-            cur = _nuevo_torneo()
+        tid = _torneo_id(f)
+        # ¿Nuevo torneo? (cambió el semestre Apertura/Clausura)
+        if cur_id is None:
+            cur_id = tid
+            cur = _nuevo_torneo(tid)
+        elif tid is not None and tid != cur_id:
+            torneos.append(cur)
+            cur = _nuevo_torneo(tid)
+            cur_id = tid
             usados = set()
             jugados_torneo = 0
             eliminado_flag = False
-            torneo_iniciado = False
-        prev_f = f or prev_f
+            jugo_en_cur = False
 
         # Avanza el histórico con todo lo ANTERIOR a esta jornada.
         while idx < len(ordenados) and _semana_iso(ordenados[idx].get("fecha")) < j["jornada"]:
@@ -209,12 +228,21 @@ def simular_estrategia(
             idx += 1
 
         n_partidos = len(j["partidos"])
-        if eliminado_flag or len(historico) < min_train:
+
+        # Sin histórico suficiente al inicio del torneo => no evaluable => parcial.
+        if len(historico) < min_train:
+            if not jugo_en_cur:
+                cur["parcial"] = True
+            jugados_torneo += n_partidos
+            continue
+        if eliminado_flag:
             jugados_torneo += n_partidos
             continue
         try:
             fuerzas = pm.calcular_fuerzas(historico)
         except ValueError:
+            if not jugo_en_cur:
+                cur["parcial"] = True
             jugados_torneo += n_partidos
             continue
 
@@ -223,7 +251,7 @@ def simular_estrategia(
         if cand is None:
             continue
 
-        torneo_iniciado = True
+        jugo_en_cur = True
         vivo = _sobrevive(cand["partido"], cand["es_local"])
         cur["jugadas"] += 1
         usados.add(pm._norm(cand["equipo"]))
@@ -248,40 +276,52 @@ def simular_estrategia(
             cur["eliminado_en"] = j["jornada"]
             eliminado_flag = True
 
-    if torneo_iniciado:
-        torneos.append(cur)
+    torneos.append(cur)
+    # Descarta torneos "fantasma" (sin actividad y sin marca de parcial).
+    torneos = [t for t in torneos if t["jugadas"] > 0 or t.get("parcial")]
 
     return _agregar(torneos, estrategia)
 
 
 def _agregar(torneos: List[Dict[str, Any]], estrategia: Estrategia) -> Dict[str, Any]:
-    """Métricas agregadas sobre todos los torneos evaluados."""
-    n = len(torneos)
+    """
+    Métricas agregadas SOLO sobre torneos completos (los parciales se reportan
+    aparte pero no cuentan para la tasa de supervivencia: no se jugaron enteros).
+    """
+    nombre = getattr(estrategia, "__name__", "estrategia")
+    completos = [t for t in torneos if not t.get("parcial") and t["jugadas"] > 0]
+    parciales = [t for t in torneos if t.get("parcial")]
+    n = len(completos)
     if n == 0:
         return {
+            "estrategia": nombre,
             "torneos_evaluados": 0,
-            "mensaje": "Sin torneos evaluables (¿histórico corto o min_train alto?).",
+            "torneos_parciales": len(parciales),
+            "mensaje": "Sin torneos COMPLETOS evaluables (histórico corto para "
+                       "empezar desde el inicio del torneo). Se necesita más "
+                       "temporadas para un veredicto confiable.",
             "decision": DEC_INFORMATIVA,
         }
-    completos = sum(1 for t in torneos if t["eliminado_en"] is None and t["jugadas"] > 0)
-    total_sobre = sum(t["sobrevividas"] for t in torneos)
-    total_jug = sum(t["jugadas"] for t in torneos)
-    total_vict = sum(t["victorias"] for t in torneos)
-    nombre = getattr(estrategia, "__name__", "estrategia")
+    sobrevividos = sum(1 for t in completos if t["eliminado_en"] is None)
+    total_sobre = sum(t["sobrevividas"] for t in completos)
+    total_jug = sum(t["jugadas"] for t in completos)
+    total_vict = sum(t["victorias"] for t in completos)
     return {
         "estrategia": nombre,
         "torneos_evaluados": n,
-        "torneos_sobrevividos_completos": completos,
-        "tasa_supervivencia_torneo_pct": round(100.0 * completos / n, 1),
+        "torneos_parciales": len(parciales),
+        "torneos_sobrevividos_completos": sobrevividos,
+        "tasa_supervivencia_torneo_pct": round(100.0 * sobrevividos / n, 1),
         "jornadas_sobrevividas_prom": round(total_sobre / n, 2),
         "victorias_prom_por_torneo": round(total_vict / n, 2),
         "jornadas_jugadas_total": total_jug,
         "jornadas_sobrevividas_total": total_sobre,
         "victorias_total": total_vict,
         "por_torneo": [
-            {"jornadas": t["jugadas"], "sobrevividas": t["sobrevividas"],
-             "victorias": t["victorias"], "eliminado_en": t["eliminado_en"]}
-            for t in torneos
+            {"torneo": t.get("torneo_id"), "jornadas": t["jugadas"],
+             "sobrevividas": t["sobrevividas"], "victorias": t["victorias"],
+             "eliminado_en": t["eliminado_en"]}
+            for t in completos
         ],
         "decision": DEC_INFORMATIVA,
     }

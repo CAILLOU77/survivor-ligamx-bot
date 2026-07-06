@@ -1178,9 +1178,14 @@ def construir_mensaje_prueba(comp: Dict[str, Any]) -> str:
                 f"{DISCLAIMER}")
 
     n = real.get("torneos_evaluados")
+    parciales = real.get("torneos_parciales") or 0
+    sub = f"<i>Jugué el Survivor en {n} torneos completos con datos reales"
+    if parciales:
+        sub += f" ({parciales} torneo(s) sin datos suficientes no cuentan)"
+    sub += "</i>"
     lineas = [
         "🧪 <b>PRUEBA DE LA ESTRATEGIA</b>",
-        f"<i>Jugué el Survivor en {n} torneos pasados con datos reales</i>",
+        sub,
         div,
         "🤖 <b>La estrategia del bot</b> (la que usas):",
         f"✅ Sobrevivió completo: <b>{real.get('torneos_sobrevividos_completos')}/{n}</b>"
