@@ -417,6 +417,47 @@ def mezclar_pronosticos_con_mercado(
     return salida
 
 
+def construir_snapshots_momios(
+    pronosticos: Sequence[Dict[str, Any]],
+    momios: Optional[Dict[str, Dict[str, Any]]] = None,
+    source: Optional[str] = None,
+    season: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Arma snapshots de momios (1 por partido) listos para archivar en la Liga MX
+    API (POST /odds). Cruza los pronósticos (que traen los NOMBRES) con el dict
+    de momios (indexado por clave). Devuelve [] si no hay momios.
+    """
+    if not momios:
+        return []
+    out: List[Dict[str, Any]] = []
+    for p in pronosticos:
+        home, away = p.get("local"), p.get("visitante")
+        if not home or not away:
+            continue
+        mercado = buscar_mercado_partido(home, away, momios)
+        if not mercado:
+            continue
+        ml = mercado.get("ml") or {}
+        tot = mercado.get("totals") or {}
+        if not ml and not tot:
+            continue
+        snap: Dict[str, Any] = {"home_team": home, "away_team": away,
+                                "source": source, "season": season}
+        if p.get("fecha"):
+            snap["match_date"] = p.get("fecha")
+        if ml:
+            snap["odds_local"] = ml.get("local")
+            snap["odds_empate"] = ml.get("empate")
+            snap["odds_visita"] = ml.get("visita")
+        if tot:
+            snap["ou_linea"] = tot.get("linea")
+            snap["odds_over"] = tot.get("over")
+            snap["odds_under"] = tot.get("under")
+        out.append(snap)
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Parseo del formato real de odds-api.io (función pura, defensiva).
 # bookmakers = {casa: [ {name, odds:[{...}]}, ... ]}. Markets: ML, Over/Under,

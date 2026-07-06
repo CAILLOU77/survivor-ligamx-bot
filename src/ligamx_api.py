@@ -101,6 +101,34 @@ def usar_como_fuente() -> bool:
     return os.getenv("LIGAMX_API_AS_SOURCE", "").strip().lower() in ("1", "true", "yes", "on")
 
 
+def archivar_momios(snapshots: List[Dict[str, Any]], timeout: float = 10.0) -> int:
+    """
+    Archiva snapshots de momios en la Liga MX API (POST /odds) para acumular el
+    histórico de mercado (y poder backtestear la mezcla con el tiempo).
+
+    Requiere LIGAMX_API_SYNC_KEY (la SYNC_API_KEY de la API) en el entorno. Sin
+    key, sin `requests` o sin snapshots => no-op (devuelve 0). NUNCA rompe el
+    flujo: ante cualquier error devuelve 0.
+    """
+    if not snapshots or requests is None:
+        return 0
+    key = os.getenv("LIGAMX_API_SYNC_KEY", "").strip()
+    if not key:
+        return 0
+    try:
+        resp = requests.post(
+            f"{base_url()}/odds",
+            json=snapshots,
+            headers={"X-API-Key": key},
+            timeout=timeout,
+        )
+        if resp.status_code == 200:
+            return int(resp.json().get("guardados", 0))
+    except Exception:  # pragma: no cover - red no disponible
+        return 0
+    return 0
+
+
 def estado_temporada() -> Dict[str, Any]:
     """
     /season — qué torneo sirve la API y si ya arrancó.

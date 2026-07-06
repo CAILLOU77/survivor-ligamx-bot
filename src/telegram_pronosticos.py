@@ -779,19 +779,33 @@ def enviar_pronosticos(equipos_usados: Optional[List[str]] = None,
     if equipos_usados is None:
         equipos_usados = _usados_persistidos()
 
-    # Momios/valor (gated por key; sin key no toca nada).
+    # Momios/valor (gated por key; sin key no toca nada). Se bajan UNA vez y se
+    # reutilizan para: anotar (mostrar), mezclar en el pick, y archivar histórico.
     con_momios = 0
     try:
         try:
             import comparador_mercado as cm
+            import ligamx_api as lmx
         except ImportError:  # pragma: no cover
             from src import comparador_mercado as cm  # type: ignore
-        comp = cm.comparar_pronosticos(pronosticos)
-        pron_anotados = comp.get("pronosticos", pronosticos)
+            from src import ligamx_api as lmx  # type: ignore
+        try:
+            momios, fuente_m = cm.momios_para_uso()
+        except Exception:  # pragma: no cover
+            momios, fuente_m = {}, None
+        pron_anotados = cm.anotar_pronosticos(pronosticos, momios)
         # Mezcla los momios en las probabilidades del pick (ensemble modelo+mercado).
         # Sin key/momios es no-op (el pick sigue siendo el del modelo).
-        resultado["pronosticos"] = cm.mezclar_pronosticos_con_mercado(pron_anotados)
-        con_momios = comp.get("partidos_con_momios", 0)
+        resultado["pronosticos"] = cm.mezclar_pronosticos_con_mercado(pron_anotados, momios=momios)
+        con_momios = sum(1 for m in (momios or {}).values()
+                         if isinstance(m, dict) and m.get("ml"))
+        # Archiva el snapshot de momios en la Liga MX API (histórico), best-effort.
+        try:
+            snaps = cm.construir_snapshots_momios(pron_anotados, momios, source=fuente_m)
+            if snaps:
+                lmx.archivar_momios(snaps)
+        except Exception:  # pragma: no cover
+            pass
     except Exception:  # pragma: no cover - nunca debe tumbar el envío
         pass
 
