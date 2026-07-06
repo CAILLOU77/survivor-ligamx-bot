@@ -44,6 +44,15 @@ UMBRAL_NO_PERDER_ALTA: float = 0.75
 UMBRAL_GANAR_ALTA: float = 0.55
 UMBRAL_NO_PERDER_MEDIA: float = 0.65
 
+# Ajuste de riesgo por SORPRESA (coherente con motor_pronosticos): el favorito
+# VISITANTE del modelo falla más (medido ~58% vs ~44% del local en analisis_riesgo).
+# Se descuenta su probabilidad de no-perder SOLO para el valor de asignación
+# (decidir en qué jornada gastarlo), NUNCA para los % que se le muestran al
+# usuario (esos siguen siendo los reales del modelo: honestidad).
+DESCUENTO_VISITANTE: float = 0.05          # -5% a picks visitantes
+DESCUENTO_VISITANTE_ARRANQUE: float = 0.10  # extra en jornadas de arranque
+JORNADAS_ARRANQUE_PLAN: int = 3            # primeras N jornadas = más sorpresas
+
 
 # ---------------------------------------------------------------------------
 # Momios americanos (para cuando el usuario pega momios reales tipo -125 / +110)
@@ -110,6 +119,20 @@ def _nivel(p_no_perder: float, p_ganar: float) -> str:
     return "RIESGOSA"
 
 
+def _nivel_estrategico(p_no_perder: float, p_ganar: float, es_local: bool,
+                       es_arranque: bool) -> str:
+    """
+    Nivel ajustado por sorpresa (coherente con motor_pronosticos._nivel_estrategico):
+    un favorito VISITANTE nunca es 'ALTA', y en el arranque 'ALTA' exige más margen.
+    """
+    nivel = _nivel(p_no_perder, p_ganar)
+    if not es_local and nivel == "ALTA":
+        nivel = "MEDIA"
+    if es_arranque and nivel == "ALTA" and p_no_perder < 0.80:
+        nivel = "MEDIA"
+    return nivel
+
+
 # ---------------------------------------------------------------------------
 # Planificador (asignación óptima jornada ↔ equipo)
 # ---------------------------------------------------------------------------
@@ -153,6 +176,9 @@ def planificar(
     peso_victoria: float = PESO_VICTORIA,
     odds_por_partido: Optional[Dict[Tuple[str, str], Tuple[float, float, float]]] = None,
     peso_modelo: float = 0.5,
+    descuento_visitante: float = DESCUENTO_VISITANTE,
+    descuento_visitante_arranque: float = DESCUENTO_VISITANTE_ARRANQUE,
+    jornadas_arranque: int = JORNADAS_ARRANQUE_PLAN,
 ) -> Dict[str, Any]:
     """
     Plan óptimo de temporada: qué equipo usar en cada jornada, sin repetir,
@@ -162,6 +188,11 @@ def planificar(
     `equipos_usados`: equipos ya gastados (se excluyen del pool).
     `peso_victoria`: cuánto premiar ganar vs solo no-perder (0 = solo sobrevivir).
     `odds_por_partido`: opcional {(home_norm, away_norm): (p_local,p_empate,p_visita)}.
+    `descuento_visitante`: castigo (0..1) a la prob. de no-perder de picks
+        VISITANTES al DECIDIR en qué jornada usarlos (fallan más). No cambia los
+        % reales que se muestran; solo el valor de asignación. 0 = desactivado.
+    `descuento_visitante_arranque`: descuento EXTRA para picks visitantes en las
+        primeras `jornadas_arranque` jornadas (más sorpresas al inicio).
     """
     from scipy.optimize import linear_sum_assignment  # lazy import (dep ya fijada)
     import numpy as np
@@ -180,6 +211,9 @@ def planificar(
             "decision": DEC_INFORMATIVA,
         }
 
+    # Jornadas de "arranque" = las primeras (más pequeñas) del calendario.
+    arranque = set(sorted(jornadas)[: max(0, jornadas_arranque)])
+
     n_j, n_e = len(jornadas), len(equipos)
     NEG = -1e9
     valor = np.full((n_j, n_e), NEG, dtype=float)
@@ -188,8 +222,19 @@ def planificar(
             c = celdas.get((jnum, eq))
             if c is None:
                 continue  # ese equipo no juega esa jornada (o sin histórico)
-            npd = max(c["p_no_perder"], _PROB_FLOOR)
-            valor[i, k] = math.log(npd) + peso_victoria * c["p_ganar"]
+            p_np = c["p_no_perder"]
+            p_win = c["p_ganar"]
+            # Castigo por sorpresa a picks visitantes (solo para decidir, no para
+            # mostrar): reduce su no-perder efectivo, extra en el arranque.
+            if c["condicion"] == "Visitante":
+                desc = descuento_visitante + (
+                    descuento_visitante_arranque if jnum in arranque else 0.0
+                )
+                desc = max(0.0, min(desc, 0.9))
+                p_np = p_np * (1.0 - desc)
+                p_win = p_win * (1.0 - desc)
+            npd = max(p_np, _PROB_FLOOR)
+            valor[i, k] = math.log(npd) + peso_victoria * p_win
 
     # Maximizar valor == minimizar -valor.
     filas, cols = linear_sum_assignment(-valor)
@@ -206,7 +251,9 @@ def planificar(
         eq = equipos[k]
         c = celdas[(jnum, eq)]
         asignados.add(eq)
-        plan.append({
+        es_local = c["condicion"] == "Local"
+        es_arranque = jnum in arranque
+        item = {
             "jornada": jnum,
             "equipo": c["equipo"],
             "rival": c["rival"],
@@ -214,8 +261,11 @@ def planificar(
             "prob_ganar_pct": round(100.0 * c["p_ganar"], 1),
             "prob_empate_pct": round(100.0 * c["p_empate"], 1),
             "no_perder_pct": round(100.0 * c["p_no_perder"], 1),
-            "nivel": _nivel(c["p_no_perder"], c["p_ganar"]),
-        })
+            "nivel": _nivel_estrategico(c["p_no_perder"], c["p_ganar"], es_local, es_arranque),
+        }
+        if not es_local:
+            item["ajuste_riesgo"] = "pick visitante: castigado al planear (de visita hay más sorpresas)"
+        plan.append(item)
 
     plan.sort(key=lambda p: p["jornada"])
     prob_superv = 1.0
