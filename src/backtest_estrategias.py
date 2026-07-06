@@ -47,6 +47,7 @@ except ImportError:  # pragma: no cover
 
 DEC_INFORMATIVA = "INFORMATIVO / REVISIÓN HUMANA"
 GAP_TORNEO_DIAS = 28  # hueco de calendario que separa un torneo del siguiente
+JORNADAS_REGULARES = 17  # Liga MX: 17 jornadas de fase regular (objetivo del Survivor)
 
 # Una estrategia recibe (partidos, fuerzas, usados, partidos_jugados_torneo) y
 # devuelve el candidato elegido {equipo, rival, es_local, partido, no_perder_pct}
@@ -590,15 +591,18 @@ def analizar_ganadores(
             continue
         tid = t.get("torneo_id")
         orac = _oracle_torneo(por_torneo.get(tid, []))
+        # "camino perfecto" = el óptimo pudo sobrevivir las 17 de fase regular.
+        # (No exigimos cubrir cada semana ISO: los partidos entre semana y la
+        # liguilla generan semanas extra que no son parte del objetivo.)
+        camino = orac["max_supervivencia"] >= JORNADAS_REGULARES
         comparacion.append({
             "torneo": tid,
             "bot_sobrevividas": t["sobrevividas"],
             "bot_victorias": t["victorias"],
             "bot_completo": t["eliminado_en"] is None,
             "oracle_jornadas": orac["jornadas"],
-            "oracle_completo": orac["completo"],
+            "oracle_completo": camino,
             "oracle_max_supervivencia": orac["max_supervivencia"],
-            "oracle_wins": orac["oracle_wins"],
         })
     n = len(comparacion)
     if n == 0:
