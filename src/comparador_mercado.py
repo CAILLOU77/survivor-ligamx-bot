@@ -340,6 +340,83 @@ def anotar_pronosticos(
     return salida
 
 
+def mezclar_pronosticos_con_mercado(
+    pronosticos: Sequence[Dict[str, Any]],
+    momios: Optional[Dict[str, Dict[str, Any]]] = None,
+    peso_modelo: float = 0.5,
+) -> List[Dict[str, Any]]:
+    """
+    Mezcla (ensemble) el 1X2 del MODELO con el del MERCADO (momios sin vig) en las
+    probabilidades que usa el pick de Survivor. Devuelve COPIAS con prob 1X2,
+    pick_1x2, no-perder y confianza recalculados. Over/Under y BTTS quedan del
+    modelo (el Survivor se decide con el 1X2).
+
+    Las casas suelen ser más afinadas que el modelo solo, así que subir un poco
+    el acierto por jornada ayuda (y se compone semana a semana).
+
+    `peso_modelo` en [0,1]: 0 = solo mercado, 1 = solo modelo, 0.5 = mitad/mitad.
+    Sin `momios` (o sin ODDS_API_IO_KEY) => devuelve los pronósticos SIN cambios
+    (no-op seguro: el pick sigue siendo el del modelo).
+    """
+    try:
+        import poisson_model as pm
+    except ImportError:  # pragma: no cover
+        from src import poisson_model as pm  # type: ignore
+
+    if momios is None:
+        if not mercado_habilitado():
+            return [dict(p) for p in pronosticos]
+        momios, _fuente = momios_para_uso()
+    if not momios:
+        return [dict(p) for p in pronosticos]
+
+    salida: List[Dict[str, Any]] = []
+    for p in pronosticos:
+        q = dict(p)
+        if "prob_local_pct" not in p:
+            salida.append(q)
+            continue
+        mercado = buscar_mercado_partido(p.get("local", ""), p.get("visitante", ""), momios)
+        ml = (mercado or {}).get("ml")
+        try:
+            dv = quitar_vig(ml["local"], ml["empate"], ml["visita"]) if ml else None
+        except (KeyError, ValueError, TypeError):
+            dv = None
+        if not dv:
+            salida.append(q)
+            continue
+        modelo = (p["prob_local_pct"] / 100.0, p["prob_empate_pct"] / 100.0,
+                  p["prob_visitante_pct"] / 100.0)
+        mkt = (dv["prob_local"], dv["prob_empate"], dv["prob_visita"])
+        try:
+            mez = pm.combinar_con_mercado(modelo, mkt, peso_modelo=peso_modelo)
+        except (ValueError, TypeError):
+            salida.append(q)
+            continue
+        pl, pe, pv = round(mez[0] * 100, 2), round(mez[1] * 100, 2), round(mez[2] * 100, 2)
+        prob_pick = max(pl, pe, pv)
+        if pl >= pe and pl >= pv:
+            pick = "Gana Local"
+        elif pv >= pl and pv >= pe:
+            pick = "Gana Visitante"
+        else:
+            pick = "Empate"
+        nivel = "ALTA" if prob_pick >= 55.0 else ("MEDIA" if prob_pick >= 42.0 else "BAJA")
+        q.update({
+            "prob_local_pct": pl,
+            "prob_empate_pct": pe,
+            "prob_visitante_pct": pv,
+            "prob_pick_pct": round(prob_pick, 2),
+            "pick_1x2": pick,
+            "nivel_confianza": nivel,
+            "no_perder_local_pct": round(pl + pe, 2),
+            "no_perder_visitante_pct": round(pv + pe, 2),
+            "mezcla_mercado": {"peso_modelo": peso_modelo, "vig": round(dv.get("vig", 0.0), 4)},
+        })
+        salida.append(q)
+    return salida
+
+
 # ---------------------------------------------------------------------------
 # Parseo del formato real de odds-api.io (función pura, defensiva).
 # bookmakers = {casa: [ {name, odds:[{...}]}, ... ]}. Markets: ML, Over/Under,

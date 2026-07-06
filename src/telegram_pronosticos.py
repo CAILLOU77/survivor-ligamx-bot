@@ -787,7 +787,10 @@ def enviar_pronosticos(equipos_usados: Optional[List[str]] = None,
         except ImportError:  # pragma: no cover
             from src import comparador_mercado as cm  # type: ignore
         comp = cm.comparar_pronosticos(pronosticos)
-        resultado["pronosticos"] = comp.get("pronosticos", pronosticos)
+        pron_anotados = comp.get("pronosticos", pronosticos)
+        # Mezcla los momios en las probabilidades del pick (ensemble modelo+mercado).
+        # Sin key/momios es no-op (el pick sigue siendo el del modelo).
+        resultado["pronosticos"] = cm.mezclar_pronosticos_con_mercado(pron_anotados)
         con_momios = comp.get("partidos_con_momios", 0)
     except Exception:  # pragma: no cover - nunca debe tumbar el envío
         pass
