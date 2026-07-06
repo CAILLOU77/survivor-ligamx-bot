@@ -96,22 +96,22 @@ def _formatear_contexto(ctx: Optional[Dict[str, Any]]) -> List[str]:
             f"{e.get('equipo', '')} {e.get('formacion') or ''}".strip()
             for e in ali.get("equipos", []) if e.get("equipo")
         )
-        lineas.append(f"    📋 XI CONFIRMADO — {forms}")
+        lineas.append(f"📋 XI CONFIRMADO — {forms}")
         alerta_xi = ctx.get("alerta_xi") if isinstance(ctx.get("alerta_xi"), dict) else None
         if alerta_xi and (alerta_xi.get("local") or alerta_xi.get("visita")):
             for lado, equipo in (("local", ctx.get("home")), ("visita", ctx.get("away"))):
                 faltan = alerta_xi.get(lado) or []
                 if faltan:
-                    lineas.append(f"    🚨 OJO: {equipo} SIN titular clave — {', '.join(faltan)} (banca/fuera)")
+                    lineas.append(f"🚨 OJO: {equipo} SIN titular clave — {', '.join(faltan)} (banca/fuera)")
         else:
-            lineas.append("    ✅ XI sin ausencias clave detectadas")
+            lineas.append("✅ XI sin ausencias clave detectadas")
     elif probable_ok:
         forms = " · ".join(
             f"{e.get('equipo', '')} {e.get('formacion') or ''}".strip()
             for e in probable if isinstance(e, dict) and e.get("equipo")
         )
-        lineas.append(f"    🔮 XI PROBABLE (aún no confirmado) — {forms}")
-        lineas.append("    <i>Es una alineación esperada de 365Scores; confirma ~1h antes.</i>")
+        lineas.append(f"🔮 XI PROBABLE (aún no confirmado) — {forms}")
+        lineas.append("<i>Alineación esperada de 365Scores; confirma ~1h antes.</i>")
     impacto = ctx.get("impacto_xi") if isinstance(ctx.get("impacto_xi"), dict) else None
     if impacto:
         for equipo, info in list(impacto.items())[:2]:
@@ -120,7 +120,7 @@ def _formatear_contexto(ctx: Optional[Dict[str, Any]]) -> List[str]:
             fuerza = info.get("fuerza_xi_pct")
             ausentes = info.get("ausentes_clave") or []
             if fuerza is not None:
-                txt = f"    🧮 Fuerza XI {equipo}: {fuerza}%"
+                txt = f"🧮 Fuerza XI {equipo}: {fuerza}%"
                 if ausentes:
                     nombres = ", ".join(
                         f"{a.get('jugador')} ({a.get('importancia_pct')}%)" if isinstance(a, dict) else str(a)
@@ -130,11 +130,11 @@ def _formatear_contexto(ctx: Optional[Dict[str, Any]]) -> List[str]:
                 lineas.append(txt)
     if pred:
         lineas.append(
-            f"    2ª opinión API: L{pred['prob_local_pct']}/E{pred['prob_empate_pct']}/"
+            f"🧠 2ª opinión API: L{pred['prob_local_pct']}/E{pred['prob_empate_pct']}/"
             f"V{pred['prob_visita_pct']} · goles {pred['goles_esp']}"
         )
     if forma_l or forma_v:
-        lineas.append(f"    Forma: {ctx.get('home')} {forma_l or '—'} · {ctx.get('away')} {forma_v or '—'}")
+        lineas.append(f"📈 Forma: {ctx.get('home')} {forma_l or '—'} · {ctx.get('away')} {forma_v or '—'}")
     if isinstance(h2h, dict) and h2h.get("played"):
         t1 = h2h.get("team1") or {}
         t2 = h2h.get("team2") or {}
@@ -142,44 +142,44 @@ def _formatear_contexto(ctx: Optional[Dict[str, Any]]) -> List[str]:
         temps = h2h.get("seasons_covered")
         temps_txt = f", {temps} temps" if temps else ""
         lineas.append(
-            f"    🤝 H2H ({n} duelos{temps_txt}): {t1.get('name', ctx.get('home'))} "
+            f"🤝 H2H ({n} duelos{temps_txt}): {t1.get('name', ctx.get('home'))} "
             f"{t1.get('wins', 0)}V · {h2h.get('draws', 0)}E · {t2.get('wins', 0)}V {t2.get('name', ctx.get('away'))}"
         )
     if riesgo_l:
-        lineas.append(f"    ⚠️ En riesgo ({ctx.get('home')}): {', '.join(riesgo_l)}")
+        lineas.append(f"⚠️ En riesgo ({ctx.get('home')}): {', '.join(riesgo_l)}")
     if riesgo_v:
-        lineas.append(f"    ⚠️ En riesgo ({ctx.get('away')}): {', '.join(riesgo_v)}")
+        lineas.append(f"⚠️ En riesgo ({ctx.get('away')}): {', '.join(riesgo_v)}")
     if noticias:
-        lineas.append("    📰 Noticias:")
+        lineas.append("📰 Noticias:")
         for n in noticias[:3]:
             titulo = n.get("titulo", "") if isinstance(n, dict) else str(n)
             if titulo:
-                lineas.append(f"      • {titulo}")
+                lineas.append(f"• {titulo}")
     ia = ctx.get("analisis_ia") if isinstance(ctx.get("analisis_ia"), dict) else None
     if ia and ia.get("disponible") and ia.get("riesgos"):
-        lineas.append("    🤖 IA — señales de riesgo (de las noticias):")
+        lineas.append("🤖 IA — señales de riesgo:")
         for r in ia["riesgos"][:4]:
             eq = r.get("equipo", "")
             tipo = r.get("tipo", "")
             resumen = r.get("resumen", "")
             if resumen:
-                lineas.append(f"      ⚠️ {eq} [{tipo}]: {resumen}")
+                lineas.append(f"• ⚠️ {eq} [{tipo}]: {resumen}")
     js = ctx.get("jugadores_seguir") if isinstance(ctx.get("jugadores_seguir"), dict) else None
     if js and (js.get("local") or js.get("visita")):
         loc = ", ".join(js.get("local", [])[:3])
         vis = ", ".join(js.get("visita", [])[:3])
-        lineas.append("    ⭐ Jugadores a seguir:")
+        lineas.append("⭐ Jugadores a seguir:")
         if loc:
-            lineas.append(f"      {ctx.get('home')}: {loc}")
+            lineas.append(f"• {ctx.get('home')}: {loc}")
         if vis:
-            lineas.append(f"      {ctx.get('away')}: {vis}")
+            lineas.append(f"• {ctx.get('away')}: {vis}")
     fichajes = ctx.get("fichajes") if isinstance(ctx.get("fichajes"), dict) else None
     if fichajes and (fichajes.get("local") or fichajes.get("visita")):
-        lineas.append("    🔄 Altas/Bajas (Transfermarkt):")
+        lineas.append("🔄 Altas/Bajas (Transfermarkt):")
         if fichajes.get("local"):
-            lineas.append(f"      {ctx.get('home')} — {fichajes['local']}")
+            lineas.append(f"• {ctx.get('home')} — {fichajes['local']}")
         if fichajes.get("visita"):
-            lineas.append(f"      {ctx.get('away')} — {fichajes['visita']}")
+            lineas.append(f"• {ctx.get('away')} — {fichajes['visita']}")
     return lineas
 
 
@@ -216,16 +216,16 @@ def _lineas_mercado(p: Dict[str, Any]) -> List[str]:
     m = o.get("momios") or {}
     if m.get("local") and m.get("empate") and m.get("visita"):
         out.append(
-            f"     💰 Momios: {local} {m['local']} · Empate {m['empate']} · {visita} {m['visita']}"
+            f"💰 Momios: {local} {m['local']} · Empate {m['empate']} · {visita} {m['visita']}"
         )
     ou = mercado.get("over_under") or {}
     mou = ou.get("momios") or {}
     if mou.get("over") and mou.get("under"):
         linea = ou.get("linea", 2.5)
-        out.append(f"        O/U {linea}: Over {mou['over']} · Under {mou['under']}")
+        out.append(f"⚖️ O/U {linea}: Over {mou['over']} · Under {mou['under']}")
     resumen = _resumen_mercado(mercado)
     if resumen:
-        out.append(f"     📈 Mercado ve: {resumen}")
+        out.append(f"📈 Mercado ve: {resumen}")
     return out
 
 
@@ -366,8 +366,8 @@ def _linea_goles(p: Dict[str, Any]) -> str:
         pct = float(over) if pick_ou == "Over" else round(100.0 - float(over), 1)
         pct_txt = f" ({pct}%)"
     marcador = str(p.get("marcador_mas_probable", ""))
-    linea = (f"     ⚽ Goles: {pick_ou} 2.5{pct_txt} · BTTS {p.get('pick_btts')} · "
-             f"marcador más probable {marcador}")
+    linea = (f"⚽ Goles: {pick_ou} 2.5{pct_txt} · BTTS {p.get('pick_btts')}\n"
+             f"🔢 Marcador probable: {marcador}")
     # ¿Choca la moda con el pick Over/Under?
     total = None
     if "-" in marcador:
@@ -378,10 +378,10 @@ def _linea_goles(p: Dict[str, Any]) -> str:
             total = None
     if total is not None:
         if pick_ou == "Over" and total <= 2:
-            linea += ("\n     ℹ️ <i>La moda (2 goles) es baja, pero el grueso de "
+            linea += ("\nℹ️ <i>La moda (2 goles) es baja, pero el grueso de "
                       "escenarios apunta a más goles: por eso el pick es Over.</i>")
         elif pick_ou == "Under" and total >= 3:
-            linea += ("\n     ℹ️ <i>Ese marcador exacto es el más probable, pero el "
+            linea += ("\nℹ️ <i>Ese marcador exacto es el más probable, pero el "
                       "grueso de escenarios queda por debajo: por eso el pick es Under.</i>")
     return linea
 
@@ -408,10 +408,11 @@ def construir_mensaje(
     pronosticos = resultado.get("pronosticos", [])
     fecha = str(resultado.get("generado_utc", "")).replace("T", " ").replace("Z", " UTC")
 
-    div = "━━━━━━━━━━━━━━━━━━"
+    div = "━━━━━━━━━━"
     lineas = [
         "🔮 <b>PRONÓSTICOS LIGA MX</b>",
-        f"<i>Modelo ESPN + Poisson · {fecha}</i>",
+        f"<i>Modelo ESPN + Poisson</i>",
+        f"<i>{fecha}</i>",
         div,
     ]
 
@@ -429,29 +430,29 @@ def construir_mensaje(
             local_eq, visita_eq = rec["equipo"], rec["rival"]
         else:
             local_eq, visita_eq = rec["rival"], rec["equipo"]
-        lineas.append(f"⚽ <b>{local_eq}</b> (🏠 local) vs <b>{visita_eq}</b> (✈️ visita)")
-        lineas.append(f"🥇 <b>PICK: {rec['equipo']}</b> — juega de {rec['condicion'].lower()}")
+        lineas.append(f"🏠 <b>{local_eq}</b> vs <b>{visita_eq}</b> ✈️")
+        lineas.append(f"🥇 <b>PICK: {rec['equipo']}</b> (de {rec['condicion'].lower()})")
         noperder = rec.get("no_perder_pct")
         # empate = no-perder − gana (sobrevivir = ganar o empatar)
         emp = None
         if noperder is not None and gana is not None:
             emp = round(float(noperder) - float(gana), 1)
-        lineas.append(f"     ✅ Sobrevive (gana o empata): <b>{noperder}%</b>")
+        lineas.append(f"✅ Sobrevive (gana o empata): <b>{noperder}%</b>")
         if gana is not None:
-            linea_g = f"     🏆 Gana: <b>{gana}%</b>"
+            linea_g = f"🏆 Gana: <b>{gana}%</b>"
             if emp is not None:
-                linea_g += f"  ·  🤝 solo empata: {emp}%"
+                linea_g += f" · 🤝 solo empata: {emp}%"
             lineas.append(linea_g)
-        lineas.append(f"     🎯 Confianza: <b>{rec.get('nivel', '—')}</b>")
+        lineas.append(f"🎯 Confianza: <b>{rec.get('nivel', '—')}</b>")
         if motivacion:
             mot_rival = motivacion.get(str(rec.get("rival", "")).lower(), {})
             nivel_mot = mot_rival.get("motivacion_nivel")
             if nivel_mot:
-                lineas.append(f"     📉 rival mot.: {nivel_mot}")
+                lineas.append(f"📉 Motivación rival: {nivel_mot}")
         if rec.get("razon"):
-            lineas.append(f"     💬 <i>Por qué: {rec['razon']}</i>")
+            lineas.append(f"💬 <i>Por qué: {rec['razon']}</i>")
         if rec.get("ajuste_nota"):
-            lineas.append(f"     🔧 <i>Ajustado por: {rec['ajuste_nota']}</i>")
+            lineas.append(f"🔧 <i>Ajustado por: {rec['ajuste_nota']}</i>")
         # Otras opciones (2º y 3º).
         otras = tops[1:3]
         if otras:
@@ -478,9 +479,9 @@ def construir_mensaje(
     if cal_lineas:
         lineas.append(div)
         lineas.append("🗓️ <b>CONTEXTO DE CALENDARIO</b>")
-        lineas.append("<i>Afecta disponibilidad/desgaste de jugadores:</i>")
+        lineas.append("<i>Afecta disponibilidad/desgaste:</i>")
         for c in cal_lineas:
-            lineas.append(f"  {c}")
+            lineas.append(f"• {c}")
 
     if pronosticos:
         lineas.append(div)
@@ -492,18 +493,18 @@ def construir_mensaje(
             conf = f" · confianza <b>{p['nivel_confianza']}</b>" if p.get("nivel_confianza") else ""
             prob_pick = p.get("prob_pick_pct")
             pptxt = f" ({prob_pick}%)" if prob_pick is not None else ""
-            lineas.append(f"{n} 🏠 <b>{p['local']} vs {p['visitante']}</b> ✈️")
-            lineas.append(f"     🎯 Pick: <b>{_pick_club(p)}</b>{pptxt}{conf}")
-            lineas.append(f"     📊 Local {p['prob_local_pct']}% · Empate {p['prob_empate_pct']}% · Visita {p['prob_visitante_pct']}%")
+            lineas.append(f"{n} <b>{p['local']}</b> 🏠 vs <b>{p['visitante']}</b> ✈️")
+            lineas.append(f"🎯 Pick: <b>{_pick_club(p)}</b>{pptxt}{conf}")
+            lineas.append(f"📊 Local {p['prob_local_pct']}% · Empate {p['prob_empate_pct']}% · Visita {p['prob_visitante_pct']}%")
             lineas.append(_linea_goles(p))
             if p.get("explicacion_1x2"):
-                lineas.append(f"     💡 {p['explicacion_1x2']}")
+                lineas.append(f"💡 {p['explicacion_1x2']}")
             if p.get("explicacion_ou"):
-                lineas.append(f"     💡 {p['explicacion_ou']}")
+                lineas.append(f"💡 {p['explicacion_ou']}")
             if p.get("precaucion") and p.get("motivos_alerta"):
-                lineas.append(f"     {p['nivel_alerta']}: {' '.join(p['motivos_alerta'])}")
+                lineas.append(f"{p['nivel_alerta']}: {' '.join(p['motivos_alerta'])}")
             if p.get("h2h_nota"):
-                lineas.append(f"     🐆 H2H: {p['h2h_nota']}")
+                lineas.append(f"🐆 H2H: {p['h2h_nota']}")
             lineas.extend(_lineas_mercado(p))
             try:
                 cal_ev = calctx.eventos_para_fecha(p.get("fecha"), [p.get("local", ""), p.get("visitante", "")])
@@ -511,15 +512,15 @@ def construir_mensaje(
                 cal_ev = []
             if cal_ev:
                 nombres = " · ".join(f"{e.get('emoji', '🗓️')} {e.get('nombre')}" for e in cal_ev)
-                lineas.append(f"     🗓️ Calendario: {nombres}")
+                lineas.append(f"🗓️ Calendario: {nombres}")
             if goleadores_map:
                 estrellas = _jugadores_seguir_partido(p, goleadores_map)
                 if estrellas:
-                    lineas.append(f"     ⭐ A seguir: {estrellas}")
+                    lineas.append(f"⭐ A seguir: {estrellas}")
             if porteros_map:
                 muro = _porteros_partido(p, porteros_map)
                 if muro:
-                    lineas.append(f"     🧤 Muro: {muro}")
+                    lineas.append(f"🧤 Muro: {muro}")
     else:
         lineas.append(div)
         lineas.append("Sin pronósticos disponibles (faltan datos de ESPN o fixtures).")
@@ -872,13 +873,15 @@ def construir_mensaje_seguimiento(items: List[Dict[str, Any]],
 
     lineas = [
         "🎯 <b>TU PICK DE SURVIVOR</b>",
-        f"✅ <b>{rec['equipo']}</b> ({_sede(rec)} vs {rec['rival']})",
-        f"     sobrevive {rec['no_perder_pct']}%{gtxt} · confianza <b>{rec.get('nivel', '—')}</b>",
+        f"✅ <b>{rec['equipo']}</b>",
+        f"{_sede(rec)} vs {rec['rival']}",
+        f"Sobrevive {rec['no_perder_pct']}%{gtxt}",
+        f"Confianza <b>{rec.get('nivel', '—')}</b>",
     ]
     if nota_plan:
-        lineas.append(f"     {nota_plan}")
+        lineas.append(nota_plan)
     if cuando:
-        lineas.append(f"     📅 Juega: <b>{cuando}</b>")
+        lineas.append(f"📅 Juega: <b>{cuando}</b>")
     lineas.append("")
 
     estado = ver.get("estado", "PENDIENTE")
@@ -888,7 +891,7 @@ def construir_mensaje_seguimiento(items: List[Dict[str, Any]],
         alt = next((it["equipo"] for it in items if it.get("equipo") != rec.get("equipo")), None)
         lineas.append(f"{ver.get('emoji', '⚠️')} <b>Ojo:</b> {ver.get('texto', '')}")
         if alt:
-            lineas.append(f"     👉 Mejor alternativa disponible: <b>{alt}</b>. Manda /seguir para verla.")
+            lineas.append(f"👉 Mejor alternativa: <b>{alt}</b>. Manda /seguir para verla.")
     else:  # PENDIENTE
         momento = f"el <b>{cuando.split()[0]}</b> " if cuando else ""
         lineas.append(f"👉 <b>Qué hacer:</b> manda <code>/seguir</code> {momento}~1h antes de su partido "
@@ -913,13 +916,13 @@ def construir_mensaje_seguimiento(items: List[Dict[str, Any]],
         )
         alt_cuando = f" ({alt_resp['cuando']})" if alt_resp.get("cuando") else ""
         lineas.append(
-            f"     🛡️ Opción CON respaldo: <b>{alt_resp['equipo']}</b>{alt_cuando} — "
+            f"🛡️ Opción CON respaldo: <b>{alt_resp['equipo']}</b>{alt_cuando} — "
             f"sobrevive {alt_resp['no_perder_pct']}%. Si su XI sale bien lo aseguras "
             "temprano; si no, aún te quedan partidos por jugar."
         )
         alt_ver = alt_resp.get("veredicto") or {}
         if alt_ver.get("estado") and alt_ver["estado"] != "PENDIENTE":
-            lineas.append(f"     {alt_ver.get('emoji', '')} {alt_resp['equipo']}: {alt_ver.get('texto', '')}")
+            lineas.append(f"{alt_ver.get('emoji', '')} {alt_resp['equipo']}: {alt_ver.get('texto', '')}")
     lineas.append("")
     lineas.append("💡 <i>Si te preocupa el internet, puedes meter tu pick en PlayDoit desde ya "
                   "y cambiarlo solo si su alineación sale mermada.</i>")
@@ -1091,8 +1094,10 @@ def construir_mensaje_plan(plan: Dict[str, Any]) -> str:
     ]
     for p in plan["plan"]:
         lineas.append(
-            f"J{p['jornada']}: <b>{p['equipo']}</b> ({p['condicion']} vs {p['rival']}) "
-            f"— 🏆 gana {p['prob_ganar_pct']}% · 🛡️ sobrevive {p['no_perder_pct']}% [{p['nivel']}]"
+            f"<b>J{p['jornada']} · {p['equipo']}</b> ({p['condicion']} vs {p['rival']})"
+        )
+        lineas.append(
+            f"🏆 gana {p['prob_ganar_pct']}% · 🛡️ sobrevive {p['no_perder_pct']}% [{p['nivel']}]"
         )
     riesgosas = plan.get("jornadas_riesgosas") or []
     if riesgosas:

@@ -34,7 +34,7 @@ def _resultado():
 class TestConstruirMensaje(unittest.TestCase):
     def test_incluye_partido_y_survivor(self):
         msg = tp.construir_mensaje(_resultado())
-        self.assertIn("América vs Toluca", msg)
+        self.assertIn("<b>América</b> 🏠 vs <b>Toluca</b>", msg)
         self.assertIn("SURVIVOR", msg)
         self.assertIn("🥇", msg)  # ranking top-3
         # el pick del partido se muestra con el nombre real del club (no "Gana Local")
@@ -149,7 +149,7 @@ class TestMercadoYMotivacion(unittest.TestCase):
     def test_motivacion_rival_en_pick(self):
         motivacion = {"toluca": {"motivacion_nivel": "baja"}}
         msg = tp.construir_mensaje(_resultado(), motivacion=motivacion)
-        self.assertIn("rival mot.: baja", msg)
+        self.assertIn("Motivación rival: baja", msg)
 
 
 class TestNivelRiesgoYPlan(unittest.TestCase):
