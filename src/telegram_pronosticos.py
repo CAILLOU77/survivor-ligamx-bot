@@ -1326,10 +1326,20 @@ def construir_mensaje_derrotas(rep: Dict[str, Any]) -> str:
         sem = str(d.get("jornada", "")).split("-")[-1]  # "2024-W14" -> "W14"
         lineas.append(f"• {d.get('torneo')} {sem}: {cond} <b>{d.get('pick')}</b> "
                       f"vs {d.get('rival')} → {d.get('resultado')}{alerta}")
+        # ¿Fue evitable de verdad o mala suerte?
+        alt = d.get("mejor_alternativa")
+        if d.get("evitable") and alt:
+            lineas.append(f"   ↳ 🟡 Evitable: <b>{alt.get('equipo')}</b> estaba libre, más "
+                          f"seguro ({alt.get('no_perder_pct')}%) y sobrevivió")
+        elif alt:
+            lineas.append(f"   ↳ 🎲 Mala suerte: elegiste el más seguro; {alt.get('equipo')} "
+                          f"sobrevivió pero el modelo lo veía menos seguro ({alt.get('no_perder_pct')}%)")
     pat = rep.get("patrones", {})
     lineas += [
         div,
         "📊 <b>Patrón de las derrotas:</b>",
+        f"🟡 Evitables (había opción más segura): <b>{pat.get('evitables')}/{n}</b>",
+        f"🎲 Mala suerte (elegiste lo más seguro): <b>{pat.get('mala_suerte')}/{n}</b>",
         f"✈️ De visitante: <b>{pat.get('fueron_visitante_pct')}%</b>",
         f"⚠️ Ya traían alerta: <b>{pat.get('tenian_alerta_pct')}%</b>",
     ]

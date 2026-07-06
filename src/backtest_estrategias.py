@@ -302,6 +302,29 @@ def _correr(
         else:
             cur["eliminado_en"] = j["jornada"]
             eliminado_flag = True
+            # Contrafactual HONESTO: ¿había otra opción libre que sobrevivía Y que
+            # el modelo veía IGUAL O MÁS segura que el pick? (evitar sesgo
+            # retrospectivo: en toda jornada sobrevive alguien, pero eso no
+            # significa que fuera predecible). `usados` ya incluye el pick actual.
+            todos = _no_perder_candidatos(j["partidos"], fuerzas)
+            seguros_disp = sorted(
+                [c for c in todos
+                 if pm._norm(c["equipo"]) not in usados and _sobrevive(c["partido"], c["es_local"])],
+                key=lambda c: c["no_perder_pct"], reverse=True,
+            )
+            pick_np = cand.get("no_perder_pct") or 0.0
+            mejor = seguros_disp[0] if seguros_disp else None
+            d_ult = cur["detalle"][-1]
+            d_ult["habia_seguro_disponible"] = bool(seguros_disp)
+            d_ult["mejor_alternativa"] = (
+                {"equipo": mejor["equipo"],
+                 "condicion": "Local" if mejor["es_local"] else "Visitante",
+                 "no_perder_pct": mejor["no_perder_pct"]} if mejor else None
+            )
+            # "Evitable de verdad": la opción segura era IGUAL o MÁS confiable que
+            # el pick (el modelo pudo haberla preferido). Si era menos confiable,
+            # fue MALA SUERTE (el bot eligió lo más seguro y aun así perdió).
+            d_ult["evitable"] = bool(mejor and float(mejor["no_perder_pct"] or 0) >= pick_np)
 
     torneos.append(cur)
     # Descarta torneos "fantasma" (sin actividad y sin marca de parcial).
@@ -386,6 +409,16 @@ def comparar_estrategias(
 def _lecciones_derrotas(pat: Dict[str, Any], n: int) -> List[str]:
     """Lecciones accionables, SOLO si los números las sostienen (no opinión)."""
     L: List[str] = []
+    evi = pat.get("evitables")
+    mala = pat.get("mala_suerte")
+    if evi is not None:
+        if evi > 0:
+            L.append(f"{evi} de {n} derrotas eran EVITABLES de verdad: había una opción "
+                     "IGUAL o MÁS segura que sí sobrevivió. Ahí sí se puede mejorar la elección.")
+        if mala:
+            L.append(f"{mala} de {n} fueron MALA SUERTE: el bot eligió su opción más confiable "
+                     "y aun así perdió. Otro equipo sobrevivió, pero el modelo lo veía MENOS "
+                     "seguro: no era predecible. Así es el Survivor.")
     if pat.get("fueron_visitante_pct") is not None and pat["fueron_visitante_pct"] >= 40:
         L.append(f"El {pat['fueron_visitante_pct']}% de las eliminaciones fueron con pick "
                  "VISITANTE: de visita hay más sorpresas, prioriza locales.")
@@ -441,6 +474,9 @@ def analizar_derrotas(
             "resultado": d.get("resultado"),
             "tenia_alerta": bool(d.get("motivos_alerta")),
             "fue_visitante": d.get("condicion") == "Visitante",
+            "evitable": bool(d.get("evitable")),
+            "habia_seguro_disponible": bool(d.get("habia_seguro_disponible")),
+            "mejor_alternativa": d.get("mejor_alternativa"),
         })
     n = len(derrotas)
     if n == 0:
@@ -450,11 +486,18 @@ def analizar_derrotas(
 
     vis = sum(1 for d in derrotas if d["fue_visitante"])
     con_alerta = sum(1 for d in derrotas if d["tenia_alerta"])
+    evitables = sum(1 for d in derrotas if d["evitable"])
+    mala_suerte = sum(1 for d in derrotas if not d["evitable"] and d.get("habia_seguro_disponible"))
     npd = [d["no_perder_pct"] for d in derrotas if d["no_perder_pct"] is not None]
     rivales = Counter(d["rival"] for d in derrotas if d.get("rival"))
     patrones = {
         "fueron_visitante_pct": round(100.0 * vis / n, 1),
         "tenian_alerta_pct": round(100.0 * con_alerta / n, 1),
+        # evitable = había opción IGUAL o MÁS segura que el pick (predecible).
+        "evitables": evitables,
+        # mala_suerte = el bot eligió lo más seguro y aun así perdió (azar).
+        "mala_suerte": mala_suerte,
+        "evitables_pct": round(100.0 * evitables / n, 1),
         "no_perder_promedio_al_perder": round(sum(npd) / len(npd), 1) if npd else None,
         "rivales_que_mas_eliminaron": rivales.most_common(3),
     }
