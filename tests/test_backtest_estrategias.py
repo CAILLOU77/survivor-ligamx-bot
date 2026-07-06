@@ -97,6 +97,27 @@ class TestSimulacion(unittest.TestCase):
         self.assertIn("mensaje", r)
 
 
+class TestAnalizarDerrotas(unittest.TestCase):
+    def test_estructura_y_patrones(self):
+        rep = be.analizar_derrotas(_tres_torneos(), min_train=6)
+        for k in ("total_derrotas", "derrotas", "decision"):
+            self.assertIn(k, rep)
+        if rep["total_derrotas"] > 0:
+            for k in ("patrones", "lecciones"):
+                self.assertIn(k, rep)
+            d = rep["derrotas"][0]
+            for k in ("torneo", "jornada", "pick", "condicion", "resultado",
+                      "tenia_alerta", "fue_visitante"):
+                self.assertIn(k, d)
+            self.assertIsInstance(rep["lecciones"], list)
+            self.assertGreaterEqual(len(rep["lecciones"]), 1)
+
+    def test_sin_derrotas(self):
+        rep = be.analizar_derrotas(_torneo(date(2025, 1, 6), 1), min_train=500)
+        self.assertEqual(rep["total_derrotas"], 0)
+        self.assertIn("mensaje", rep)
+
+
 class TestComparar(unittest.TestCase):
     def test_comparar_devuelve_ambas(self):
         r = be.comparar_estrategias(_tres_torneos(), min_train=6)

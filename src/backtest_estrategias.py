@@ -20,6 +20,7 @@ INFORMATIVO / REVISIÓN HUMANA.
 """
 from __future__ import annotations
 
+from collections import Counter
 from datetime import date
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
@@ -140,12 +141,24 @@ def estrategia_real(
     partido = _localizar_partido(equipo_norm, es_local, partidos)
     if partido is None:
         return None
+    # Adjunta lo que el MODELO veía del partido (para el análisis de derrotas).
+    prono = next(
+        (pr for pr in pronos
+         if pm._norm(pr.get("local", "")) == pm._norm(partido.get("home_team", ""))
+         and pm._norm(pr.get("visitante", "")) == pm._norm(partido.get("away_team", ""))),
+        None,
+    )
     return {
         "equipo": pick.get("equipo"),
         "rival": pick.get("rival"),
         "es_local": es_local,
         "partido": partido,
         "no_perder_pct": pick.get("no_perder_pct"),
+        "prob_victoria_pct": pick.get("prob_victoria_pct"),
+        "prob_empate_pct": pick.get("prob_empate_pct"),
+        "nivel": pick.get("nivel"),
+        "nivel_alerta": (prono or {}).get("nivel_alerta"),
+        "motivos_alerta": (prono or {}).get("motivos_alerta") or [],
     }
 
 
@@ -183,14 +196,23 @@ def simular_estrategia(
     Corre Survivor sobre los resultados reales (walk-forward), reiniciando los
     equipos usados en cada TORNEO (Apertura/Clausura, por semestre). Devuelve el
     desglose por torneo y agregados.
+    """
+    return _agregar(_correr(resultados, estrategia, min_train), estrategia)
+
+
+def _correr(
+    resultados: Sequence[Dict[str, Any]],
+    estrategia: Estrategia = estrategia_real,
+    min_train: int = MIN_TRAIN,
+) -> List[Dict[str, Any]]:
+    """
+    Motor walk-forward: devuelve la lista de torneos con su `detalle` (cada pick
+    y su resultado). Base para _agregar (métricas) y analizar_derrotas (postmortem).
 
     Para cada jornada entrena la fuerza SOLO con lo anterior, deja que la
     estrategia elija, y revisa qué pasó de verdad (ganó / empató / perdió).
-
-    Un torneo se marca `parcial` cuando NO se pudo evaluar desde su inicio (por
-    falta de histórico de entrenamiento, típico del torneo más antiguo de la
-    ventana). Los parciales NO cuentan para la tasa de supervivencia (sería
-    injusto: no se jugó completo).
+    Un torneo se marca `parcial` cuando NO se pudo evaluar desde su inicio (sin
+    histórico suficiente); esos no cuentan para la tasa de supervivencia.
     """
     jornadas = agrupar_jornadas(resultados)
     ordenados = sorted(resultados, key=lambda r: str(r.get("fecha", "")))
@@ -258,11 +280,16 @@ def simular_estrategia(
         p_ = cand["partido"]
         gano = _gano(p_, cand["es_local"]) if vivo else False
         cur["detalle"].append({
+            "torneo": cur_id,
             "jornada": j["jornada"],
             "pick": cand["equipo"],
             "condicion": "Local" if cand["es_local"] else "Visitante",
             "rival": cand.get("rival"),
             "no_perder_pct": cand.get("no_perder_pct"),
+            "prob_victoria_pct": cand.get("prob_victoria_pct"),
+            "prob_empate_pct": cand.get("prob_empate_pct"),
+            "nivel_alerta": cand.get("nivel_alerta"),
+            "motivos_alerta": cand.get("motivos_alerta") or [],
             "resultado": f"{p_.get('home_team')} {p_.get('home_goals')}-"
                          f"{p_.get('away_goals')} {p_.get('away_team')}",
             "sobrevivio": vivo,
@@ -278,9 +305,7 @@ def simular_estrategia(
 
     torneos.append(cur)
     # Descarta torneos "fantasma" (sin actividad y sin marca de parcial).
-    torneos = [t for t in torneos if t["jugadas"] > 0 or t.get("parcial")]
-
-    return _agregar(torneos, estrategia)
+    return [t for t in torneos if t["jugadas"] > 0 or t.get("parcial")]
 
 
 def _agregar(torneos: List[Dict[str, Any]], estrategia: Estrategia) -> Dict[str, Any]:
@@ -353,6 +378,93 @@ def comparar_estrategias(
     )
     salida["mejor"] = ranking[0][0] if ranking else None
     return salida
+
+
+# ---------------------------------------------------------------------------
+# Postmortem: aprender de las DERROTAS (en qué partido cayó y por qué)
+# ---------------------------------------------------------------------------
+def _lecciones_derrotas(pat: Dict[str, Any], n: int) -> List[str]:
+    """Lecciones accionables, SOLO si los números las sostienen (no opinión)."""
+    L: List[str] = []
+    if pat.get("fueron_visitante_pct") is not None and pat["fueron_visitante_pct"] >= 40:
+        L.append(f"El {pat['fueron_visitante_pct']}% de las eliminaciones fueron con pick "
+                 "VISITANTE: de visita hay más sorpresas, prioriza locales.")
+    tva = pat.get("tenian_alerta_pct")
+    if tva is not None and tva >= 50:
+        L.append(f"El {tva}% de las derrotas YA traían señal de alerta del modelo: "
+                 "cuando hay alerta, conviene buscar otro equipo.")
+    elif tva is not None and tva <= 25:
+        L.append("La mayoría de las derrotas fueron SORPRESAS sin alerta previa: el fútbol "
+                 "es así; por eso una sola derrota elimina y hay que ir seguro.")
+    if pat.get("no_perder_promedio_al_perder") is not None:
+        L.append(f"El bot perdió aun con picks de ~{pat['no_perder_promedio_al_perder']}% "
+                 "de no-perder: ningún pick es 100% seguro.")
+    rivales = pat.get("rivales_que_mas_eliminaron") or []
+    if rivales and rivales[0][1] >= 2:
+        L.append(f"Ojo con {rivales[0][0]} como rival: eliminó {rivales[0][1]} veces "
+                 "en el histórico.")
+    if not L:
+        L.append("No hay un patrón claro en las derrotas; fueron variadas.")
+    return L
+
+
+def analizar_derrotas(
+    resultados: Sequence[Dict[str, Any]],
+    min_train: int = MIN_TRAIN,
+    estrategia: Estrategia = estrategia_real,
+) -> Dict[str, Any]:
+    """
+    Postmortem: revisa EN QUÉ partidos exactos la estrategia quedó eliminada
+    (el pick que perdió) y busca patrones para aprender. Por cada derrota guarda
+    qué equipo se eligió, si era local/visitante, qué veía el modelo (prob. de
+    ganar, si había alerta) y el marcador real. Deriva lecciones de esos números.
+    """
+    torneos = _correr(resultados, estrategia, min_train)
+    derrotas: List[Dict[str, Any]] = []
+    for t in torneos:
+        if t.get("eliminado_en") is None:
+            continue
+        perdidos = [d for d in t["detalle"] if not d.get("sobrevivio")]
+        if not perdidos:
+            continue
+        d = perdidos[-1]
+        derrotas.append({
+            "torneo": t.get("torneo_id"),
+            "jornada": d.get("jornada"),
+            "pick": d.get("pick"),
+            "condicion": d.get("condicion"),
+            "rival": d.get("rival"),
+            "no_perder_pct": d.get("no_perder_pct"),
+            "prob_victoria_pct": d.get("prob_victoria_pct"),
+            "nivel_alerta": d.get("nivel_alerta"),
+            "motivos_alerta": d.get("motivos_alerta") or [],
+            "resultado": d.get("resultado"),
+            "tenia_alerta": bool(d.get("motivos_alerta")),
+            "fue_visitante": d.get("condicion") == "Visitante",
+        })
+    n = len(derrotas)
+    if n == 0:
+        return {"total_derrotas": 0, "derrotas": [],
+                "mensaje": "No hubo eliminaciones evaluables (¿historial corto?).",
+                "decision": DEC_INFORMATIVA}
+
+    vis = sum(1 for d in derrotas if d["fue_visitante"])
+    con_alerta = sum(1 for d in derrotas if d["tenia_alerta"])
+    npd = [d["no_perder_pct"] for d in derrotas if d["no_perder_pct"] is not None]
+    rivales = Counter(d["rival"] for d in derrotas if d.get("rival"))
+    patrones = {
+        "fueron_visitante_pct": round(100.0 * vis / n, 1),
+        "tenian_alerta_pct": round(100.0 * con_alerta / n, 1),
+        "no_perder_promedio_al_perder": round(sum(npd) / len(npd), 1) if npd else None,
+        "rivales_que_mas_eliminaron": rivales.most_common(3),
+    }
+    return {
+        "total_derrotas": n,
+        "derrotas": derrotas,
+        "patrones": patrones,
+        "lecciones": _lecciones_derrotas(patrones, n),
+        "decision": DEC_INFORMATIVA,
+    }
 
 
 def main() -> int:

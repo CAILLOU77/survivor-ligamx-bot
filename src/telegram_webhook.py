@@ -29,6 +29,7 @@ AYUDA = (
     "/seguir — lista de seguimiento: candidatos por hora para decidir secuencial\n"
     "/prueba — pone a prueba la estrategia con torneos pasados (¿sobrevive?)\n"
     "/confianza — revisa si la confianza del bot es honesta o exagerada\n"
+    "/derrotas — aprende de las derrotas pasadas (en qué partido cayó y por qué)\n"
     "/usado &lt;equipo&gt; — marca un equipo como usado (lo excluye)\n"
     "/usados — lista tus equipos usados\n"
     "/quitar &lt;equipo&gt; — quita un equipo de la lista\n"
@@ -54,6 +55,9 @@ CMDS_PRUEBA = {"prueba", "probar", "backtest", "historial", "simular"}
 
 # "Confianza" del bot = calibración del modelo (pesado -> background).
 CMDS_CONFIANZA = {"confianza", "honestidad", "calibracion", "calibrar", "revisar"}
+
+# "Derrotas" = postmortem del backtest: en qué partido cayó y por qué (pesado).
+CMDS_DERROTAS = {"derrotas", "aprender", "errores", "postmortem"}
 
 
 def parsear_comando(texto: str) -> Tuple[Optional[str], str]:

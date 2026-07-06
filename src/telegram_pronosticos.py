@@ -1303,6 +1303,69 @@ def enviar_confianza() -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# "Aprender de las derrotas": postmortem del backtest por Telegram
+# ---------------------------------------------------------------------------
+def construir_mensaje_derrotas(rep: Dict[str, Any]) -> str:
+    """Mensaje (HTML, simple) del análisis de derrotas, para el comando /derrotas."""
+    div = "━━━━━━━━━━"
+    n = (rep or {}).get("total_derrotas", 0)
+    if not rep or n == 0:
+        return ("🔍 <b>APRENDER DE LAS DERROTAS</b>\n\n"
+                "Aún no hay suficientes eliminaciones en el histórico para analizar. "
+                "Vuelve a intentar cuando haya más temporadas.\n\n"
+                f"{DISCLAIMER}")
+    lineas = [
+        "🔍 <b>APRENDER DE LAS DERROTAS</b>",
+        "<i>Revisé los partidos donde el bot fue eliminado en el histórico</i>",
+        div,
+        f"💀 Cayó <b>{n}</b> veces. Dónde:",
+    ]
+    for d in rep.get("derrotas", [])[:8]:
+        cond = "🏠" if d.get("condicion") == "Local" else "✈️"
+        alerta = " ⚠️(ya había alerta)" if d.get("tenia_alerta") else ""
+        sem = str(d.get("jornada", "")).split("-")[-1]  # "2024-W14" -> "W14"
+        lineas.append(f"• {d.get('torneo')} {sem}: {cond} <b>{d.get('pick')}</b> "
+                      f"vs {d.get('rival')} → {d.get('resultado')}{alerta}")
+    pat = rep.get("patrones", {})
+    lineas += [
+        div,
+        "📊 <b>Patrón de las derrotas:</b>",
+        f"✈️ De visitante: <b>{pat.get('fueron_visitante_pct')}%</b>",
+        f"⚠️ Ya traían alerta: <b>{pat.get('tenian_alerta_pct')}%</b>",
+    ]
+    if pat.get("no_perder_promedio_al_perder") is not None:
+        lineas.append(f"🛡️ Perdió con ~<b>{pat.get('no_perder_promedio_al_perder')}%</b> "
+                      "de no-perder promedio")
+    lecciones = rep.get("lecciones", [])
+    if lecciones:
+        lineas += ["", "🎓 <b>Lecciones:</b>"]
+        lineas += [f"• {le}" for le in lecciones]
+    lineas += [div, DISCLAIMER]
+    return "\n".join(lineas)
+
+
+def enviar_derrotas() -> Dict[str, Any]:
+    """
+    Corre el postmortem de derrotas del backtest (historial largo) y lo envía en
+    lenguaje simple. Tolerante: nunca rompe.
+    """
+    try:
+        import fuentes_datos
+        import backtest_estrategias as be
+    except ImportError:  # pragma: no cover
+        from src import fuentes_datos  # type: ignore
+        from src import backtest_estrategias as be  # type: ignore
+    try:
+        datos = fuentes_datos.obtener_historico_largo()
+        rep = be.analizar_derrotas(datos["resultados"])
+    except Exception as exc:  # pragma: no cover
+        rep = {}
+        _ = exc
+    enviado = enviar_mensaje(construir_mensaje_derrotas(rep))
+    return {"enviado": enviado, "derrotas": (rep or {}).get("total_derrotas")}
+
+
+# ---------------------------------------------------------------------------
 # Resumen de rentabilidad (track-record) por Telegram
 # ---------------------------------------------------------------------------
 def construir_mensaje_rentabilidad(data: Dict[str, Any]) -> str:
