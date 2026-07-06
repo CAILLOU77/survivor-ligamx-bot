@@ -510,6 +510,126 @@ def analizar_derrotas(
     }
 
 
+# ---------------------------------------------------------------------------
+# "Survivor perfecto" (oráculo): con los resultados ya sabidos, ¿existía una
+# combinación de picks que sobreviviera TODO el torneo? ¿Cuántas victorias?
+# ---------------------------------------------------------------------------
+def _oracle_torneo(jornadas: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Con diario del futuro (resultados ya sabidos), calcula la MEJOR corrida
+    posible del torneo: asigna a cada jornada un equipo distinto que NO perdió
+    (emparejamiento óptimo). Devuelve si existía una corrida perfecta (sobrevivir
+    todas las jornadas) y, de existir, el máximo de victorias posible.
+    """
+    import numpy as np
+    from scipy.optimize import linear_sum_assignment
+
+    equipos = sorted({
+        pm._norm(e)
+        for j in jornadas for m in j.get("partidos", [])
+        for e in (m.get("home_team", ""), m.get("away_team", ""))
+        if e
+    })
+    n_j, n_t = len(jornadas), len(equipos)
+    if n_j == 0 or n_t == 0:
+        return {"jornadas": n_j, "completo": False, "max_supervivencia": 0, "oracle_wins": None}
+    tidx = {t: i for i, t in enumerate(equipos)}
+
+    NEG = -1e9
+    surv = np.zeros((n_j, n_t), dtype=float)   # 1 si el equipo NO perdió esa jornada
+    win = np.full((n_j, n_t), NEG, dtype=float)  # 1 gana, 0 empata, NEG pierde/no juega
+    for i, j in enumerate(jornadas):
+        for m in j.get("partidos", []):
+            try:
+                hg, ag = int(m["home_goals"]), int(m["away_goals"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            h, a = pm._norm(m.get("home_team", "")), pm._norm(m.get("away_team", ""))
+            if h in tidx:
+                surv[i][tidx[h]] = 1.0 if hg >= ag else 0.0
+                win[i][tidx[h]] = 1.0 if hg > ag else (0.0 if hg == ag else NEG)
+            if a in tidx:
+                surv[i][tidx[a]] = 1.0 if ag >= hg else 0.0
+                win[i][tidx[a]] = 1.0 if ag > hg else (0.0 if ag == hg else NEG)
+
+    # Máxima supervivencia: emparejar jornadas ↔ equipos que sobrevivieron.
+    r, c = linear_sum_assignment(-surv)
+    max_surv = int(surv[r, c].sum())
+    completo = max_surv == n_j
+
+    oracle_wins = None
+    if completo:
+        r2, c2 = linear_sum_assignment(-win)
+        vals = win[r2, c2]
+        if (vals > NEG / 2).all():
+            oracle_wins = int((vals == 1.0).sum())
+    return {"jornadas": n_j, "completo": completo,
+            "max_supervivencia": max_surv, "oracle_wins": oracle_wins}
+
+
+def analizar_ganadores(
+    resultados: Sequence[Dict[str, Any]],
+    min_train: int = MIN_TRAIN,
+) -> Dict[str, Any]:
+    """
+    Compara la corrida REAL del bot (walk-forward, sin ver el futuro) contra el
+    "Survivor perfecto" (oráculo, con los resultados ya sabidos), por torneo.
+    Responde: ¿existía un camino ganador? ¿qué tan lejos quedó el bot? Saca
+    conclusiones sobre la brecha (que es, esencialmente, la incertidumbre).
+    """
+    torneos_bot = _correr(resultados, estrategia_real, min_train)
+    jornadas = agrupar_jornadas(resultados)
+    por_torneo: Dict[Optional[str], List[Dict[str, Any]]] = {}
+    for j in jornadas:
+        tid = _torneo_id(_fecha_semana_iso(j["jornada"]))
+        por_torneo.setdefault(tid, []).append(j)
+
+    comparacion: List[Dict[str, Any]] = []
+    for t in torneos_bot:
+        if t.get("parcial") or t["jugadas"] == 0:
+            continue
+        tid = t.get("torneo_id")
+        orac = _oracle_torneo(por_torneo.get(tid, []))
+        comparacion.append({
+            "torneo": tid,
+            "bot_sobrevividas": t["sobrevividas"],
+            "bot_victorias": t["victorias"],
+            "bot_completo": t["eliminado_en"] is None,
+            "oracle_jornadas": orac["jornadas"],
+            "oracle_completo": orac["completo"],
+            "oracle_max_supervivencia": orac["max_supervivencia"],
+            "oracle_wins": orac["oracle_wins"],
+        })
+    n = len(comparacion)
+    if n == 0:
+        return {"torneos": 0, "comparacion": [],
+                "mensaje": "Sin torneos completos para comparar.",
+                "decision": DEC_INFORMATIVA}
+
+    con_camino = sum(1 for c in comparacion if c["oracle_completo"])
+    bot_completos = sum(1 for c in comparacion if c["bot_completo"])
+    bot_prom = round(sum(c["bot_sobrevividas"] for c in comparacion) / n, 1)
+    orac_prom = round(sum(c["oracle_max_supervivencia"] for c in comparacion) / n, 1)
+    lecciones = [
+        f"En {con_camino} de {n} torneos SÍ existía un camino perfecto (sobrevivir todo) "
+        "— pero solo visible DESPUÉS, con los resultados ya sabidos.",
+        f"El bot (sin ver el futuro) completó {bot_completos}/{n} y aguantó ~{bot_prom} "
+        f"jornadas; el camino perfecto daba ~{orac_prom}. Esa brecha ES la incertidumbre.",
+        "Conclusión: casi siempre HAY una jugada ganadora, pero es imposible saberla de "
+        "antemano. El bot no falla por elegir mal, sino porque el futuro no se conoce.",
+    ]
+    return {
+        "torneos": n,
+        "con_camino_perfecto": con_camino,
+        "bot_completos": bot_completos,
+        "bot_jornadas_prom": bot_prom,
+        "oracle_jornadas_prom": orac_prom,
+        "comparacion": comparacion,
+        "lecciones": lecciones,
+        "decision": DEC_INFORMATIVA,
+    }
+
+
 def main() -> int:
     try:
         import fuentes_datos

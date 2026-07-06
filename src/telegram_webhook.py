@@ -30,6 +30,7 @@ AYUDA = (
     "/prueba — pone a prueba la estrategia con torneos pasados (¿sobrevive?)\n"
     "/confianza — revisa si la confianza del bot es honesta o exagerada\n"
     "/derrotas — aprende de las derrotas pasadas (en qué partido cayó y por qué)\n"
+    "/ganadores — el 'Survivor perfecto' (con diario del futuro) vs el bot\n"
     "/usado &lt;equipo&gt; — marca un equipo como usado (lo excluye)\n"
     "/usados — lista tus equipos usados\n"
     "/quitar &lt;equipo&gt; — quita un equipo de la lista\n"
@@ -58,6 +59,9 @@ CMDS_CONFIANZA = {"confianza", "honestidad", "calibracion", "calibrar", "revisar
 
 # "Derrotas" = postmortem del backtest: en qué partido cayó y por qué (pesado).
 CMDS_DERROTAS = {"derrotas", "aprender", "errores", "postmortem"}
+
+# "Ganadores" = Survivor perfecto (oráculo) vs el bot (pesado -> background).
+CMDS_GANADORES = {"ganadores", "perfecto", "oraculo", "ideal"}
 
 
 def parsear_comando(texto: str) -> Tuple[Optional[str], str]:

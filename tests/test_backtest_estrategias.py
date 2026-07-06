@@ -118,6 +118,35 @@ class TestAnalizarDerrotas(unittest.TestCase):
         self.assertIn("mensaje", rep)
 
 
+class TestOracle(unittest.TestCase):
+    def test_oracle_run_perfecto(self):
+        jornadas = [
+            {"jornada": "2025-W01", "partidos": [
+                {"home_team": "A", "away_team": "B", "home_goals": 1, "away_goals": 0},
+                {"home_team": "C", "away_team": "D", "home_goals": 1, "away_goals": 0}]},
+            {"jornada": "2025-W02", "partidos": [
+                {"home_team": "A", "away_team": "B", "home_goals": 0, "away_goals": 1},
+                {"home_team": "C", "away_team": "D", "home_goals": 0, "away_goals": 1}]},
+        ]
+        r = be._oracle_torneo(jornadas)
+        self.assertTrue(r["completo"])
+        self.assertEqual(r["max_supervivencia"], 2)
+        self.assertEqual(r["oracle_wins"], 2)
+
+
+class TestGanadores(unittest.TestCase):
+    def test_estructura(self):
+        r = be.analizar_ganadores(_tres_torneos(), min_train=6)
+        for k in ("torneos", "comparacion", "decision"):
+            self.assertIn(k, r)
+        if r["torneos"] > 0:
+            self.assertIn("lecciones", r)
+            c = r["comparacion"][0]
+            for k in ("torneo", "bot_sobrevividas", "oracle_completo",
+                      "oracle_max_supervivencia"):
+                self.assertIn(k, c)
+
+
 class TestComparar(unittest.TestCase):
     def test_comparar_devuelve_ambas(self):
         r = be.comparar_estrategias(_tres_torneos(), min_train=6)

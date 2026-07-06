@@ -284,6 +284,9 @@ async def telegram_webhook(
     elif cmd in tw.CMDS_DERROTAS:
         background_tasks.add_task(tp.enviar_derrotas)
         tp.enviar_mensaje("🔄 Revisando en qué partidos cayó el bot y por qué...")
+    elif cmd in tw.CMDS_GANADORES:
+        background_tasks.add_task(tp.enviar_ganadores)
+        tp.enviar_mensaje("🔄 Calculando el 'Survivor perfecto' y comparándolo con el bot...")
     else:
         tp.enviar_mensaje(tw.responder(cmd, arg))
     return {"ok": True}

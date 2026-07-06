@@ -1376,6 +1376,65 @@ def enviar_derrotas() -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# "Survivor perfecto" (oráculo) vs el bot, por Telegram
+# ---------------------------------------------------------------------------
+def construir_mensaje_ganadores(rep: Dict[str, Any]) -> str:
+    """Mensaje (HTML, simple) del Survivor perfecto vs el bot, para /ganadores."""
+    div = "━━━━━━━━━━"
+    n = (rep or {}).get("torneos", 0)
+    if not rep or n == 0:
+        return ("🏆 <b>EL SURVIVOR PERFECTO</b>\n\n"
+                "Aún no hay torneos completos para comparar. Vuelve a intentar "
+                "cuando haya más historial.\n\n"
+                f"{DISCLAIMER}")
+    lineas = [
+        "🏆 <b>EL SURVIVOR PERFECTO vs EL BOT</b>",
+        "<i>Con los resultados ya sabidos, ¿existía una jugada que ganara todo?</i>",
+        div,
+    ]
+    for c in rep.get("comparacion", [])[:10]:
+        perfecto = "✅ sí" if c.get("oracle_completo") else f"máx {c.get('oracle_max_supervivencia')}"
+        bot = ("ganó TODO" if c.get("bot_completo")
+               else f"cayó en la {c.get('bot_sobrevividas')}ª")
+        lineas.append(f"• <b>{c.get('torneo')}</b>: perfecto={perfecto} · bot={bot}")
+    lineas += [
+        div,
+        "📊 <b>Resumen:</b>",
+        f"🔮 Existía camino ganador en <b>{rep.get('con_camino_perfecto')}/{n}</b> torneos",
+        f"🤖 El bot completó <b>{rep.get('bot_completos')}/{n}</b>",
+        f"📈 Aguante promedio: bot <b>{rep.get('bot_jornadas_prom')}</b> vs "
+        f"perfecto <b>{rep.get('oracle_jornadas_prom')}</b> jornadas",
+    ]
+    lecciones = rep.get("lecciones", [])
+    if lecciones:
+        lineas += ["", "🎓 <b>Conclusiones:</b>"]
+        lineas += [f"• {le}" for le in lecciones]
+    lineas += [div, DISCLAIMER]
+    return "\n".join(lineas)
+
+
+def enviar_ganadores() -> Dict[str, Any]:
+    """
+    Compara el 'Survivor perfecto' (oráculo, con resultados ya sabidos) contra la
+    corrida real del bot, y lo envía en lenguaje simple. Tolerante: nunca rompe.
+    """
+    try:
+        import fuentes_datos
+        import backtest_estrategias as be
+    except ImportError:  # pragma: no cover
+        from src import fuentes_datos  # type: ignore
+        from src import backtest_estrategias as be  # type: ignore
+    try:
+        datos = fuentes_datos.obtener_historico_largo()
+        rep = be.analizar_ganadores(datos["resultados"])
+    except Exception as exc:  # pragma: no cover
+        rep = {}
+        _ = exc
+    enviado = enviar_mensaje(construir_mensaje_ganadores(rep))
+    return {"enviado": enviado, "torneos": (rep or {}).get("torneos")}
+
+
+# ---------------------------------------------------------------------------
 # Resumen de rentabilidad (track-record) por Telegram
 # ---------------------------------------------------------------------------
 def construir_mensaje_rentabilidad(data: Dict[str, Any]) -> str:
