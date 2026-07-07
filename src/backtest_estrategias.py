@@ -730,9 +730,9 @@ def analizar_variedad_ganadora(
     idx = 0
     tot_surv = tot_jorn = top1_sobrevivio = top3_sobrevivio = 0
     por_torneo: List[Dict[str, Any]] = []
-    ejemplos: List[Dict[str, Any]] = []
     for tid, jlist in torneos_j:
         surv_lists: List[List[str]] = []
+        surv_counts: List[int] = []
         for j in jlist:
             while idx < len(ordenados) and _semana_iso(ordenados[idx].get("fecha")) < j["jornada"]:
                 historico.append(ordenados[idx])
@@ -751,29 +751,33 @@ def analizar_variedad_ganadora(
                 continue
             tot_jorn += 1
             tot_surv += len(surv)
+            surv_counts.append(len(surv))
             surv_norm = {pm._norm(s) for s in surv}
             if pm._norm(cands[0]["equipo"]) in surv_norm:
                 top1_sobrevivio += 1
             if any(pm._norm(c["equipo"]) in surv_norm for c in cands[:3]):
                 top3_sobrevivio += 1
-        # corridas ganadoras distintas para este torneo
         objetivo = min(JORNADAS_REGULARES, sum(1 for s in surv_lists if s))
-        runs = _muestrear_corridas_ganadoras(surv_lists, objetivo=objetivo, n_muestras=300)
-        if runs:
-            por_torneo.append({"torneo": tid, "corridas_distintas_muestreadas": len(runs),
-                               "longitud": objetivo})
-            if len(ejemplos) < 1 and len(runs) >= 2:
-                ejemplos.append({"torneo": tid,
-                                 "corrida_1": runs[0][:objetivo],
-                                 "corrida_2": runs[1][:objetivo]})
+        runs = _muestrear_corridas_ganadoras(surv_lists, objetivo=objetivo, n_muestras=500)
+        if not runs:
+            continue
+        por_torneo.append({
+            "torneo": tid,
+            "corridas_distintas_muestreadas": len(runs),
+            "muestreo_saturado": len(runs) >= 500,  # hay MUCHAS más de las contadas
+            "sobrevivientes_prom": round(sum(surv_counts) / len(surv_counts), 1) if surv_counts else None,
+            "sobrevivientes_min": min(surv_counts) if surv_counts else None,  # cuello de botella
+            "cuello_de_botella": bool(surv_counts and min(surv_counts) <= 2),
+            "ejemplo_camino_ganador": runs[0][:objetivo],
+        })
     if tot_jorn == 0:
         return {"mensaje": "Sin jornadas evaluables.", "decision": DEC_INFORMATIVA}
     return {
+        "torneos_evaluados": len(por_torneo),
         "sobrevivientes_promedio_por_jornada": round(tot_surv / tot_jorn, 1),
         "pct_jornadas_donde_el_mas_seguro_sobrevivio": round(100.0 * top1_sobrevivio / tot_jorn, 1),
         "pct_jornadas_donde_algun_top3_sobrevivio": round(100.0 * top3_sobrevivio / tot_jorn, 1),
-        "corridas_ganadoras_por_torneo": por_torneo,
-        "ejemplos_corridas_distintas": ejemplos,
+        "por_torneo": por_torneo,
         "decision": DEC_INFORMATIVA,
     }
 
