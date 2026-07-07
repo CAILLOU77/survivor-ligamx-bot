@@ -576,6 +576,49 @@ def _oracle_torneo(jornadas: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
             "max_supervivencia": max_surv, "oracle_wins": oracle_wins}
 
 
+def _sobrevivientes_jornada(partidos: Sequence[Dict[str, Any]]) -> List[str]:
+    """Equipos (display) que NO perdieron esa jornada (ganaron o empataron)."""
+    out: List[str] = []
+    for m in partidos:
+        try:
+            hg, ag = int(m["home_goals"]), int(m["away_goals"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        h, a = m.get("home_team", ""), m.get("away_team", "")
+        if h and hg >= ag:
+            out.append(h)
+        if a and ag >= hg:
+            out.append(a)
+    return out
+
+
+def _muestrear_corridas_ganadoras(
+    surv_por_jornada: Sequence[Sequence[str]], objetivo: int, n_muestras: int = 300,
+) -> List[List[str]]:
+    """
+    Muestrea corridas ganadoras DISTINTAS (una por jornada, sin repetir equipo,
+    todas sobrevivientes) de longitud `objetivo`, por greedy aleatorio con reintentos.
+    """
+    import random
+    rng = random.Random(13)
+    encontradas: set = set()
+    for _ in range(n_muestras * 8):
+        usados: set = set()
+        run: List[str] = []
+        for surv in surv_por_jornada:
+            opciones = [t for t in surv if pm._norm(t) not in usados]
+            if not opciones:
+                continue  # esa semana no aporta (o ya usamos a todos sus sobrevivientes)
+            elegido = rng.choice(opciones)
+            usados.add(pm._norm(elegido))
+            run.append(elegido)
+        if len(run) >= objetivo:
+            encontradas.add(tuple(run[:objetivo]))
+        if len(encontradas) >= n_muestras:
+            break
+    return [list(r) for r in encontradas]
+
+
 def _oracle_asignacion(jornadas: Sequence[Dict[str, Any]]) -> Dict[Any, str]:
     """{jornada_label: equipo_norm} de una corrida ÓPTIMA de supervivencia (oráculo)."""
     import numpy as np
@@ -660,6 +703,77 @@ def analizar_patron_ganador(
         "pct_eran_el_mas_seguro_top1": round(100.0 * sum(1 for p in picks if p["top1"]) / n, 1),
         "pct_estaban_en_top3": round(100.0 * sum(1 for p in picks if p["top3"]) / n, 1),
         "rank_promedio_en_no_perder": round(sum(p["rank"] for p in picks) / n, 1),
+        "decision": DEC_INFORMATIVA,
+    }
+
+
+def analizar_variedad_ganadora(
+    resultados: Sequence[Dict[str, Any]],
+    min_train: int = MIN_TRAIN,
+) -> Dict[str, Any]:
+    """
+    ¿Hay MUCHAS formas de ganar con picks distintos? Por torneo: cuenta cuántas
+    corridas ganadoras distintas existen, cuántos equipos sobreviven por jornada
+    (ancho de opciones) y cada cuánto el equipo MÁS SEGURO del modelo (top-1) sí
+    sobrevivió. Responde si hay un patrón o si son caminos irrepetibles.
+    """
+    jornadas = agrupar_jornadas(resultados)
+    ordenados = sorted(resultados, key=lambda r: str(r.get("fecha", "")))
+    torneos_j: List[Any] = []
+    for j in jornadas:
+        tid = _torneo_id(_fecha_semana_iso(j["jornada"]))
+        if not torneos_j or torneos_j[-1][0] != tid:
+            torneos_j.append((tid, []))
+        torneos_j[-1][1].append(j)
+
+    historico: List[Dict[str, Any]] = []
+    idx = 0
+    tot_surv = tot_jorn = top1_sobrevivio = top3_sobrevivio = 0
+    por_torneo: List[Dict[str, Any]] = []
+    ejemplos: List[Dict[str, Any]] = []
+    for tid, jlist in torneos_j:
+        surv_lists: List[List[str]] = []
+        for j in jlist:
+            while idx < len(ordenados) and _semana_iso(ordenados[idx].get("fecha")) < j["jornada"]:
+                historico.append(ordenados[idx])
+                idx += 1
+            surv = _sobrevivientes_jornada(j["partidos"])
+            surv_lists.append(surv)
+            if len(historico) < min_train:
+                continue
+            try:
+                fuerzas = pm.calcular_fuerzas(historico)
+            except ValueError:
+                continue
+            cands = sorted(_no_perder_candidatos(j["partidos"], fuerzas),
+                           key=lambda c: c["no_perder_pct"], reverse=True)
+            if not cands:
+                continue
+            tot_jorn += 1
+            tot_surv += len(surv)
+            surv_norm = {pm._norm(s) for s in surv}
+            if pm._norm(cands[0]["equipo"]) in surv_norm:
+                top1_sobrevivio += 1
+            if any(pm._norm(c["equipo"]) in surv_norm for c in cands[:3]):
+                top3_sobrevivio += 1
+        # corridas ganadoras distintas para este torneo
+        objetivo = min(JORNADAS_REGULARES, sum(1 for s in surv_lists if s))
+        runs = _muestrear_corridas_ganadoras(surv_lists, objetivo=objetivo, n_muestras=300)
+        if runs:
+            por_torneo.append({"torneo": tid, "corridas_distintas_muestreadas": len(runs),
+                               "longitud": objetivo})
+            if len(ejemplos) < 1 and len(runs) >= 2:
+                ejemplos.append({"torneo": tid,
+                                 "corrida_1": runs[0][:objetivo],
+                                 "corrida_2": runs[1][:objetivo]})
+    if tot_jorn == 0:
+        return {"mensaje": "Sin jornadas evaluables.", "decision": DEC_INFORMATIVA}
+    return {
+        "sobrevivientes_promedio_por_jornada": round(tot_surv / tot_jorn, 1),
+        "pct_jornadas_donde_el_mas_seguro_sobrevivio": round(100.0 * top1_sobrevivio / tot_jorn, 1),
+        "pct_jornadas_donde_algun_top3_sobrevivio": round(100.0 * top3_sobrevivio / tot_jorn, 1),
+        "corridas_ganadoras_por_torneo": por_torneo,
+        "ejemplos_corridas_distintas": ejemplos,
         "decision": DEC_INFORMATIVA,
     }
 
