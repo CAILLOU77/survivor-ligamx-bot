@@ -576,6 +576,94 @@ def _oracle_torneo(jornadas: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
             "max_supervivencia": max_surv, "oracle_wins": oracle_wins}
 
 
+def _oracle_asignacion(jornadas: Sequence[Dict[str, Any]]) -> Dict[Any, str]:
+    """{jornada_label: equipo_norm} de una corrida ÓPTIMA de supervivencia (oráculo)."""
+    import numpy as np
+    from scipy.optimize import linear_sum_assignment
+    equipos = sorted({
+        pm._norm(e) for j in jornadas for m in j.get("partidos", [])
+        for e in (m.get("home_team", ""), m.get("away_team", "")) if e
+    })
+    n_j, n_t = len(jornadas), len(equipos)
+    if n_j == 0 or n_t == 0:
+        return {}
+    tidx = {t: i for i, t in enumerate(equipos)}
+    surv = np.zeros((n_j, n_t), dtype=float)
+    for i, j in enumerate(jornadas):
+        for m in j.get("partidos", []):
+            try:
+                hg, ag = int(m["home_goals"]), int(m["away_goals"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            h, a = pm._norm(m.get("home_team", "")), pm._norm(m.get("away_team", ""))
+            if h in tidx and hg >= ag:
+                surv[i][tidx[h]] = 1.0
+            if a in tidx and ag >= hg:
+                surv[i][tidx[a]] = 1.0
+    r, c = linear_sum_assignment(-surv)
+    labels = [j["jornada"] for j in jornadas]
+    return {labels[i]: equipos[k] for i, k in zip(r.tolist(), c.tolist()) if surv[i][k] == 1.0}
+
+
+def analizar_patron_ganador(
+    resultados: Sequence[Dict[str, Any]],
+    min_train: int = MIN_TRAIN,
+) -> Dict[str, Any]:
+    """
+    ¿Hay un PATRÓN copiable en las corridas ganadoras (oráculo)? Para cada pick de
+    la corrida óptima de supervivencia, mide qué veía el MODELO en ese momento:
+    ¿era el más seguro (top-1 no-perder)?, ¿top-3?, ¿local? Si los picks ganadores
+    eran los que el bot YA elegiría, el patrón es "elegir seguro" (lo que hace) y
+    la diferencia es varianza. Si eran sorpresas de bajo no-perder, no es copiable.
+    """
+    jornadas = agrupar_jornadas(resultados)
+    ordenados = sorted(resultados, key=lambda r: str(r.get("fecha", "")))
+    torneos_j: List[Any] = []
+    for j in jornadas:
+        tid = _torneo_id(_fecha_semana_iso(j["jornada"]))
+        if not torneos_j or torneos_j[-1][0] != tid:
+            torneos_j.append((tid, []))
+        torneos_j[-1][1].append(j)
+
+    historico: List[Dict[str, Any]] = []
+    idx = 0
+    picks: List[Dict[str, Any]] = []
+    for _tid, jlist in torneos_j:
+        asign = _oracle_asignacion(jlist)
+        for j in jlist:
+            while idx < len(ordenados) and _semana_iso(ordenados[idx].get("fecha")) < j["jornada"]:
+                historico.append(ordenados[idx])
+                idx += 1
+            eq = asign.get(j["jornada"])
+            if eq is None or len(historico) < min_train:
+                continue
+            try:
+                fuerzas = pm.calcular_fuerzas(historico)
+            except ValueError:
+                continue
+            cands = sorted(_no_perder_candidatos(j["partidos"], fuerzas),
+                           key=lambda c: c["no_perder_pct"], reverse=True)
+            match = next((c for c in cands if pm._norm(c["equipo"]) == eq), None)
+            if match is None:
+                continue
+            rank = cands.index(match) + 1
+            picks.append({"no_perder": match["no_perder_pct"], "es_local": match["es_local"],
+                          "rank": rank, "top1": rank == 1, "top3": rank <= 3})
+    n = len(picks)
+    if n == 0:
+        return {"picks_analizados": 0, "mensaje": "Sin corridas ganadoras evaluables.",
+                "decision": DEC_INFORMATIVA}
+    return {
+        "picks_analizados": n,
+        "no_perder_promedio_de_los_ganadores": round(sum(p["no_perder"] for p in picks) / n, 1),
+        "pct_local": round(100.0 * sum(1 for p in picks if p["es_local"]) / n, 1),
+        "pct_eran_el_mas_seguro_top1": round(100.0 * sum(1 for p in picks if p["top1"]) / n, 1),
+        "pct_estaban_en_top3": round(100.0 * sum(1 for p in picks if p["top3"]) / n, 1),
+        "rank_promedio_en_no_perder": round(sum(p["rank"] for p in picks) / n, 1),
+        "decision": DEC_INFORMATIVA,
+    }
+
+
 def analizar_ganadores(
     resultados: Sequence[Dict[str, Any]],
     min_train: int = MIN_TRAIN,
