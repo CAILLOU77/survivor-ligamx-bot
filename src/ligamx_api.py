@@ -421,35 +421,69 @@ def _campo(d: Dict[str, Any], *claves: str) -> Any:
     return None
 
 
-def goleadores_por_equipo(limit: int = 50, por_equipo: int = 2,
-                          season: Optional[str] = None) -> Dict[str, List[Dict[str, Any]]]:
+def _temporada_anterior(nombre: str) -> Optional[str]:
     """
-    Mapa {equipo_display: [ {nombre, goles} ]} con los máximos goleadores de cada
-    equipo (para 'jugadores a seguir' por partido, sin llamadas por partido).
-    Tolerante: en pretemporada (sin goles) o si falla, devuelve {}.
+    'Apertura 2026' -> 'Clausura 2026'; 'Clausura 2026' -> 'Apertura 2025'.
+    (Liga MX: cada año Clausura ene-may, luego Apertura jul-dic.)
+    """
+    try:
+        torneo, anio = str(nombre).split()
+        anio = int(anio)
+    except (ValueError, AttributeError):
+        return None
+    t = torneo.strip().lower()
+    if t.startswith("apertura"):
+        return f"Clausura {anio}"
+    if t.startswith("clausura"):
+        return f"Apertura {anio - 1}"
+    return None
+
+
+def goleadores_por_equipo(limit: int = 50, por_equipo: int = 2,
+                          season: Optional[str] = None,
+                          _fallback: bool = True) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    Mapa {equipo_display: [ {nombre, goles, ref?} ]} con los máximos goleadores de
+    cada equipo (para 'jugadores a seguir' por partido, sin llamadas por partido).
+
+    Tolerante. En PRETEMPORADA (sin goles del torneo actual) hace un fallback al
+    torneo ANTERIOR para que igual haya jugadores a seguir en cada partido; esas
+    entradas quedan marcadas con ref=True (referencia de la temporada pasada).
     """
     try:
         data = goleadores(limit=limit, season=season)
     except Exception:  # pragma: no cover - red no disponible
-        return {}
-    if not isinstance(data, list):
-        return {}
+        data = []
     mapa: Dict[str, List[Dict[str, Any]]] = {}
-    for row in data:
-        if not isinstance(row, dict):
-            continue
-        nombre = _campo(row, "player", "name", "player_name", "full_name")
-        equipo = _campo(row, "team", "team_name", "club")
-        if isinstance(equipo, dict):
-            equipo = equipo.get("name") or equipo.get("team_name")
-        goles = _campo(row, "goals", "goals_count", "total_goals", "g")
-        if not nombre or not equipo:
-            continue
-        clave = display_team_name(str(equipo))
-        entrada = {"nombre": str(nombre), "goles": goles}
-        mapa.setdefault(clave, [])
-        if len(mapa[clave]) < max(1, por_equipo):
-            mapa[clave].append(entrada)
+    if isinstance(data, list):
+        for row in data:
+            if not isinstance(row, dict):
+                continue
+            nombre = _campo(row, "player", "name", "player_name", "full_name")
+            equipo = _campo(row, "team", "team_name", "club")
+            if isinstance(equipo, dict):
+                equipo = equipo.get("name") or equipo.get("team_name")
+            goles = _campo(row, "goals", "goals_count", "total_goals", "g")
+            if not nombre or not equipo:
+                continue
+            clave = display_team_name(str(equipo))
+            entrada = {"nombre": str(nombre), "goles": goles}
+            if season is not None:
+                entrada["ref"] = True  # datos de temporada anterior (fallback)
+            mapa.setdefault(clave, [])
+            if len(mapa[clave]) < max(1, por_equipo):
+                mapa[clave].append(entrada)
+
+    # Pretemporada / sin goleo aún: usa el torneo anterior para no dejar partidos
+    # sin "jugadores a seguir".
+    if not mapa and _fallback and season is None:
+        try:
+            prev = _temporada_anterior(estado_temporada().get("tournament_now", ""))
+        except Exception:  # pragma: no cover
+            prev = None
+        if prev:
+            return goleadores_por_equipo(limit=limit, por_equipo=por_equipo,
+                                         season=prev, _fallback=False)
     return mapa
 
 

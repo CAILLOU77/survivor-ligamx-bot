@@ -121,6 +121,20 @@ def probabilidad_btts(matriz: List[List[float]]) -> Tuple[float, float]:
     return p_si, 1.0 - p_si
 
 
+def probabilidad_margen_ge(matriz: List[List[float]], k: int) -> float:
+    """
+    P(diferencia ABSOLUTA de goles >= k). Sirve para medir el riesgo de goleada:
+    con k=2 se rompería un hándicap +1.5 (perder por 2+), con k=3 un +2 (perder
+    por 3+). Un under de valor con este % bajo es más seguro para el hándicap.
+    """
+    total = 0.0
+    for i, fila in enumerate(matriz):
+        for j, p in enumerate(fila):
+            if abs(i - j) >= k:
+                total += p
+    return total
+
+
 def marcador_mas_probable(matriz: List[List[float]]) -> Tuple[int, int]:
     """Devuelve el marcador (local, visita) con mayor probabilidad."""
     mejor = (0, 0)
@@ -276,6 +290,8 @@ def pronostico(
     p_local, p_empate, p_visita = probabilidades_1x2(matriz)
     p_over, p_under = probabilidad_over_under(matriz, linea_goles)
     p_btts_si, p_btts_no = probabilidad_btts(matriz)
+    p_margen2 = probabilidad_margen_ge(matriz, 2)  # rompe hándicap +1.5
+    p_margen3 = probabilidad_margen_ge(matriz, 3)  # rompe hándicap +2 (goleada)
     mh, ma = marcador_mas_probable(matriz)
 
     pick_1x2 = max(
@@ -293,6 +309,8 @@ def pronostico(
         "prob_visitante_pct": round(p_visita * 100, 2),
         "prob_over_pct": round(p_over * 100, 2),
         "prob_under_pct": round(p_under * 100, 2),
+        "prob_margen2_pct": round(p_margen2 * 100, 2),
+        "prob_margen3_pct": round(p_margen3 * 100, 2),
         "linea_goles": linea_goles,
         "prob_btts_si_pct": round(p_btts_si * 100, 2),
         "prob_btts_no_pct": round(p_btts_no * 100, 2),

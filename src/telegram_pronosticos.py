@@ -261,12 +261,13 @@ def _jugadores_seguir_partido(p: Dict[str, Any],
         for j in lst[:2]:
             nom = j.get("nombre", "")
             goles = j.get("goles")
+            ref = " · temp. pasada" if j.get("ref") else ""
             if goles not in (None, ""):
                 try:
                     g = int(goles)
-                    etiqueta = f"{nom} ({g} {'gol' if g == 1 else 'goles'})"
+                    etiqueta = f"{nom} ({g} {'gol' if g == 1 else 'goles'}{ref})"
                 except (TypeError, ValueError):
-                    etiqueta = f"{nom} ({goles} goles)"
+                    etiqueta = f"{nom} ({goles} goles{ref})"
             else:
                 etiqueta = nom
             nombres.append(etiqueta)
@@ -501,6 +502,8 @@ def construir_mensaje(
                 lineas.append(f"💡 {p['explicacion_1x2']}")
             if p.get("explicacion_ou"):
                 lineas.append(f"💡 {p['explicacion_ou']}")
+            if p.get("nota_handicap"):
+                lineas.append(f"🔻 {p['nota_handicap']}")
             if p.get("precaucion") and p.get("motivos_alerta"):
                 lineas.append(f"{p['nivel_alerta']}: {' '.join(p['motivos_alerta'])}")
             if p.get("h2h_nota"):

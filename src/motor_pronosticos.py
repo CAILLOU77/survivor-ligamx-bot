@@ -89,6 +89,31 @@ _EMPATE_ALTO_PCT = 30.0       # riesgo de push (empate)
 _GOLES_CERRADO = 2.3          # goles esperados totales bajos => juego cerrado
 _PICK_ABIERTO_PCT = 45.0      # sin favorito claro
 
+# Under de valor + cobertura de hándicap (para apostar +1.5/+2 al under).
+_UNDER_VALOR_PCT = 60.0       # el modelo se inclina claramente al under
+_GOLEADA_RIESGO_PCT = 25.0    # P(margen 3+) alta => el +1.5/+2 puede NO cubrir
+
+
+def _nota_under_handicap(pick_ou: str, prob_under_pct: float, total: float,
+                         prob_margen2_pct: float, prob_margen3_pct: float) -> Dict[str, Any]:
+    """
+    Detecta un UNDER de valor y evalúa qué tan seguro es para un hándicap +1.5/+2:
+    lo que rompe el hándicap es una goleada (margen 2+ para +1.5, 3+ para +2).
+    Devuelve {under_valor, nota_handicap}. Sin invención: todo sale de la matriz.
+    """
+    under_valor = pick_ou == "Under" and prob_under_pct >= _UNDER_VALOR_PCT
+    if not under_valor:
+        return {"under_valor": False, "nota_handicap": None}
+    riesgo_alto = prob_margen3_pct >= _GOLEADA_RIESGO_PCT
+    base = (f"UNDER de valor: {prob_under_pct:.0f}% bajo 2.5 (~{total:.1f} goles). "
+            f"Margen 2+: {prob_margen2_pct:.0f}% · goleada 3+: {prob_margen3_pct:.0f}%.")
+    if riesgo_alto:
+        base += (" ⚠️ OJO: riesgo de goleada ALTO — el +1.5/+2 podría NO cubrir; "
+                 "el under es de lectura arriesgada.")
+    else:
+        base += " ✅ Riesgo de goleada bajo — el +1.5/+2 luce cubierto."
+    return {"under_valor": True, "nota_handicap": base}
+
 
 def _alertas_partido(pick_1x2: str, prob_empate: float, prob_pick: float,
                      goles_totales: float) -> Dict[str, Any]:
@@ -127,6 +152,8 @@ def pronosticar_partido(
     prob_pick = max(p["prob_local_pct"], p["prob_empate_pct"], p["prob_visitante_pct"])
     goles_totales = p["lambda_local"] + p["lambda_visitante"]
     alerta = _alertas_partido(p["pick_1x2"], p["prob_empate_pct"], prob_pick, goles_totales)
+    hand = _nota_under_handicap(p["pick_ou"], p["prob_under_pct"], goles_totales,
+                                p["prob_margen2_pct"], p["prob_margen3_pct"])
     return {
         "local": home,
         "visitante": away,
@@ -143,6 +170,11 @@ def pronosticar_partido(
         "goles_esperados_visitante": p["lambda_visitante"],
         "pick_ou": p["pick_ou"],
         "prob_over_pct": p["prob_over_pct"],
+        "prob_under_pct": p["prob_under_pct"],
+        "prob_margen2_pct": p["prob_margen2_pct"],
+        "prob_margen3_pct": p["prob_margen3_pct"],
+        "under_valor": hand["under_valor"],
+        "nota_handicap": hand["nota_handicap"],
         "pick_btts": p["pick_btts"],
         "prob_btts_si_pct": p["prob_btts_si_pct"],
         "marcador_mas_probable": p["marcador_mas_probable"],
