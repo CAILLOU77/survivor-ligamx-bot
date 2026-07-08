@@ -38,7 +38,7 @@ Complementa a `survivor-playdoit-reglas.md` (las reglas del juego).
 ## Preferencias del usuario (respetar siempre)
 - **Honestidad sin adornos.** Medir antes de afirmar; no vender mejoras que no ayudan; corregir cuando algo estaba mal.
 - **Mensajes de Telegram limpios y legibles en MÓVIL** (sin sangrías con espacios, emojis al inicio, divisores cortos).
-- **Jugadores a seguir en CADA partido** (con fallback a goleo del torneo anterior en pretemporada, marcado "temp. pasada").
+- **Jugadores a seguir**: usar SOLO goleo del torneo ACTUAL. En pretemporada queda vacío a propósito (se llena al arrancar). **CUIDADO CON DATOS VIEJOS**: entre torneos los jugadores cambian de equipo o se venden, así que NO usar goleadores/jugadores de temporadas pasadas mapeados al equipo actual (sería engañoso). Aplica igual a cualquier dato de jugadores.
 - **Unders de valor + hándicap**: el usuario apuesta hándicap +1.5/+2 a unders de valor. El bot detecta "under de valor" y muestra el **riesgo de goleada** (P(margen 2+) y P(margen 3+ = goleada)) para avisar si el +1.5/+2 cubre. Ver `motor._nota_under_handicap` y `poisson.probabilidad_margen_ge`.
 - Le gusta intentar GANAR el Survivor completo, no solo sobrevivir; recordarle que el bot maximiza la chance real.
 - Idioma: español, tono cercano.
