@@ -222,6 +222,7 @@ def generar_pronosticos(
         except ValueError:
             fuerzas = None
 
+    fixtures_sin_modelo: List[Dict[str, Any]] = []
     if fuerzas:
         for fx in fixtures:
             home = fx.get("home_team", "")
@@ -230,6 +231,12 @@ def generar_pronosticos(
             if pron:
                 pron["fecha"] = fx.get("fecha", "")
                 pronosticos.append(pron)
+            elif home and away:
+                # Sin histórico de uno de los equipos (p.ej. recién ascendido). Se
+                # reporta para que la capa de Telegram intente el fallback de momios.
+                fixtures_sin_modelo.append({
+                    "home_team": home, "away_team": away, "fecha": fx.get("fecha", ""),
+                })
 
     # Señal "bestia negra" (H2H): usa el histórico MÁS LARGO disponible (todas las
     # temporadas de la Liga MX API), no solo la ventana reciente del modelo.
@@ -259,6 +266,7 @@ def generar_pronosticos(
         "total_resultados_historicos": len(resultados),
         "total_pronosticos": len(pronosticos),
         "pronosticos": pronosticos,
+        "fixtures_sin_modelo": fixtures_sin_modelo,
         "decision": DEC_INFORMATIVA,
     }
 

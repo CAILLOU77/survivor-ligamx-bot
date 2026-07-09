@@ -410,8 +410,15 @@ def _linea_goles(p: Dict[str, Any]) -> str:
     btts = p.get("pick_btts")
     btts_txt = f" · BTTS {btts}" if btts else ""
     marcador = str(p.get("marcador_pick") or p.get("marcador_mas_probable", ""))
-    linea = (f"⚽ Goles: {pick_ou} 2.5{pct_txt}{btts_txt}\n"
-             f"🔢 Marcador probable: {marcador}")
+    # Partido sin datos de goles (p.ej. pick solo-momios): no hay línea que mostrar.
+    if not pick_ou and not marcador:
+        return ""
+    partes = []
+    if pick_ou:
+        partes.append(f"⚽ Goles: {pick_ou} 2.5{pct_txt}{btts_txt}")
+    if marcador:
+        partes.append(f"🔢 Marcador probable: {marcador}")
+    linea = "\n".join(partes)
     # ¿Choca la moda con el pick Over/Under?
     total = None
     if "-" in marcador:
@@ -540,7 +547,9 @@ def construir_mensaje(
             lineas.append(f"{n} <b>{p['local']}</b> 🏠 vs <b>{p['visitante']}</b> ✈️")
             lineas.append(f"🎯 Pick: <b>{_pick_club(p)}</b>{pptxt}{conf}")
             lineas.append(f"📊 Local {_pct(p['prob_local_pct'])}% · Empate {_pct(p['prob_empate_pct'])}% · Visita {_pct(p['prob_visitante_pct'])}%")
-            lineas.append(_linea_goles(p))
+            _lg = _linea_goles(p)
+            if _lg:
+                lineas.append(_lg)
             if p.get("explicacion_1x2"):
                 lineas.append(f"💡 {p['explicacion_1x2']}")
             if p.get("explicacion_ou"):
@@ -951,6 +960,24 @@ def enviar_pronosticos(equipos_usados: Optional[List[str]] = None,
         resultado["pronosticos"] = cm.mezclar_pronosticos_con_mercado(pron_anotados, momios=momios)
         con_momios = sum(1 for m in (momios or {}).values()
                          if isinstance(m, dict) and m.get("ml"))
+        # Fallback: partidos que el modelo no pudo pronosticar (equipo sin histórico,
+        # p.ej. un recién ascendido como Atlante). Si el mercado tiene momios de ese
+        # juego, lo mostramos con probabilidades del mercado en vez de omitirlo.
+        try:
+            faltantes = resultado.get("fixtures_sin_modelo") or []
+            extra = []
+            for fx in faltantes:
+                merc = cm.buscar_mercado_partido(fx.get("home_team", ""),
+                                                 fx.get("away_team", ""), momios or {})
+                pr = cm.pronostico_desde_momios(fx.get("home_team", ""),
+                                                fx.get("away_team", ""), merc,
+                                                fx.get("fecha", ""))
+                if pr:
+                    extra.append(pr)
+            if extra:
+                resultado["pronosticos"] = list(resultado.get("pronosticos", [])) + extra
+        except Exception:  # pragma: no cover - nunca tumbar el envío
+            pass
         # Archiva el snapshot de momios en la Liga MX API (histórico), best-effort.
         try:
             snaps = cm.construir_snapshots_momios(pron_anotados, momios, source=fuente_m)

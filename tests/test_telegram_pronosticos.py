@@ -481,3 +481,47 @@ class TestDividirMensaje(unittest.TestCase):
         self.assertGreater(mreq.post.call_count, 1)  # se partió en varios envíos
         for call in mreq.post.call_args_list:
             self.assertLessEqual(len(call.kwargs["data"]["text"]), 4000)
+
+
+class TestFallbackMomiosAtlante(unittest.TestCase):
+    def _resultado_con_faltante(self):
+        base = {
+            "local": "León", "visitante": "Atlas", "pick_1x2": "Gana Local",
+            "prob_local_pct": 55.0, "prob_empate_pct": 25.0, "prob_visitante_pct": 20.0,
+            "prob_pick_pct": 55.0, "nivel_confianza": "MEDIA",
+            "no_perder_local_pct": 80.0, "no_perder_visitante_pct": 45.0,
+            "pick_ou": "Over", "prob_over_pct": 60.0, "marcador_pick": "1-0",
+        }
+        return {
+            "generado_utc": "2026-07-16T10:00:00Z", "fuente_datos": "ESPN",
+            "total_pronosticos": 1, "pronosticos": [base],
+            "fixtures_sin_modelo": [{"home_team": "Necaxa", "away_team": "Atlante",
+                                     "fecha": "2026-07-17"}],
+        }
+
+    def test_partido_sin_modelo_aparece_con_momios(self):
+        import comparador_mercado as cm
+        momios = {"necaxa|atlante": {"ml": {"local": 1.45, "empate": 4.2, "visita": 7.0}}}
+        cap = {}
+        with mock.patch.object(tp.motor, "generar_pronosticos", return_value=self._resultado_con_faltante()), \
+             mock.patch.object(cm, "momios_para_uso", return_value=(momios, "test")), \
+             mock.patch.object(tp.motor, "motivacion_por_equipo", return_value={}), \
+             mock.patch("ligamx_api.disponible", return_value=False), \
+             mock.patch.object(tp, "enviar_mensaje", side_effect=lambda m: cap.setdefault("msg", m) or True):
+            tp.enviar_pronosticos()
+        msg = cap.get("msg", "")
+        self.assertIn("Necaxa", msg)
+        self.assertIn("Atlante", msg)
+        self.assertIn("Solo mercado", msg)
+
+    def test_sin_momios_el_faltante_no_aparece(self):
+        import comparador_mercado as cm
+        cap = {}
+        with mock.patch.object(tp.motor, "generar_pronosticos", return_value=self._resultado_con_faltante()), \
+             mock.patch.object(cm, "momios_para_uso", return_value=({}, None)), \
+             mock.patch.object(tp.motor, "motivacion_por_equipo", return_value={}), \
+             mock.patch("ligamx_api.disponible", return_value=False), \
+             mock.patch.object(tp, "enviar_mensaje", side_effect=lambda m: cap.setdefault("msg", m) or True):
+            tp.enviar_pronosticos()
+        # Sin momios no se puede pronosticar Atlante -> no aparece.
+        self.assertNotIn("Atlante", cap.get("msg", ""))

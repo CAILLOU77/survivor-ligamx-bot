@@ -213,3 +213,28 @@ class TestGating(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestPronosticoDesdeMomios(unittest.TestCase):
+    def test_construye_desde_ml(self):
+        merc = {"ml": {"local": 1.45, "empate": 4.2, "visita": 7.0}}
+        pr = cm.pronostico_desde_momios("Necaxa", "Atlante", merc, "2026-07-17")
+        self.assertEqual(pr["local"], "Necaxa")
+        self.assertEqual(pr["pick_1x2"], "Gana Local")  # local muy favorito
+        self.assertEqual(pr["fuente_pick"], "mercado")
+        self.assertEqual(pr["nivel_confianza"], "SOLO MERCADO")
+        # no-perder local = ganar + empatar; probabilidades suman ~100.
+        self.assertAlmostEqual(
+            pr["prob_local_pct"] + pr["prob_empate_pct"] + pr["prob_visitante_pct"], 100.0, places=0)
+        self.assertGreater(pr["no_perder_local_pct"], pr["prob_local_pct"])
+
+    def test_incluye_over_under_si_hay_totals(self):
+        merc = {"ml": {"local": 2.0, "empate": 3.3, "visita": 3.5},
+                "totals": {"over": 1.9, "under": 1.9, "linea": 2.5}}
+        pr = cm.pronostico_desde_momios("A", "B", merc)
+        self.assertIn("pick_ou", pr)
+        self.assertIn("prob_over_pct", pr)
+
+    def test_sin_ml_devuelve_none(self):
+        self.assertIsNone(cm.pronostico_desde_momios("A", "B", None))
+        self.assertIsNone(cm.pronostico_desde_momios("A", "B", {"totals": {"over": 1.9, "under": 1.9}}))

@@ -285,6 +285,62 @@ def anotar_pronostico(pron: Dict[str, Any], mercado: Optional[Dict[str, Any]]) -
     return salida
 
 
+def pronostico_desde_momios(
+    home: str, away: str, mercado: Optional[Dict[str, Any]], fecha: str = ""
+) -> Optional[Dict[str, Any]]:
+    """
+    Construye un pronóstico SOLO con los momios del mercado, para partidos que el
+    modelo no puede pronosticar (equipo sin histórico, p.ej. un recién ascendido
+    como Atlante). Devuelve None si no hay momios 1X2 (`ml`) utilizables.
+
+    Las probabilidades salen de quitar el vig al 1X2. Se marca claramente como
+    'solo mercado' para no confundirlo con el pronóstico del modelo. Over/Under se
+    incluye si el mercado trae 'totals'. No hay marcador exacto (los momios no lo dan).
+    """
+    ml = (mercado or {}).get("ml")
+    if not ml:
+        return None
+    try:
+        v = quitar_vig(ml["local"], ml["empate"], ml["visita"])
+    except (KeyError, ValueError, TypeError):
+        return None
+    pl = round(v["prob_local"] * 100, 2)
+    pe = round(v["prob_empate"] * 100, 2)
+    pv = round(v["prob_visita"] * 100, 2)
+    pick = max((("Gana Local", pl), ("Empate", pe), ("Gana Visitante", pv)), key=lambda x: x[1])[0]
+    pron: Dict[str, Any] = {
+        "local": home,
+        "visitante": away,
+        "fecha": fecha,
+        "pick_1x2": pick,
+        "prob_local_pct": pl,
+        "prob_empate_pct": pe,
+        "prob_visitante_pct": pv,
+        "prob_pick_pct": max(pl, pe, pv),
+        "nivel_confianza": "SOLO MERCADO",
+        "no_perder_local_pct": round(pl + pe, 2),
+        "no_perder_visitante_pct": round(pv + pe, 2),
+        "precaucion": True,
+        "nivel_alerta": "ℹ️ Solo mercado",
+        "motivos_alerta": ["Sin histórico del equipo en el modelo (equipo nuevo); "
+                           "probabilidades tomadas de los momios."],
+        "explicacion_1x2": "El modelo no tiene datos de este equipo todavía; "
+                           "se usan los momios del mercado.",
+        "fuente_pick": "mercado",
+    }
+    # Over/Under desde el mercado, si viene.
+    tot = (mercado or {}).get("totals")
+    try:
+        if tot and tot.get("over") and tot.get("under"):
+            ou = quitar_vig_2(tot["over"], tot["under"])
+            pron["prob_over_pct"] = round(ou["prob_a"] * 100, 2)
+            pron["prob_under_pct"] = round(ou["prob_b"] * 100, 2)
+            pron["pick_ou"] = "Over" if ou["prob_a"] >= ou["prob_b"] else "Under"
+    except (KeyError, ValueError, TypeError):
+        pass
+    return pron
+
+
 def _clave_partido(local: str, visitante: str) -> str:
     return f"{_norm(local)}|{_norm(visitante)}"
 

@@ -39,6 +39,17 @@ class TestGenerar(unittest.TestCase):
         res = mp.generar_pronosticos(fixtures=fixtures, resultados=_historico())
         self.assertEqual(res["total_pronosticos"], 0)
 
+    def test_partido_con_equipo_sin_modelo_se_reporta(self):
+        # América conocido vs "Atlante" (sin histórico): se omite del pronóstico
+        # pero se REPORTA en fixtures_sin_modelo para el fallback de momios.
+        fixtures = [{"home_team": "América", "away_team": "Atlante", "fecha": "2026-07-17"}]
+        res = mp.generar_pronosticos(fixtures=fixtures, resultados=_historico())
+        self.assertEqual(res["total_pronosticos"], 0)
+        faltantes = res.get("fixtures_sin_modelo", [])
+        self.assertEqual(len(faltantes), 1)
+        self.assertEqual(faltantes[0]["away_team"], "Atlante")
+        self.assertEqual(faltantes[0]["fecha"], "2026-07-17")
+
     def test_sin_resultados_no_revienta(self):
         res = mp.generar_pronosticos(fixtures=[{"home_team": "A", "away_team": "B"}], resultados=[])
         self.assertEqual(res["total_pronosticos"], 0)
