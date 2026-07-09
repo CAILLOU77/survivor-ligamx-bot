@@ -43,6 +43,11 @@ Complementa a `survivor-playdoit-reglas.md` (las reglas del juego).
 - Le gusta intentar GANAR el Survivor completo, no solo sobrevivir; recordarle que el bot maximiza la chance real.
 - Idioma: español, tono cercano.
 
+## Rumbo / roadmap (decidido con el usuario)
+- **Prioridad AHORA: Liga MX en vivo.** Usarlo, ver si funciona y qué falta con datos reales del torneo (arranca ~16 jul). NO construir NFL todavía.
+- **NFL (Survivor + pronósticos + DFS): esperar** (~2-3 meses). Se hará DESPUÉS, aprendiendo de los errores/hallazgos de Liga MX. El bot de Telegram y el framework (backtest/calibración/momios) se reutilizan; el MODELO de NFL es nuevo (no Poisson de goles → puntos/spreads) y DFS es un build aparte (optimizador de alineaciones).
+- Plan: cerca del arranque de NFL, extraer un "core" compartido (Telegram + backtest + momios + storage) y montar NFL encima.
+
 ## Estado actual (al día)
 - Ambos repos limpios, todo pusheado, tests verdes, servicios arriba.
 - Momios archivándose (pretemporada → cobertura limitada; Liga MX arranca ~16 jul).
