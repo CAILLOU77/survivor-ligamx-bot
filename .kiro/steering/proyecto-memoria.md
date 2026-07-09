@@ -14,7 +14,8 @@ Complementa a `survivor-playdoit-reglas.md` (las reglas del juego).
 - **Pick de jornada**: `motor_pronosticos.mejores_picks_estrategico` — maximiza no-perder, castiga favorito VISITANTE (PEN_VISITANTE), cautela de arranque, victoria como desempate (PESO_VICTORIA_PICK=0.5). **Mezcla momios** (`comparador_mercado.mezclar_pronosticos_con_mercado`, 50/50) en las probabilidades del pick.
 - **Plan de temporada**: `planificador_survivor.py` (asignación húngara). NO está predeterminado: se recalcula cada vez según resultados, momios y equipos usados.
 - **Protecciones (partido trampa)**: sensor under/partido cerrado (`_GOLES_CERRADO=2.3`), favorito visitante penalizado, empate alto, sin favorito claro. Medido: favorito visitante falla ~59% vs ~46% local.
-- **Comandos Telegram** (bot @Brucewayneuwu_bot, chat dueño): jugar → `/pick`, `/seguir` (XI ~1h antes), `/plan`, `/momios`. Revisar → `/prueba`, `/confianza`, `/derrotas`, `/ganadores`.
+- **Comandos Telegram** (bot @Brucewayneuwu_bot, chat dueño): jugar → `/pick`, `/seguir` (XI ~1h antes), `/plan`, `/momios`. Revisar → `/prueba`, `/confianza`, `/derrotas`, `/ganadores`, `/racha`.
+- **Track-record del pick de Survivor** (racha real): tabla `survivor_historial` (una fila por jornada = semana ISO). El envío de `/pick` registra el pick #1 recomendado (`_registrar_survivor_historial` en `telegram_pronosticos.py`); el cron `/cron/backtest` lo resuelve (`settle_survivor`) → gana/empata(sobrevive)/pierde. Comando `/racha` muestra jornadas sobrevividas, victorias, empates y si sigue vivo. Mide el pick del BOT, no los `/usado` manuales.
 
 ## Arquitectura de la API (ligamx-api)
 - FastAPI + SQLAlchemy + Alembic. **Neon Postgres** en prod (SQLite en tests). Scrapers: ESPN, 365Scores, Sofascore, noticias.

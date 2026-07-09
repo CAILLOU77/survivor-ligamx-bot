@@ -764,6 +764,72 @@ def _registrar_historial(pronosticos) -> None:
             continue
 
 
+def _iso_week(fecha: str) -> str:
+    """Etiqueta de jornada = semana ISO de la fecha (YYYY-Www). '' si no se puede."""
+    try:
+        from datetime import date
+        y, m, d = str(fecha)[:10].split("-")
+        yr, wk, _ = date(int(y), int(m), int(d)).isocalendar()
+        return f"{yr}-W{wk:02d}"
+    except Exception:
+        return ""
+
+
+def _registrar_survivor_historial(picks, pronosticos) -> None:
+    """
+    Registra el pick #1 de Survivor de la jornada en el track-record (una fila por
+    jornada = semana ISO). Ubica el partido en los pronósticos por equipo+rival
+    según la condición para sacar fecha y local/visitante. Tolerante: nunca lanza.
+    """
+    if not picks:
+        return
+    try:
+        try:
+            import database as _db
+        except ImportError:  # pragma: no cover
+            from src import database as _db  # type: ignore
+    except Exception:  # pragma: no cover
+        return
+    pk = picks[0]
+    equipo = pk.get("equipo")
+    rival = pk.get("rival")
+    if not equipo:
+        return
+    es_local = str(pk.get("condicion") or "").strip().lower() == "local"
+
+    def _cf(s):
+        return str(s or "").strip().casefold()
+
+    def _coincide(pron, exacto=True):
+        loc, vis = pron.get("local", ""), pron.get("visitante", "")
+        if exacto:
+            a, b = (loc, vis) if es_local else (vis, loc)
+            return a == equipo and b == rival
+        a, b = (loc, vis) if es_local else (vis, loc)
+        return _cf(a) == _cf(equipo) and _cf(b) == _cf(rival)
+
+    partido = next((p for p in (pronosticos or []) if _coincide(p, True)), None)
+    if partido is None:
+        partido = next((p for p in (pronosticos or []) if _coincide(p, False)), None)
+    if partido is None:
+        return
+    fecha = str(partido.get("fecha", ""))[:10]
+    jornada = _iso_week(fecha) or fecha
+    if not jornada:
+        return
+    try:
+        _db.registrar_survivor_pick(
+            jornada=jornada, equipo=equipo, rival=rival or "",
+            condicion=pk.get("condicion", ""),
+            local=partido.get("local", ""), visitante=partido.get("visitante", ""),
+            no_perder_pct=pk.get("no_perder_pct", 0),
+            prob_victoria_pct=pk.get("prob_victoria_pct", 0),
+            fecha=fecha,
+        )
+    except Exception:  # pragma: no cover - nunca tumbar el envío por el track-record
+        pass
+
+
 def enviar_pronosticos(equipos_usados: Optional[List[str]] = None,
                        incluir_contexto: bool = True) -> Dict[str, Any]:
     """
@@ -832,6 +898,11 @@ def enviar_pronosticos(equipos_usados: Optional[List[str]] = None,
         _ajustar_pick_top(est.get("picks") or [], resultado.get("pronosticos", []),
                           contexto_pick)
     except Exception:  # pragma: no cover - el ajuste nunca debe tumbar el envío
+        pass
+    # Registra el pick de Survivor de la jornada para el track-record (racha).
+    try:
+        _registrar_survivor_historial(est.get("picks") or [], resultado.get("pronosticos", []))
+    except Exception:  # pragma: no cover - nunca debe tumbar el envío
         pass
     # Jugadores a seguir por partido (goleadores por equipo; una sola llamada).
     goleadores_map = None
@@ -1392,6 +1463,86 @@ def enviar_derrotas() -> Dict[str, Any]:
         _ = exc
     enviado = enviar_mensaje(construir_mensaje_derrotas(rep))
     return {"enviado": enviado, "derrotas": (rep or {}).get("total_derrotas")}
+
+
+# ---------------------------------------------------------------------------
+# "Racha Survivor": track-record real del pick del bot jornada a jornada
+# ---------------------------------------------------------------------------
+def _marcador_a_favor(marcador: str, es_local: bool) -> str:
+    """Orienta 'local-visitante' al lado del equipo elegido (equipo-rival)."""
+    try:
+        hg, ag = str(marcador or "").split("-")
+        return f"{hg.strip()}-{ag.strip()}" if es_local else f"{ag.strip()}-{hg.strip()}"
+    except Exception:
+        return str(marcador or "")
+
+
+def construir_mensaje_survivor_historial(resumen: Dict[str, Any]) -> str:
+    """Mensaje (HTML, móvil) de la racha del pick de Survivor, para /racha."""
+    div = "━━━━━━━━━━"
+    resumen = resumen or {}
+    jugadas = int(resumen.get("jugadas", 0) or 0)
+    pendientes = int(resumen.get("pendientes", 0) or 0)
+    detalle = resumen.get("detalle", []) or []
+    if not jugadas and not pendientes:
+        return ("🏆 <b>RACHA SURVIVOR</b>\n\n"
+                "Aún no hay picks registrados. Cuando use /pick en una jornada guardo "
+                "el pick recomendado; al resolverse los partidos verás aquí si ganó, "
+                "empató (sobrevive) o cayó.\n\n"
+                f"{DISCLAIMER}")
+
+    victorias = int(resumen.get("victorias", 0) or 0)
+    empates = int(resumen.get("empates", 0) or 0)
+    sobrevividas = int(resumen.get("sobrevividas", 0) or 0)
+    vivo = bool(resumen.get("sigue_vivo", True))
+
+    pos_caida = None
+    for i, d in enumerate(detalle, start=1):
+        if d.get("estado") == "perdio":
+            pos_caida = i
+            break
+
+    if jugadas == 0:
+        estado_txt = "⏳ Sin jornadas resueltas todavía"
+    elif not vivo:
+        estado_txt = f"🔴 ELIMINADO en la jornada {pos_caida}"
+    else:
+        estado_txt = "🟢 VIVO"
+
+    lineas = [
+        "🏆 <b>RACHA SURVIVOR</b>",
+        "<i>Track-record del pick recomendado por el bot</i>",
+        div,
+        f"Estado: <b>{estado_txt}</b>",
+    ]
+    if jugadas:
+        lineas.append(f"🗓️ Jornadas resueltas: <b>{jugadas}</b>")
+        lineas.append(f"🛡️ Sobrevividas: <b>{sobrevividas}/{jugadas}</b>")
+        lineas.append(f"✅ Victorias: <b>{victorias}</b> · 🤝 Empates: <b>{empates}</b>")
+        if vivo:
+            lineas.append(f"🔥 Racha viva: <b>{resumen.get('racha', 0)}</b>")
+    if pendientes:
+        lineas.append(f"⏳ Por resolver: <b>{pendientes}</b>")
+
+    if detalle:
+        lineas += [div, "<b>Detalle por jornada:</b>"]
+        icono = {"gano": "🟢", "empate": "🤝", "perdio": "🔴"}
+        for i, d in enumerate(detalle, start=1):
+            ic = icono.get(d.get("estado"), "▫️")
+            es_local = str(d.get("condicion") or "").strip().lower() == "local"
+            marc = _marcador_a_favor(d.get("marcador", ""), es_local)
+            equipo = d.get("equipo", "")
+            rival = d.get("rival", "")
+            pieza = f"{ic} J{i}: <b>{equipo}</b>"
+            if marc:
+                pieza += f" {marc}"
+            pieza += f" vs {rival}"
+            lineas.append(pieza)
+
+    lineas += [div,
+               "ℹ️ Mide el pick del bot, no tus picks manuales de /usado.",
+               DISCLAIMER]
+    return "\n".join(lineas)
 
 
 # ---------------------------------------------------------------------------

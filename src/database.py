@@ -92,6 +92,24 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        # Historial del PICK DE SURVIVOR por jornada (racha: sobrevive/gana/cae).
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS survivor_historial (
+                jornada TEXT PRIMARY KEY,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                fecha TEXT,
+                equipo TEXT,
+                rival TEXT,
+                condicion TEXT,
+                local TEXT,
+                visitante TEXT,
+                no_perder_pct REAL,
+                prob_victoria_pct REAL,
+                marcador_real TEXT,
+                estado TEXT DEFAULT 'pendiente',
+                resuelto INTEGER DEFAULT 0
+            )
+        """)
         # Historial de pronósticos (track-record: marcador exacto + aciertos).
         cur.execute("""
             CREATE TABLE IF NOT EXISTS pronosticos_historial (
@@ -279,6 +297,136 @@ def rentabilidad_pronosticos() -> dict:
         "acierto_1x2_pct": round(100.0 * a1x2 / n, 1) if n else None,
         "aciertos_marcador_exacto": amarc,
         "acierto_marcador_pct": round(100.0 * amarc / n, 1) if n else None,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Historial del PICK DE SURVIVOR (racha real: sobrevive / gana / cae por jornada)
+# ---------------------------------------------------------------------------
+def registrar_survivor_pick(jornada: str, equipo: str, rival: str, condicion: str,
+                            local: str, visitante: str, no_perder_pct: float,
+                            prob_victoria_pct: float, fecha: str = "") -> bool:
+    """
+    Registra (o actualiza si aún está pendiente) el pick de Survivor de una
+    jornada. Una fila por jornada. Si ya está RESUELTO, no se sobreescribe.
+    Devuelve True si insertó/actualizó.
+    """
+    if not jornada or not equipo:
+        return False
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(f"SELECT resuelto FROM survivor_historial WHERE jornada = {PH}", (str(jornada),))
+        row = cur.fetchone()
+        if row is not None:
+            if row[0]:  # ya resuelto: bloqueado
+                return False
+            cur.execute(
+                f"""UPDATE survivor_historial SET fecha={PH}, equipo={PH}, rival={PH},
+                    condicion={PH}, local={PH}, visitante={PH}, no_perder_pct={PH},
+                    prob_victoria_pct={PH} WHERE jornada={PH}""",
+                (str(fecha or "")[:10], str(equipo), str(rival or ""), str(condicion or ""),
+                 str(local or ""), str(visitante or ""), float(no_perder_pct or 0),
+                 float(prob_victoria_pct or 0), str(jornada)),
+            )
+        else:
+            cur.execute(
+                f"""INSERT INTO survivor_historial
+                    (jornada, fecha, equipo, rival, condicion, local, visitante,
+                     no_perder_pct, prob_victoria_pct)
+                    VALUES ({PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH})""",
+                (str(jornada), str(fecha or "")[:10], str(equipo), str(rival or ""),
+                 str(condicion or ""), str(local or ""), str(visitante or ""),
+                 float(no_perder_pct or 0), float(prob_victoria_pct or 0)),
+            )
+        conn.commit()
+        return True
+
+
+def settle_survivor(resultados) -> int:
+    """
+    Resuelve picks de Survivor pendientes con resultados reales. Determina si el
+    equipo elegido GANÓ (punto), EMPATÓ (sobrevive sin punto) o PERDIÓ (eliminado).
+    Devuelve # resueltos.
+    """
+    por_equipos = {}
+    for r in resultados:
+        try:
+            hg, ag = int(r.get("home_goals")), int(r.get("away_goals"))
+        except (TypeError, ValueError):
+            continue
+        clave = f"{_norm_equipo(r.get('home_team', ''))}|{_norm_equipo(r.get('away_team', ''))}"
+        por_equipos.setdefault(clave, {"hg": hg, "ag": ag})
+    settled = 0
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT jornada, condicion, local, visitante "
+                    "FROM survivor_historial WHERE resuelto = 0")
+        pendientes = cur.fetchall()
+        for jornada, condicion, local, visitante in pendientes:
+            info = por_equipos.get(f"{_norm_equipo(local)}|{_norm_equipo(visitante)}")
+            if info is None:
+                continue
+            hg, ag = info["hg"], info["ag"]
+            es_local = str(condicion or "").strip().lower() == "local"
+            gf, gc = (hg, ag) if es_local else (ag, hg)
+            estado = "gano" if gf > gc else ("empate" if gf == gc else "perdio")
+            cur.execute(
+                f"""UPDATE survivor_historial SET marcador_real={PH}, estado={PH}, resuelto=1
+                    WHERE jornada={PH}""",
+                (f"{hg}-{ag}", estado, jornada),
+            )
+            settled += 1
+        conn.commit()
+    return settled
+
+
+def resumen_survivor() -> dict:
+    """
+    Track-record del Survivor: jornadas jugadas, sobrevividas (gana+empata),
+    victorias, empates, si sigue VIVO y en qué jornada cayó. Cronológico por fecha.
+    """
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT jornada, fecha, equipo, rival, condicion, marcador_real, estado "
+            "FROM survivor_historial WHERE resuelto = 1 ORDER BY fecha, jornada"
+        )
+        filas = cur.fetchall()
+        cur.execute("SELECT COUNT(*) FROM survivor_historial WHERE resuelto = 0")
+        pendientes = cur.fetchone()[0] or 0
+
+    jugadas = len(filas)
+    victorias = empates = sobrevividas = 0
+    eliminado_en = None
+    racha = 0
+    detalle = []
+    vivo = True
+    for jornada, fecha, equipo, rival, condicion, marcador, estado in filas:
+        detalle.append({"jornada": jornada, "fecha": fecha, "equipo": equipo,
+                        "rival": rival, "condicion": condicion,
+                        "marcador": marcador, "estado": estado})
+        if estado == "perdio":
+            if eliminado_en is None:
+                eliminado_en = jornada
+                vivo = False
+        else:
+            if estado == "gano":
+                victorias += 1
+            elif estado == "empate":
+                empates += 1
+            sobrevividas += 1
+            if vivo:  # racha antes de la primera caída
+                racha += 1
+    return {
+        "jugadas": jugadas,
+        "pendientes": pendientes,
+        "sobrevividas": sobrevividas,
+        "victorias": victorias,
+        "empates": empates,
+        "eliminado_en": eliminado_en,
+        "sigue_vivo": vivo,
+        "racha": racha,
+        "detalle": detalle,
     }
 
 

@@ -126,6 +126,50 @@ class TestDatabaseSQLite(unittest.TestCase):
                                 "home_goals": 1, "away_goals": 0, "fecha": "2026-08-01"}])
         self.assertEqual(db.rentabilidad_pronosticos()["pendientes"], 1)
 
+    def test_survivor_historial_ciclo(self):
+        db.init_db()
+        # 3 jornadas: gana (local), empata (visitante), pierde (local).
+        db.registrar_survivor_pick("2026-W29", "América", "Chivas", "Local",
+                                   "América", "Chivas", 78.0, 55.0, "2026-07-18")
+        db.registrar_survivor_pick("2026-W30", "Toluca", "Pumas", "Visitante",
+                                   "Pumas", "Toluca", 65.0, 40.0, "2026-07-25")
+        db.registrar_survivor_pick("2026-W31", "Tigres", "Atlas", "Local",
+                                   "Tigres", "Atlas", 70.0, 50.0, "2026-08-01")
+        # Re-registro de una jornada pendiente ACTUALIZA (no duplica).
+        self.assertTrue(db.registrar_survivor_pick(
+            "2026-W29", "América", "Chivas", "Local",
+            "América", "Chivas", 80.0, 57.0, "2026-07-18"))
+
+        resueltos = db.settle_survivor([
+            {"home_team": "América", "away_team": "Chivas", "home_goals": 2, "away_goals": 0},
+            {"home_team": "Pumas", "away_team": "Toluca", "home_goals": 1, "away_goals": 1},
+            {"home_team": "Tigres", "away_team": "Atlas", "home_goals": 0, "away_goals": 1},
+        ])
+        self.assertEqual(resueltos, 3)
+        # Una jornada ya resuelta NO se sobreescribe.
+        self.assertFalse(db.registrar_survivor_pick(
+            "2026-W29", "OTRO", "X", "Local", "OTRO", "X", 1.0, 1.0, "2026-07-18"))
+
+        r = db.resumen_survivor()
+        self.assertEqual(r["jugadas"], 3)
+        self.assertEqual(r["victorias"], 1)
+        self.assertEqual(r["empates"], 1)
+        self.assertEqual(r["sobrevividas"], 2)
+        self.assertFalse(r["sigue_vivo"])
+        self.assertEqual(r["eliminado_en"], "2026-W31")
+        self.assertEqual(r["racha"], 2)
+        self.assertEqual(len(r["detalle"]), 3)
+
+    def test_survivor_settle_otro_partido_queda_pendiente(self):
+        db.init_db()
+        db.registrar_survivor_pick("2026-W29", "León", "Necaxa", "Local",
+                                   "León", "Necaxa", 72.0, 52.0, "2026-07-18")
+        db.settle_survivor([{"home_team": "Cruz Azul", "away_team": "Atlas",
+                             "home_goals": 1, "away_goals": 0}])
+        r = db.resumen_survivor()
+        self.assertEqual(r["jugadas"], 0)
+        self.assertEqual(r["pendientes"], 1)
+
 
 class TestEsPostgres(unittest.TestCase):
     def test_detecta_postgres(self):

@@ -31,6 +31,7 @@ AYUDA = (
     "/confianza — revisa si la confianza del bot es honesta o exagerada\n"
     "/derrotas — aprende de las derrotas pasadas (en qué partido cayó y por qué)\n"
     "/ganadores — el 'Survivor perfecto' (con diario del futuro) vs el bot\n"
+    "/racha — tu track-record: jornadas sobrevividas, victorias y si sigues vivo\n"
     "/usado &lt;equipo&gt; — marca un equipo como usado (lo excluye)\n"
     "/usados — lista tus equipos usados\n"
     "/quitar &lt;equipo&gt; — quita un equipo de la lista\n"
@@ -62,6 +63,9 @@ CMDS_DERROTAS = {"derrotas", "aprender", "errores", "postmortem"}
 
 # "Ganadores" = Survivor perfecto (oráculo) vs el bot (pesado -> background).
 CMDS_GANADORES = {"ganadores", "perfecto", "oraculo", "ideal"}
+
+# "Racha" = track-record REAL del pick de Survivor del bot (ligero -> lee la BD).
+CMDS_RACHA = {"racha", "rachas", "vivo", "trackrecord", "mirracha"}
 
 
 def parsear_comando(texto: str) -> Tuple[Optional[str], str]:
@@ -131,6 +135,17 @@ def responder(cmd: Optional[str], arg: str) -> str:
         except Exception as exc:  # pragma: no cover
             return f"⚠️ No se pudo reiniciar: {exc}"
         return f"♻️ Lista de usados reiniciada ({borrados} borrados). Nueva temporada."
+
+    if cmd in CMDS_RACHA:
+        try:
+            resumen = db.resumen_survivor()
+        except Exception as exc:  # pragma: no cover - BD no disponible
+            return f"⚠️ No se pudo leer la racha: {exc}"
+        try:
+            import telegram_pronosticos as tp
+        except ImportError:  # pragma: no cover
+            from src import telegram_pronosticos as tp  # type: ignore
+        return tp.construir_mensaje_survivor_historial(resumen)
 
     return "❓ Comando no reconocido. Usa /ayuda"
 

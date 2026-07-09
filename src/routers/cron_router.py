@@ -16,12 +16,14 @@ def cron_backtest():
     try:
         try:
             import fuentes_datos as fd
-            from database import settle_pronosticos
+            from database import settle_pronosticos, settle_survivor
         except ImportError:  # pragma: no cover
             from src import fuentes_datos as fd  # type: ignore
-            from src.database import settle_pronosticos  # type: ignore
+            from src.database import settle_pronosticos, settle_survivor  # type: ignore
         datos = fd.obtener_resultados(meses=6)
         resultado["pronosticos_resueltos"] = settle_pronosticos(datos.get("resultados", []))
+        # Resolver también el track-record del pick de Survivor (gana/empata/cae).
+        resultado["survivor_resueltos"] = settle_survivor(datos.get("resultados", []))
     except Exception as exc:  # pragma: no cover - no tumbar el cron por esto
         resultado["settle_error"] = str(exc)
     return resultado
