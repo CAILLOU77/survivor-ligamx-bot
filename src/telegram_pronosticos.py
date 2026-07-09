@@ -371,6 +371,27 @@ def _fecha_mx(generado_utc: str) -> str:
         return s.replace("T", " ").replace("Z", " UTC")
 
 
+def _cerca_de_jornada(pronosticos, dias: int = 2) -> bool:
+    """
+    True si el partido más próximo de la jornada arranca dentro de `dias` (día de
+    jornada). En ese caso vale la pena DESPERTAR la API hermana y esperar por los
+    extras; lejos de la jornada, mejor responder rápido y sin enriquecer.
+    """
+    from datetime import date, datetime, timezone
+    hoy = datetime.now(timezone.utc).date()
+    fechas = []
+    for p in pronosticos or []:
+        s = str(p.get("fecha", ""))[:10]
+        try:
+            y, m, d = s.split("-")
+            fechas.append(date(int(y), int(m), int(d)))
+        except (ValueError, TypeError):
+            continue
+    if not fechas:
+        return False
+    return (min(fechas) - hoy).days <= dias
+
+
 def _linea_goles(p: Dict[str, Any]) -> str:
     """Línea de goles: pick Over/Under con su %, BTTS y marcador más probable.
 
@@ -906,17 +927,21 @@ def enviar_pronosticos(equipos_usados: Optional[List[str]] = None,
     except Exception:  # pragma: no cover
         motivacion = {}
 
-    # Chequeo RÁPIDO de la API hermana (Render free duerme y despierta lento). Si
-    # no responde en ~5s, saltamos el enriquecimiento que hace muchas llamadas
-    # (dossier, goleadores, porteros, estado) para que el pick NO se cuelgue
-    # minutos esperando cold starts. El mensaje central sale igual.
+    # Chequeo de la API hermana (Render free duerme y despierta lento).
+    # - DÍA DE JORNADA (partido a <=2 días): la DESPERTAMOS y esperamos hasta ~45s
+    #   para traer todos los extras (forma, jugadores a seguir, dossier). Un solo
+    #   /health aguanta el cold start de Render y confirma cuando ya está lista.
+    # - LEJOS de la jornada: chequeo rápido (5s); si duerme, saltamos el
+    #   enriquecimiento lento y mandamos el pick igual sin colgarnos minutos.
+    # El CEREBRO del pick (modelo + momios + estrategia) NO depende de esto.
+    cerca = _cerca_de_jornada(resultado.get("pronosticos", []))
     api_ok = False
     try:
         try:
             import ligamx_api as _lmx_probe
         except ImportError:  # pragma: no cover
             from src import ligamx_api as _lmx_probe  # type: ignore
-        api_ok = _lmx_probe.disponible(timeout=5)
+        api_ok = _lmx_probe.disponible(timeout=45 if cerca else 5)
     except Exception:  # pragma: no cover
         api_ok = False
 

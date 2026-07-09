@@ -427,3 +427,25 @@ class TestFormatoMovil(unittest.TestCase):
         self.assertIn("CDMX", tp._fecha_mx("2026-07-16T10:00:00Z"))
         # Valor inválido -> no rompe.
         self.assertEqual(tp._fecha_mx("basura"), "basura")
+
+
+class TestCercaDeJornada(unittest.TestCase):
+    def _fecha(self, dias_desde_hoy):
+        from datetime import datetime, timedelta, timezone
+        return (datetime.now(timezone.utc) + timedelta(days=dias_desde_hoy)).strftime("%Y-%m-%d")
+
+    def test_cerca_si_partido_manana(self):
+        pron = [{"fecha": self._fecha(1)}, {"fecha": self._fecha(2)}]
+        self.assertTrue(tp._cerca_de_jornada(pron))
+
+    def test_lejos_si_faltan_muchos_dias(self):
+        pron = [{"fecha": self._fecha(6)}, {"fecha": self._fecha(7)}]
+        self.assertFalse(tp._cerca_de_jornada(pron))
+
+    def test_sin_fechas_es_lejos(self):
+        self.assertFalse(tp._cerca_de_jornada([{"fecha": ""}, {}]))
+
+    def test_usa_el_partido_mas_proximo(self):
+        # El más próximo (mañana) manda, aunque otros estén lejos.
+        pron = [{"fecha": self._fecha(1)}, {"fecha": self._fecha(9)}]
+        self.assertTrue(tp._cerca_de_jornada(pron))
