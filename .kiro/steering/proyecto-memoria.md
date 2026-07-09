@@ -15,6 +15,17 @@ Complementa a `survivor-playdoit-reglas.md` (las reglas del juego).
 - **Plan de temporada**: `planificador_survivor.py` (asignación húngara). NO está predeterminado: se recalcula cada vez según resultados, momios y equipos usados.
 - **Protecciones (partido trampa)**: sensor under/partido cerrado (`_GOLES_CERRADO=2.3`), favorito visitante penalizado, empate alto, sin favorito claro. Medido: favorito visitante falla ~59% vs ~46% local.
 - **Comandos Telegram** (bot @Brucewayneuwu_bot, chat dueño): jugar → `/pick`, `/seguir` (XI ~1h antes), `/plan`, `/momios`. Revisar → `/prueba`, `/confianza`, `/derrotas`, `/ganadores`, `/racha`.
+- **TRAMPA Telegram (límite 4096)**: `sendMessage` rechaza (HTTP 400) textos >4096
+  chars EN SILENCIO. Con la jornada completa (8-9 partidos) el mensaje de `/pick`
+  llega a ~7000 chars → se rechazaba y "no llegaba nada" (parecía que tardaba). Fix:
+  `telegram_pronosticos._dividir_mensaje` + `enviar_mensaje` parte en trozos <=4000 y
+  los manda en orden. Cualquier mensaje nuevo largo DEBE pasar por `enviar_mensaje`.
+- **`/pick` (enviar_pronosticos)**: chequeo rápido de la API hermana; en día de jornada
+  (partido a <=2 días) la despierta y espera ~45s por los extras (forma, jugadores a
+  seguir, dossier); lejos, responde rápido y omite extras si la API duerme. El CEREBRO
+  del pick (modelo+momios+estrategia) va completo siempre. `/pick` arma la PRÓXIMA
+  JORNADA completa (`espn_data.obtener_fixtures_proxima_jornada`), no el scoreboard
+  recortado de ESPN.
 - **Track-record del pick de Survivor** (racha real): tabla `survivor_historial` (una fila por jornada = semana ISO). El envío de `/pick` registra el pick #1 recomendado (`_registrar_survivor_historial` en `telegram_pronosticos.py`); el cron `/cron/backtest` lo resuelve (`settle_survivor`) → gana/empata(sobrevive)/pierde. Comando `/racha` muestra jornadas sobrevividas, victorias, empates y si sigue vivo. Mide el pick del BOT, no los `/usado` manuales.
 
 ## Arquitectura de la API (ligamx-api)
