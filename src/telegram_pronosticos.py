@@ -120,18 +120,18 @@ def _formatear_contexto(ctx: Optional[Dict[str, Any]]) -> List[str]:
             fuerza = info.get("fuerza_xi_pct")
             ausentes = info.get("ausentes_clave") or []
             if fuerza is not None:
-                txt = f"🧮 Fuerza XI {equipo}: {fuerza}%"
+                txt = f"🧮 Fuerza XI {equipo}: {_pct(fuerza)}%"
                 if ausentes:
                     nombres = ", ".join(
-                        f"{a.get('jugador')} ({a.get('importancia_pct')}%)" if isinstance(a, dict) else str(a)
+                        f"{a.get('jugador')} ({_pct(a.get('importancia_pct'))}%)" if isinstance(a, dict) else str(a)
                         for a in ausentes[:3]
                     )
                     txt += f" — falta {nombres}"
                 lineas.append(txt)
     if pred:
         lineas.append(
-            f"🧠 2ª opinión API: L{pred['prob_local_pct']}/E{pred['prob_empate_pct']}/"
-            f"V{pred['prob_visita_pct']} · goles {pred['goles_esp']}"
+            f"🧠 2ª opinión API: L{_pct(pred['prob_local_pct'])}/E{_pct(pred['prob_empate_pct'])}/"
+            f"V{_pct(pred['prob_visita_pct'])} · goles {pred['goles_esp']}"
         )
     if forma_l or forma_v:
         lineas.append(f"📈 Forma: {ctx.get('home')} {forma_l or '—'} · {ctx.get('away')} {forma_v or '—'}")
@@ -351,6 +351,26 @@ def _porteros_partido(p: Dict[str, Any],
     return " · ".join(partes)
 
 
+def _pct(v: Any) -> str:
+    """Porcentaje legible en móvil: sin decimales de ruido (55.0 -> '55')."""
+    try:
+        return str(int(round(float(v))))
+    except (TypeError, ValueError):
+        return str(v)
+
+
+def _fecha_mx(generado_utc: str) -> str:
+    """Fecha/hora en horario de Ciudad de México, sin segundos. Fallback a UTC."""
+    s = str(generado_utc or "")
+    try:
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        return dt.astimezone(ZoneInfo("America/Mexico_City")).strftime("%d/%m/%Y %H:%M") + " h (CDMX)"
+    except Exception:
+        return s.replace("T", " ").replace("Z", " UTC")
+
+
 def _linea_goles(p: Dict[str, Any]) -> str:
     """Línea de goles: pick Over/Under con su %, BTTS y marcador más probable.
 
@@ -364,9 +384,12 @@ def _linea_goles(p: Dict[str, Any]) -> str:
     pct_txt = ""
     if over is not None:
         pct = float(over) if pick_ou == "Over" else round(100.0 - float(over), 1)
-        pct_txt = f" ({pct}%)"
+        pct_txt = f" ({_pct(pct)}%)"
+    # BTTS solo si hay dato (evita mostrar 'None').
+    btts = p.get("pick_btts")
+    btts_txt = f" · BTTS {btts}" if btts else ""
     marcador = str(p.get("marcador_mas_probable", ""))
-    linea = (f"⚽ Goles: {pick_ou} 2.5{pct_txt} · BTTS {p.get('pick_btts')}\n"
+    linea = (f"⚽ Goles: {pick_ou} 2.5{pct_txt}{btts_txt}\n"
              f"🔢 Marcador probable: {marcador}")
     # ¿Choca la moda con el pick Over/Under?
     total = None
@@ -406,13 +429,13 @@ def construir_mensaje(
     `porteros_map`: {equipo: {nombre, vallas_invictas}} para el dato defensivo (portería a 0).
     """
     pronosticos = resultado.get("pronosticos", [])
-    fecha = str(resultado.get("generado_utc", "")).replace("T", " ").replace("Z", " UTC")
+    fecha = _fecha_mx(resultado.get("generado_utc", ""))
 
     div = "━━━━━━━━━━"
     lineas = [
         "🔮 <b>PRONÓSTICOS LIGA MX</b>",
         "<i>Modelo ESPN + Poisson</i>",
-        f"<i>{fecha}</i>",
+        f"🕒 <i>{fecha}</i>",
         div,
     ]
 
@@ -437,11 +460,11 @@ def construir_mensaje(
         emp = None
         if noperder is not None and gana is not None:
             emp = round(float(noperder) - float(gana), 1)
-        lineas.append(f"✅ Sobrevive (gana o empata): <b>{noperder}%</b>")
+        lineas.append(f"✅ Sobrevive (gana o empata): <b>{_pct(noperder)}%</b>")
         if gana is not None:
-            linea_g = f"🏆 Gana: <b>{gana}%</b>"
+            linea_g = f"🏆 Gana: <b>{_pct(gana)}%</b>"
             if emp is not None:
-                linea_g += f" · 🤝 solo empata: {emp}%"
+                linea_g += f" · 🤝 solo empata: {_pct(emp)}%"
             lineas.append(linea_g)
         lineas.append(f"🎯 Confianza: <b>{rec.get('nivel', '—')}</b>")
         if motivacion:
@@ -464,7 +487,7 @@ def construir_mensaje(
                 sede = "de local vs" if pk.get("condicion") == "Local" else "de visita vs"
                 lineas.append(
                     f"{medallas[i]} <b>{pk['equipo']}</b> ({sede} {pk['rival']}) "
-                    f"— sobrevive {pk['no_perder_pct']}%{nivel}"
+                    f"— sobrevive {_pct(pk['no_perder_pct'])}%{nivel}"
                 )
         contexto_lineas = _formatear_contexto(contexto_pick)
         if contexto_lineas:
@@ -492,10 +515,10 @@ def construir_mensaje(
             n = nums[idx] if idx < len(nums) else "•"
             conf = f" · confianza <b>{p['nivel_confianza']}</b>" if p.get("nivel_confianza") else ""
             prob_pick = p.get("prob_pick_pct")
-            pptxt = f" ({prob_pick}%)" if prob_pick is not None else ""
+            pptxt = f" ({_pct(prob_pick)}%)" if prob_pick is not None else ""
             lineas.append(f"{n} <b>{p['local']}</b> 🏠 vs <b>{p['visitante']}</b> ✈️")
             lineas.append(f"🎯 Pick: <b>{_pick_club(p)}</b>{pptxt}{conf}")
-            lineas.append(f"📊 Local {p['prob_local_pct']}% · Empate {p['prob_empate_pct']}% · Visita {p['prob_visitante_pct']}%")
+            lineas.append(f"📊 Local {_pct(p['prob_local_pct'])}% · Empate {_pct(p['prob_empate_pct'])}% · Visita {_pct(p['prob_visitante_pct'])}%")
             lineas.append(_linea_goles(p))
             if p.get("explicacion_1x2"):
                 lineas.append(f"💡 {p['explicacion_1x2']}")
@@ -959,13 +982,13 @@ def construir_mensaje_seguimiento(items: List[Dict[str, Any]],
     cuando = rec_item.get("cuando") or ""
     ver = rec_item.get("veredicto") or {}
     gana = rec.get("prob_victoria_pct")
-    gtxt = f" · gana {gana}%" if gana is not None else ""
+    gtxt = f" · gana {_pct(gana)}%" if gana is not None else ""
 
     lineas = [
         "🎯 <b>TU PICK DE SURVIVOR</b>",
         f"✅ <b>{rec['equipo']}</b>",
         f"{_sede(rec)} vs {rec['rival']}",
-        f"Sobrevive {rec['no_perder_pct']}%{gtxt}",
+        f"Sobrevive {_pct(rec['no_perder_pct'])}%{gtxt}",
         f"Confianza <b>{rec.get('nivel', '—')}</b>",
     ]
     if nota_plan:
@@ -1007,7 +1030,7 @@ def construir_mensaje_seguimiento(items: List[Dict[str, Any]],
         alt_cuando = f" ({alt_resp['cuando']})" if alt_resp.get("cuando") else ""
         lineas.append(
             f"🛡️ Opción CON respaldo: <b>{alt_resp['equipo']}</b>{alt_cuando} — "
-            f"sobrevive {alt_resp['no_perder_pct']}%. Si su XI sale bien lo aseguras "
+            f"sobrevive {_pct(alt_resp['no_perder_pct'])}%. Si su XI sale bien lo aseguras "
             "temprano; si no, aún te quedan partidos por jugar."
         )
         alt_ver = alt_resp.get("veredicto") or {}
@@ -1176,7 +1199,7 @@ def construir_mensaje_plan(plan: Dict[str, Any]) -> str:
                 f"{DISCLAIMER}")
     lineas = [
         "📅 <b>PLAN SURVIVOR — temporada</b> (modelo · datos ESPN)",
-        f"<i>🛡️ Sobrevivir las 17 jornadas: {plan.get('prob_supervivencia_total_pct')}% · "
+        f"<i>🛡️ Sobrevivir las 17 jornadas: {_pct(plan.get('prob_supervivencia_total_pct'))}% · "
         f"🏆 victorias esperadas: {plan.get('victorias_esperadas')}</i>",
         "<i>Idea: gastar equipos flojos en su mejor partido y guardar a los fuertes "
         "para las jornadas difíciles. Ganar es lo que vale (desempate).</i>",
@@ -1187,7 +1210,7 @@ def construir_mensaje_plan(plan: Dict[str, Any]) -> str:
             f"<b>J{p['jornada']} · {p['equipo']}</b> ({p['condicion']} vs {p['rival']})"
         )
         lineas.append(
-            f"🏆 gana {p['prob_ganar_pct']}% · 🛡️ sobrevive {p['no_perder_pct']}% [{p['nivel']}]"
+            f"🏆 gana {_pct(p['prob_ganar_pct'])}% · 🛡️ sobrevive {_pct(p['no_perder_pct'])}% [{p['nivel']}]"
         )
     riesgosas = plan.get("jornadas_riesgosas") or []
     if riesgosas:

@@ -323,9 +323,10 @@ class TestImpactoXI(unittest.TestCase):
             },
         }
         msg = "\n".join(tp._formatear_contexto(ctx))
-        self.assertIn("Fuerza XI América: 82.5%", msg)
-        self.assertIn("A. Zendejas (11.2%)", msg)
-        self.assertIn("Fuerza XI Toluca: 100.0%", msg)
+        # Porcentajes redondeados a entero para lectura limpia en móvil.
+        self.assertIn("Fuerza XI América: 82%", msg)
+        self.assertIn("A. Zendejas (11%)", msg)
+        self.assertIn("Fuerza XI Toluca: 100%", msg)
 
 
 class TestH2HDossier(unittest.TestCase):
@@ -370,3 +371,37 @@ class TestXIProbable(unittest.TestCase):
         msg = "\n".join(tp._formatear_contexto(ctx))
         self.assertIn("XI CONFIRMADO", msg)
         self.assertNotIn("XI PROBABLE", msg)  # si ya hay confirmado, no muestra el probable
+
+
+class TestFormatoMovil(unittest.TestCase):
+    def test_pct_sin_decimales(self):
+        self.assertEqual(tp._pct(55.0), "55")
+        self.assertEqual(tp._pct(57.6), "58")
+        self.assertEqual(tp._pct(100.0), "100")
+
+    def test_pct_tolera_none(self):
+        self.assertEqual(tp._pct(None), "None")
+
+    def test_mensaje_no_muestra_decimales_ruido(self):
+        msg = tp.construir_mensaje(_resultado())
+        self.assertIn("80%", msg)       # no-perder redondeado
+        self.assertNotIn("80.0%", msg)
+        self.assertNotIn("55.0%", msg)
+
+    def test_goles_omite_btts_none(self):
+        p = {"pick_ou": "Over", "prob_over_pct": 60.0, "marcador_mas_probable": "2-1"}
+        linea = tp._linea_goles(p)  # sin pick_btts
+        self.assertNotIn("BTTS None", linea)
+        self.assertNotIn("None", linea)
+
+    def test_goles_incluye_btts_si_hay(self):
+        p = {"pick_ou": "Over", "prob_over_pct": 60.0, "pick_btts": "Sí",
+             "marcador_mas_probable": "2-1"}
+        self.assertIn("BTTS Sí", tp._linea_goles(p))
+
+    def test_fecha_mx_convierte_y_fallback(self):
+        # 10:00 UTC -> 04:00 CDMX (UTC-6, sin horario de verano).
+        self.assertIn("04:00", tp._fecha_mx("2026-07-16T10:00:00Z"))
+        self.assertIn("CDMX", tp._fecha_mx("2026-07-16T10:00:00Z"))
+        # Valor inválido -> no rompe.
+        self.assertEqual(tp._fecha_mx("basura"), "basura")
