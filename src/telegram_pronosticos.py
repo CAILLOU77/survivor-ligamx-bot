@@ -906,15 +906,29 @@ def enviar_pronosticos(equipos_usados: Optional[List[str]] = None,
     except Exception:  # pragma: no cover
         motivacion = {}
 
+    # Chequeo RÁPIDO de la API hermana (Render free duerme y despierta lento). Si
+    # no responde en ~5s, saltamos el enriquecimiento que hace muchas llamadas
+    # (dossier, goleadores, porteros, estado) para que el pick NO se cuelgue
+    # minutos esperando cold starts. El mensaje central sale igual.
+    api_ok = False
+    try:
+        try:
+            import ligamx_api as _lmx_probe
+        except ImportError:  # pragma: no cover
+            from src import ligamx_api as _lmx_probe  # type: ignore
+        api_ok = _lmx_probe.disponible(timeout=5)
+    except Exception:  # pragma: no cover
+        api_ok = False
+
     contexto_pick = None
-    if incluir_contexto:
+    if incluir_contexto and api_ok:
         contexto_pick = _contexto_top_pick(resultado.get("pronosticos", []),
                                            equipos_usados, motivacion)
 
     # Pick ESTRATÉGICO (cautela de arranque + anti-sorpresa visitante).
     est = motor.mejores_picks_estrategico(
         resultado.get("pronosticos", []), equipos_usados, motivacion,
-        partidos_jugados_torneo=_partidos_jugados_torneo(), n=3,
+        partidos_jugados_torneo=_partidos_jugados_torneo() if api_ok else None, n=3,
     )
     # Ajuste MODERADO del pick #1 por XI confirmado + H2H (con tope; nunca voltea).
     try:
@@ -928,24 +942,26 @@ def enviar_pronosticos(equipos_usados: Optional[List[str]] = None,
     except Exception:  # pragma: no cover - nunca debe tumbar el envío
         pass
     # Jugadores a seguir por partido (goleadores por equipo; una sola llamada).
+    # Solo si la API hermana respondió el chequeo rápido (evita cold-start lento).
     goleadores_map = None
-    try:
-        try:
-            import ligamx_api as lmx
-        except ImportError:  # pragma: no cover
-            from src import ligamx_api as lmx  # type: ignore
-        goleadores_map = lmx.goleadores_por_equipo()
-    except Exception:  # pragma: no cover - nunca debe tumbar el envío
-        goleadores_map = None
     porteros_map = None
-    try:
+    if api_ok:
         try:
-            import ligamx_api as lmx
-        except ImportError:  # pragma: no cover
-            from src import ligamx_api as lmx  # type: ignore
-        porteros_map = lmx.porteros_por_equipo()
-    except Exception:  # pragma: no cover - nunca debe tumbar el envío
-        porteros_map = None
+            try:
+                import ligamx_api as lmx
+            except ImportError:  # pragma: no cover
+                from src import ligamx_api as lmx  # type: ignore
+            goleadores_map = lmx.goleadores_por_equipo()
+        except Exception:  # pragma: no cover - nunca debe tumbar el envío
+            goleadores_map = None
+        try:
+            try:
+                import ligamx_api as lmx
+            except ImportError:  # pragma: no cover
+                from src import ligamx_api as lmx  # type: ignore
+            porteros_map = lmx.porteros_por_equipo()
+        except Exception:  # pragma: no cover - nunca debe tumbar el envío
+            porteros_map = None
     mensaje = construir_mensaje(resultado, equipos_usados, motivacion, contexto_pick,
                                 tops=est.get("picks"), advertencia=est.get("advertencia"),
                                 goleadores_map=goleadores_map, porteros_map=porteros_map)

@@ -62,21 +62,24 @@ def base_url() -> str:
 
 def _timeout() -> float:
     try:
-        return float(os.getenv("LIGAMX_API_TIMEOUT", "30"))
+        return float(os.getenv("LIGAMX_API_TIMEOUT", "12"))
     except (TypeError, ValueError):
-        return 30.0
+        return 12.0
 
 
-def _get(path: str, params: Optional[Dict[str, Any]] = None) -> Any:
+def _get(path: str, params: Optional[Dict[str, Any]] = None,
+         timeout: Optional[float] = None) -> Any:
     """
     GET a la API y devuelve el JSON parseado. Lanza RuntimeError con un mensaje
     claro si falta `requests`, hay error de red o la API responde != 200.
+    `timeout`: segundos por request (default LIGAMX_API_TIMEOUT).
     """
     if requests is None:
         raise RuntimeError("La dependencia 'requests' no está instalada.")
     url = f"{base_url()}/{path.lstrip('/')}"
     try:
-        resp = requests.get(url, params=params or {}, timeout=_timeout())
+        resp = requests.get(url, params=params or {},
+                            timeout=timeout if timeout is not None else _timeout())
     except requests.RequestException as exc:  # pragma: no cover - error de red
         raise RuntimeError(f"No se pudo conectar a la Liga MX API: {exc}") from exc
     if resp.status_code != 200:
@@ -87,10 +90,14 @@ def _get(path: str, params: Optional[Dict[str, Any]] = None) -> Any:
 # ---------------------------------------------------------------------------
 # Salud / estado
 # ---------------------------------------------------------------------------
-def disponible() -> bool:
-    """True si la API responde en /health. Nunca lanza (útil para healthchecks)."""
+def disponible(timeout: Optional[float] = None) -> bool:
+    """
+    True si la API responde en /health. Nunca lanza (útil para healthchecks).
+    `timeout` corto (ej. 5s) sirve para decidir rápido si vale la pena enriquecer
+    o si la API está dormida (Render free) y conviene saltarse el enriquecimiento.
+    """
     try:
-        _get("/health")
+        _get("/health", timeout=timeout)
         return True
     except Exception:
         return False

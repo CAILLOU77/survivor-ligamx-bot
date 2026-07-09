@@ -91,12 +91,16 @@ class TestEnviar(unittest.TestCase):
                 self.assertTrue(tp.enviar_mensaje("hola"))
 
     def test_enviar_pronosticos_flujo(self):
+        # API hermana disponible: camino enriquecido (goleadores/porteros mockeados).
         with mock.patch.object(tp.motor, "generar_pronosticos", return_value=_resultado()):
             with mock.patch.object(tp.motor, "motivacion_por_equipo", return_value={}):
-                with mock.patch.object(tp, "_contexto_top_pick", return_value=None):
-                    with mock.patch.object(tp, "_partidos_jugados_torneo", return_value=100):
-                        with mock.patch.object(tp, "enviar_mensaje", return_value=True) as menv:
-                            r = tp.enviar_pronosticos()
+                with mock.patch("ligamx_api.disponible", return_value=True):
+                    with mock.patch("ligamx_api.goleadores_por_equipo", return_value={}):
+                        with mock.patch("ligamx_api.porteros_por_equipo", return_value={}):
+                            with mock.patch.object(tp, "_contexto_top_pick", return_value=None):
+                                with mock.patch.object(tp, "_partidos_jugados_torneo", return_value=100):
+                                    with mock.patch.object(tp, "enviar_mensaje", return_value=True) as menv:
+                                        r = tp.enviar_pronosticos()
         self.assertTrue(r["enviado"])
         self.assertEqual(r["total_pronosticos"], 1)
         menv.assert_called_once()
@@ -105,11 +109,29 @@ class TestEnviar(unittest.TestCase):
         # incluir_contexto=False no debe intentar resolver el dossier.
         with mock.patch.object(tp.motor, "generar_pronosticos", return_value=_resultado()):
             with mock.patch.object(tp.motor, "motivacion_por_equipo", return_value={}):
-                with mock.patch.object(tp, "_partidos_jugados_torneo", return_value=100):
-                    with mock.patch.object(tp, "_contexto_top_pick") as mctx:
-                        with mock.patch.object(tp, "enviar_mensaje", return_value=True):
-                            tp.enviar_pronosticos(incluir_contexto=False)
+                with mock.patch("ligamx_api.disponible", return_value=False):
+                    with mock.patch.object(tp, "_partidos_jugados_torneo", return_value=100):
+                        with mock.patch.object(tp, "_contexto_top_pick") as mctx:
+                            with mock.patch.object(tp, "enviar_mensaje", return_value=True):
+                                tp.enviar_pronosticos(incluir_contexto=False)
         mctx.assert_not_called()
+
+    def test_enviar_pronosticos_api_dormida_no_enriquece_pero_envia(self):
+        # Si la API hermana no responde el chequeo rápido, se SALTA el
+        # enriquecimiento lento (dossier/goleadores/porteros) y AÚN ASÍ envía.
+        with mock.patch.object(tp.motor, "generar_pronosticos", return_value=_resultado()):
+            with mock.patch.object(tp.motor, "motivacion_por_equipo", return_value={}):
+                with mock.patch("ligamx_api.disponible", return_value=False):
+                    with mock.patch("ligamx_api.goleadores_por_equipo") as mgol:
+                        with mock.patch("ligamx_api.porteros_por_equipo") as mpor:
+                            with mock.patch.object(tp, "_contexto_top_pick") as mctx:
+                                with mock.patch.object(tp, "enviar_mensaje", return_value=True) as menv:
+                                    r = tp.enviar_pronosticos()
+        mgol.assert_not_called()
+        mpor.assert_not_called()
+        mctx.assert_not_called()
+        self.assertTrue(r["enviado"])
+        menv.assert_called_once()
 
 
 class TestMercadoYMotivacion(unittest.TestCase):
