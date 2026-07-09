@@ -449,3 +449,35 @@ class TestCercaDeJornada(unittest.TestCase):
         # El más próximo (mañana) manda, aunque otros estén lejos.
         pron = [{"fecha": self._fecha(1)}, {"fecha": self._fecha(9)}]
         self.assertTrue(tp._cerca_de_jornada(pron))
+
+
+class TestDividirMensaje(unittest.TestCase):
+    def test_mensaje_corto_no_se_parte(self):
+        self.assertEqual(tp._dividir_mensaje("hola\nmundo"), ["hola\nmundo"])
+
+    def test_mensaje_largo_se_parte_en_trozos_validos(self):
+        texto = "\n".join(f"linea {i} " + "x" * 50 for i in range(300))
+        partes = tp._dividir_mensaje(texto, limite=1000)
+        self.assertGreater(len(partes), 1)
+        for p in partes:
+            self.assertLessEqual(len(p), 1000)
+        # No se pierde contenido (se reconstruye el mismo texto).
+        self.assertEqual("\n".join(partes), texto)
+
+    def test_no_corta_a_media_linea(self):
+        texto = "\n".join("A" * 30 for _ in range(20))
+        for p in tp._dividir_mensaje(texto, limite=100):
+            for linea in p.split("\n"):
+                self.assertEqual(linea, "A" * 30)  # ninguna línea quedó cortada
+
+    def test_enviar_mensaje_largo_manda_varios(self):
+        largo = "\n".join(f"linea {i} " + "y" * 60 for i in range(400))
+        self.assertGreater(len(largo), 4096)
+        with mock.patch.dict(os.environ, {"TELEGRAM_BOT_TOKEN": "t", "TELEGRAM_CHAT_ID": "c"}, clear=False):
+            with mock.patch.object(tp, "requests") as mreq:
+                mreq.post.return_value = mock.Mock(status_code=200)
+                ok = tp.enviar_mensaje(largo)
+        self.assertTrue(ok)
+        self.assertGreater(mreq.post.call_count, 1)  # se partió en varios envíos
+        for call in mreq.post.call_args_list:
+            self.assertLessEqual(len(call.kwargs["data"]["text"]), 4000)

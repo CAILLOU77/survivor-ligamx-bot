@@ -575,8 +575,42 @@ def construir_mensaje(
     return "\n".join(lineas)
 
 
+_TELEGRAM_LIMITE = 4000  # tope real de Telegram es 4096; dejamos margen.
+
+
+def _dividir_mensaje(texto: str, limite: int = _TELEGRAM_LIMITE) -> List[str]:
+    """
+    Parte un mensaje largo en trozos <= `limite`, cortando SIEMPRE en saltos de
+    línea (nunca a media línea) para respetar el tope de Telegram (~4096) y no
+    romper etiquetas HTML (cada línea abre y cierra las suyas).
+    """
+    if len(texto) <= limite:
+        return [texto]
+    partes: List[str] = []
+    actual = ""
+    for linea in texto.split("\n"):
+        # Línea suelta más larga que el límite (muy raro): corte duro.
+        while len(linea) > limite:
+            if actual:
+                partes.append(actual)
+                actual = ""
+            partes.append(linea[:limite])
+            linea = linea[limite:]
+        if actual and len(actual) + 1 + len(linea) > limite:
+            partes.append(actual)
+            actual = linea
+        else:
+            actual = f"{actual}\n{linea}" if actual else linea
+    if actual:
+        partes.append(actual)
+    return partes
+
+
 def enviar_mensaje(mensaje: str) -> bool:
-    """Envía un mensaje a Telegram. Devuelve True si se envió (200)."""
+    """
+    Envía un mensaje a Telegram. Si excede el tope (~4096), lo parte en varios
+    y los manda en orden. Devuelve True solo si TODOS los trozos se enviaron.
+    """
     if requests is None:
         print("⚠️ 'requests' no instalado; no se envía.")
         return False
@@ -586,14 +620,19 @@ def enviar_mensaje(mensaje: str) -> bool:
         print("⚠️ Telegram no configurado (faltan TELEGRAM_BOT_TOKEN/CHAT_ID).")
         return False
     url = f"https://api.telegram.org/bot{token}/sendMessage"
-    try:
-        resp = requests.post(
-            url, data={"chat_id": chat_id, "text": mensaje, "parse_mode": "HTML"}, timeout=20
-        )
-        return resp.status_code == 200
-    except Exception as exc:  # pragma: no cover
-        print(f"Error enviando Telegram: {exc}")
-        return False
+    ok = True
+    for parte in _dividir_mensaje(mensaje):
+        try:
+            resp = requests.post(
+                url, data={"chat_id": chat_id, "text": parte, "parse_mode": "HTML"}, timeout=20
+            )
+            if resp.status_code != 200:
+                ok = False
+                print(f"Telegram HTTP {resp.status_code}: {resp.text[:200]}")
+        except Exception as exc:  # pragma: no cover
+            print(f"Error enviando Telegram: {exc}")
+            ok = False
+    return ok
 
 
 def _falta_en_xi(clave: List[str], titulares: List[str]) -> List[str]:
