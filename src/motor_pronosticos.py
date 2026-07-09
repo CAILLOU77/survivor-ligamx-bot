@@ -178,6 +178,7 @@ def pronosticar_partido(
         "pick_btts": p["pick_btts"],
         "prob_btts_si_pct": p["prob_btts_si_pct"],
         "marcador_mas_probable": p["marcador_mas_probable"],
+        "marcador_pick": p.get("marcador_pick", p["marcador_mas_probable"]),
         "no_perder_local_pct": round(p["prob_local_pct"] + p["prob_empate_pct"], 2),
         "no_perder_visitante_pct": round(p["prob_visitante_pct"] + p["prob_empate_pct"], 2),
         "explicacion_1x2": exp["explicacion_1x2"],

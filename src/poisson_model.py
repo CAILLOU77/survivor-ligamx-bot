@@ -147,6 +147,33 @@ def marcador_mas_probable(matriz: List[List[float]]) -> Tuple[int, int]:
     return mejor
 
 
+def marcador_mas_probable_para(matriz: List[List[float]], resultado: str) -> Tuple[int, int]:
+    """
+    Marcador (local, visita) más probable ENTRE los consistentes con `resultado`
+    ('local' = gana local i>j, 'empate' = i==j, 'visita' = gana visita i<j).
+
+    Sirve para que el marcador mostrado NO contradiga al pick 1X2: el pick sale de
+    sumar TODOS los marcadores de cada resultado (grupo), mientras que el "marcador
+    más probable" global es una sola casilla (la moda), y por eso a veces el 1X2
+    dice 'Gana Local' pero la moda global es un empate 1-1. Condicionando al
+    resultado del pick, el marcador mostrado siempre concuerda.
+    """
+    mejor: Optional[Tuple[int, int]] = None
+    mejor_p = -1.0
+    for i, fila in enumerate(matriz):
+        for j, p in enumerate(fila):
+            if resultado == "local" and not (i > j):
+                continue
+            if resultado == "empate" and not (i == j):
+                continue
+            if resultado == "visita" and not (i < j):
+                continue
+            if p > mejor_p:
+                mejor_p = p
+                mejor = (i, j)
+    return mejor if mejor is not None else marcador_mas_probable(matriz)
+
+
 
 # ---------------------------------------------------------------------------
 # Estimación de fuerzas de equipo desde resultados históricos
@@ -298,6 +325,9 @@ def pronostico(
         (("Gana Local", p_local), ("Empate", p_empate), ("Gana Visitante", p_visita)),
         key=lambda x: x[1],
     )[0]
+    # Marcador consistente CON el pick (evita "Gana Local" pero marcador 1-1).
+    _res = {"Gana Local": "local", "Empate": "empate", "Gana Visitante": "visita"}[pick_1x2]
+    ph, pa = marcador_mas_probable_para(matriz, _res)
 
     return {
         "local": local,
@@ -315,6 +345,7 @@ def pronostico(
         "prob_btts_si_pct": round(p_btts_si * 100, 2),
         "prob_btts_no_pct": round(p_btts_no * 100, 2),
         "marcador_mas_probable": f"{mh}-{ma}",
+        "marcador_pick": f"{ph}-{pa}",
         "pick_1x2": pick_1x2,
         "pick_ou": "Over" if p_over >= p_under else "Under",
         "pick_btts": "Sí" if p_btts_si >= p_btts_no else "No",

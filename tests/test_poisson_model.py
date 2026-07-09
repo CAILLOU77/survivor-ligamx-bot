@@ -153,3 +153,25 @@ class TestCombinarConMercado(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestMarcadorConsistente(unittest.TestCase):
+    def test_marcador_para_respeta_resultado(self):
+        matriz = pm.matriz_marcadores(1.35, 1.05)
+        h, a = pm.marcador_mas_probable_para(matriz, "local")
+        self.assertGreater(h, a)
+        h, a = pm.marcador_mas_probable_para(matriz, "empate")
+        self.assertEqual(h, a)
+        h, a = pm.marcador_mas_probable_para(matriz, "visita")
+        self.assertLess(h, a)
+
+    def test_marcador_pick_concuerda_con_1x2(self):
+        # Caso típico: gana local como grupo, pero moda global es empate 1-1.
+        pr = pm.pronostico("Leon", "Atlas", {"equipos": {}, "avg_home": 1.35, "avg_away": 1.05})
+        h, a = (int(x) for x in pr["marcador_pick"].split("-"))
+        if pr["pick_1x2"] == "Gana Local":
+            self.assertGreater(h, a)
+        elif pr["pick_1x2"] == "Gana Visitante":
+            self.assertLess(h, a)
+        else:
+            self.assertEqual(h, a)

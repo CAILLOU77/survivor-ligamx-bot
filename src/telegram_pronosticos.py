@@ -312,7 +312,7 @@ def _porteros_partido(p: Dict[str, Any],
 
     # Goles esperados del marcador probable ("2-1" -> 2,1).
     gl = gv = None
-    marcador = str(p.get("marcador_mas_probable", ""))
+    marcador = str(p.get("marcador_pick") or p.get("marcador_mas_probable", ""))
     if "-" in marcador:
         try:
             gl, gv = (int(x) for x in marcador.split("-", 1))
@@ -409,7 +409,7 @@ def _linea_goles(p: Dict[str, Any]) -> str:
     # BTTS solo si hay dato (evita mostrar 'None').
     btts = p.get("pick_btts")
     btts_txt = f" · BTTS {btts}" if btts else ""
-    marcador = str(p.get("marcador_mas_probable", ""))
+    marcador = str(p.get("marcador_pick") or p.get("marcador_mas_probable", ""))
     linea = (f"⚽ Goles: {pick_ou} 2.5{pct_txt}{btts_txt}\n"
              f"🔢 Marcador probable: {marcador}")
     # ¿Choca la moda con el pick Over/Under?
@@ -840,7 +840,8 @@ def _registrar_historial(pronosticos) -> None:
             registrar_pronostico(
                 p.get("local", ""), p.get("visitante", ""), p.get("pick_1x2", ""),
                 p.get("prob_local_pct", 0), p.get("prob_empate_pct", 0),
-                p.get("prob_visitante_pct", 0), p.get("marcador_mas_probable", ""),
+                p.get("prob_visitante_pct", 0),
+                p.get("marcador_pick") or p.get("marcador_mas_probable", ""),
                 fecha=p.get("fecha", ""),
             )
         except Exception:  # pragma: no cover - nunca tumbar el envío por el log
