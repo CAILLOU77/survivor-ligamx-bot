@@ -205,7 +205,11 @@ def generar_pronosticos(
 
     if fixtures is None:
         try:
-            fixtures = espn_data.obtener_fixtures()
+            # Próxima jornada COMPLETA (no el scoreboard recortado de ESPN, que a
+            # veces trae 1-2 juegos). Respaldo al scoreboard si viene vacío.
+            fixtures = espn_data.obtener_fixtures_proxima_jornada()
+            if not fixtures:
+                fixtures = espn_data.obtener_fixtures()
         except Exception:
             fixtures = []
 

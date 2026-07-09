@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -158,6 +158,47 @@ def obtener_fixtures() -> List[Dict[str, Any]]:
     """Devuelve los partidos próximos (no jugados) del scoreboard actual."""
     data = _fetch_scoreboard()
     return [p for p in parsear_eventos(data) if not p.get("jugado")]
+
+
+def obtener_fixtures_proxima_jornada(dias: int = 25) -> List[Dict[str, Any]]:
+    """
+    Partidos de la PRÓXIMA jornada COMPLETA (no solo el scoreboard recortado de
+    ESPN, que a veces trae 1-2 juegos). Baja fixtures futuros y toma el primer
+    grupo cronológico, cerrando la jornada cuando un equipo se REPITE, hay un
+    HUECO de fechas > 3 días, o ya se juntaron 9 (Liga MX: 18 equipos).
+    """
+    fixtures = obtener_fixtures_futuros(dias)
+    if not fixtures:
+        return []
+
+    def _a_fecha(s: Any):
+        try:
+            y, m, d = str(s or "")[:10].split("-")
+            return date(int(y), int(m), int(d))
+        except (ValueError, TypeError):
+            return None
+
+    validos = []
+    for fx in fixtures:
+        f = _a_fecha(fx.get("fecha"))
+        if f and fx.get("home_team") and fx.get("away_team"):
+            validos.append((f, fx))
+    validos.sort(key=lambda t: t[0])
+
+    jornada: List[Dict[str, Any]] = []
+    equipos: set = set()
+    fecha_prev: Optional[date] = None
+    for f, fx in validos:
+        h, a = fx["home_team"], fx["away_team"]
+        repite = h.lower() in equipos or a.lower() in equipos
+        hueco = fecha_prev is not None and (f - fecha_prev).days > 3
+        lleno = len(jornada) >= 9
+        if jornada and (repite or hueco or lleno):
+            break
+        jornada.append({"home_team": h, "away_team": a, "fecha": fx.get("fecha", "")})
+        equipos |= {h.lower(), a.lower()}
+        fecha_prev = f
+    return jornada
 
 
 def obtener_fixtures_futuros(dias: int = 160) -> List[Dict[str, Any]]:

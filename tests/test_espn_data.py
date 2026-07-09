@@ -116,3 +116,43 @@ class TestIntegracionPoisson(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestProximaJornada(unittest.TestCase):
+    def test_toma_solo_la_primera_jornada(self):
+        # J1 (17-19 jul, 9 juegos) + arranque de J2 (22 jul). Debe cortar en J1.
+        futuros = [
+            {"home_team": "Necaxa", "away_team": "Atlante", "fecha": "2026-07-17"},
+            {"home_team": "Tijuana", "away_team": "Tigres", "fecha": "2026-07-17"},
+            {"home_team": "San Luis", "away_team": "Cruz Azul", "fecha": "2026-07-18"},
+            {"home_team": "León", "away_team": "Atlas", "fecha": "2026-07-18"},
+            {"home_team": "Juárez", "away_team": "Puebla", "fecha": "2026-07-18"},
+            {"home_team": "Pumas", "away_team": "Pachuca", "fecha": "2026-07-18"},
+            {"home_team": "Monterrey", "away_team": "Santos", "fecha": "2026-07-19"},
+            {"home_team": "Guadalajara", "away_team": "Toluca", "fecha": "2026-07-19"},
+            {"home_team": "Querétaro", "away_team": "América", "fecha": "2026-07-19"},
+            # J2 (hueco de 3 días -> nueva jornada)
+            {"home_team": "Cruz Azul", "away_team": "Puebla", "fecha": "2026-07-22"},
+            {"home_team": "Toluca", "away_team": "Pumas", "fecha": "2026-07-22"},
+        ]
+        with mock.patch.object(ed, "obtener_fixtures_futuros", return_value=futuros):
+            jj = ed.obtener_fixtures_proxima_jornada()
+        self.assertEqual(len(jj), 9)
+        nombres = {(p["home_team"], p["away_team"]) for p in jj}
+        self.assertIn(("Querétaro", "América"), nombres)
+        self.assertNotIn(("Cruz Azul", "Puebla"), nombres)  # ya es J2
+
+    def test_corta_por_equipo_repetido(self):
+        # Sin hueco de fechas, pero un equipo se repite -> cierra la jornada.
+        futuros = [
+            {"home_team": "América", "away_team": "Toluca", "fecha": "2026-07-18"},
+            {"home_team": "Chivas", "away_team": "Atlas", "fecha": "2026-07-18"},
+            {"home_team": "América", "away_team": "Pumas", "fecha": "2026-07-19"},
+        ]
+        with mock.patch.object(ed, "obtener_fixtures_futuros", return_value=futuros):
+            jj = ed.obtener_fixtures_proxima_jornada()
+        self.assertEqual(len(jj), 2)
+
+    def test_sin_datos_devuelve_vacio(self):
+        with mock.patch.object(ed, "obtener_fixtures_futuros", return_value=[]):
+            self.assertEqual(ed.obtener_fixtures_proxima_jornada(), [])
