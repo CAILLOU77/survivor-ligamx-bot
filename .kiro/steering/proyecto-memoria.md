@@ -26,6 +26,15 @@ Complementa a `survivor-playdoit-reglas.md` (las reglas del juego).
   del pick (modelo+momios+estrategia) va completo siempre. `/pick` arma la PRÓXIMA
   JORNADA completa (`espn_data.obtener_fixtures_proxima_jornada`), no el scoreboard
   recortado de ESPN.
+- **Fallback de momios (equipo sin modelo, p.ej. Atlante recién ascendido)**: si el
+  modelo no tiene histórico de un equipo, `motor.generar_pronosticos` reporta el
+  partido en `fixtures_sin_modelo`; `enviar_pronosticos` lo rellena con
+  `comparador_mercado.pronostico_desde_momios` (probabilidades = quitar vig al 1X2)
+  y lo marca "SOLO MERCADO". Así el rival de Atlante (favorito) sí aparece y puede
+  ser el pick. Sin momios de ese juego, no aparece (no se inventa).
+- **Marcador consistente con el pick**: se muestra `marcador_pick`
+  (`poisson.marcador_mas_probable_para`, moda condicionada al resultado del 1X2),
+  no la moda global, para no mostrar "Gana León" con marcador 1-1.
 - **Track-record del pick de Survivor** (racha real): tabla `survivor_historial` (una fila por jornada = semana ISO). El envío de `/pick` registra el pick #1 recomendado (`_registrar_survivor_historial` en `telegram_pronosticos.py`); el cron `/cron/backtest` lo resuelve (`settle_survivor`) → gana/empata(sobrevive)/pierde. Comando `/racha` muestra jornadas sobrevividas, victorias, empates y si sigue vivo. Mide el pick del BOT, no los `/usado` manuales.
 
 ## Arquitectura de la API (ligamx-api)
