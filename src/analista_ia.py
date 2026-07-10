@@ -18,7 +18,7 @@ key, `habilitado()` es False y todo degrada a {disponible: False} sin romper.
 
 Config:
     GROQ_API_KEY | GROQ_API_KEY_PRIMARY | GROQ_API_KEY_BACKUP   (una basta)
-    GROQ_MODEL   (default 'llama-3.1-8b-instant')
+    GROQ_MODEL   (default 'meta-llama/llama-4-scout-17b-16e-instruct')
     GROQ_ENABLED ('0'/'false' fuerza apagado aunque haya key)
 """
 from __future__ import annotations
@@ -33,7 +33,9 @@ except ImportError:  # pragma: no cover
     requests = None  # type: ignore[assignment]
 
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
-DEFAULT_MODEL = "llama-3.1-8b-instant"
+# Groq dio de baja los Llama 3.1 (jul 2026). Llama 4 Scout es el reemplazo vigente,
+# barato y con salida JSON. Se puede sobreescribir con la env GROQ_MODEL.
+DEFAULT_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
 DECISION = "INFORMATIVO / REVISIÓN HUMANA"
 
 _SYSTEM = (
