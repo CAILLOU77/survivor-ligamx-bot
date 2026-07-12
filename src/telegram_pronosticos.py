@@ -752,17 +752,25 @@ def _ajustar_pick_top(picks: List[Dict[str, Any]],
 
 def _contexto_top_pick(pronosticos: List[Dict[str, Any]],
                        equipos_usados: Optional[List[str]],
-                       motivacion: Optional[Dict[str, Dict[str, Any]]]) -> Optional[Dict[str, Any]]:
-    """Dossier compacto (Liga MX API) del pick #1. Tolerante: None si algo falla."""
+                       motivacion: Optional[Dict[str, Dict[str, Any]]],
+                       pick_override: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+    """
+    Dossier compacto (Liga MX API) del pick #1. Tolerante: None si algo falla.
+    Si se pasa `pick_override` (dict con equipo/rival/condicion), el dossier se arma
+    para ESE pick, de modo que el contexto coincida con el pick del plan que se muestra.
+    """
     try:
         try:
             import ligamx_api as lmx
         except ImportError:  # pragma: no cover
             from src import ligamx_api as lmx  # type: ignore
-        tops = motor.mejores_picks_survivor(pronosticos, equipos_usados, motivacion, n=1)
-        if not tops:
-            return None
-        pk = tops[0]
+        if pick_override and pick_override.get("equipo") and pick_override.get("rival"):
+            pk = pick_override
+        else:
+            tops = motor.mejores_picks_survivor(pronosticos, equipos_usados, motivacion, n=1)
+            if not tops:
+                return None
+            pk = tops[0]
         if pk.get("condicion") == "Local":
             home, away = pk["equipo"], pk["rival"]
         else:
@@ -1012,16 +1020,41 @@ def enviar_pronosticos(equipos_usados: Optional[List[str]] = None,
     except Exception:  # pragma: no cover
         api_ok = False
 
-    contexto_pick = None
-    if incluir_contexto and api_ok:
-        contexto_pick = _contexto_top_pick(resultado.get("pronosticos", []),
-                                           equipos_usados, motivacion)
-
-    # Pick ESTRATÉGICO (cautela de arranque + anti-sorpresa visitante).
+    # Pick ESTRATÉGICO de la jornada (cautela de arranque + anti-sorpresa visitante).
     est = motor.mejores_picks_estrategico(
         resultado.get("pronosticos", []), equipos_usados, motivacion,
         partidos_jugados_torneo=_partidos_jugados_torneo() if api_ok else None, n=3,
     )
+    # UNIFICAR con el PLAN de temporada: el pick recomendado = el equipo que el plan
+    # asigna a ESTA jornada (una sola fuente de verdad; prioriza sobrevivir las 17).
+    # Así /pick y /plan SIEMPRE coinciden. Si no hay calendario/plan, queda el de la jornada.
+    try:
+        try:
+            from team_normalizer import canonical_team_key as _kp
+        except ImportError:  # pragma: no cover
+            from src.team_normalizer import canonical_team_key as _kp  # type: ignore
+        _picks = est.get("picks") or []
+        _rec_plan = _rec_desde_plan(_plan_temporada(equipos_usados), _jornada_actual_num())
+        if _rec_plan and _picks:
+            _miope = _picks[0].get("equipo")
+            if _kp(_rec_plan.get("equipo")) != _kp(_miope):
+                _rec_plan["razon"] = (
+                    f"el plan de temporada guarda a {_miope} para una jornada más difícil "
+                    f"y usa a {_rec_plan['equipo']} aquí (mirando las 17 completas)."
+                )
+            else:
+                _rec_plan["razon"] = "es el equipo de esta jornada según el plan de toda la temporada."
+            _resto = [p for p in _picks if _kp(p.get("equipo")) != _kp(_rec_plan.get("equipo"))]
+            est["picks"] = [_rec_plan] + _resto
+    except Exception:  # pragma: no cover - la unificación nunca debe tumbar el envío
+        pass
+
+    # Dossier del pick #1 (ya unificado con el plan), solo si la API está despierta.
+    contexto_pick = None
+    if incluir_contexto and api_ok:
+        _top = (est.get("picks") or [None])[0]
+        contexto_pick = _contexto_top_pick(resultado.get("pronosticos", []),
+                                           equipos_usados, motivacion, pick_override=_top)
     # Ajuste MODERADO del pick #1 por XI confirmado + H2H (con tope; nunca voltea).
     try:
         _ajustar_pick_top(est.get("picks") or [], resultado.get("pronosticos", []),

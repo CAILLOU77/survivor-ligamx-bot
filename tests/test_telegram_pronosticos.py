@@ -92,46 +92,68 @@ class TestEnviar(unittest.TestCase):
 
     def test_enviar_pronosticos_flujo(self):
         # API hermana disponible: camino enriquecido (goleadores/porteros mockeados).
-        with mock.patch.object(tp.motor, "generar_pronosticos", return_value=_resultado()):
-            with mock.patch.object(tp.motor, "motivacion_por_equipo", return_value={}):
-                with mock.patch("ligamx_api.disponible", return_value=True):
-                    with mock.patch("ligamx_api.goleadores_por_equipo", return_value={}):
-                        with mock.patch("ligamx_api.porteros_por_equipo", return_value={}):
-                            with mock.patch.object(tp, "_contexto_top_pick", return_value=None):
-                                with mock.patch.object(tp, "_partidos_jugados_torneo", return_value=100):
-                                    with mock.patch.object(tp, "enviar_mensaje", return_value=True) as menv:
-                                        r = tp.enviar_pronosticos()
+        with mock.patch.object(tp.motor, "generar_pronosticos", return_value=_resultado()), \
+             mock.patch.object(tp.motor, "motivacion_por_equipo", return_value={}), \
+             mock.patch.object(tp, "_plan_temporada", return_value={}), \
+             mock.patch("ligamx_api.disponible", return_value=True), \
+             mock.patch("ligamx_api.goleadores_por_equipo", return_value={}), \
+             mock.patch("ligamx_api.porteros_por_equipo", return_value={}), \
+             mock.patch.object(tp, "_contexto_top_pick", return_value=None), \
+             mock.patch.object(tp, "_partidos_jugados_torneo", return_value=100), \
+             mock.patch.object(tp, "enviar_mensaje", return_value=True) as menv:
+            r = tp.enviar_pronosticos()
         self.assertTrue(r["enviado"])
         self.assertEqual(r["total_pronosticos"], 1)
         menv.assert_called_once()
 
     def test_enviar_pronosticos_sin_contexto_no_llama_api(self):
         # incluir_contexto=False no debe intentar resolver el dossier.
-        with mock.patch.object(tp.motor, "generar_pronosticos", return_value=_resultado()):
-            with mock.patch.object(tp.motor, "motivacion_por_equipo", return_value={}):
-                with mock.patch("ligamx_api.disponible", return_value=False):
-                    with mock.patch.object(tp, "_partidos_jugados_torneo", return_value=100):
-                        with mock.patch.object(tp, "_contexto_top_pick") as mctx:
-                            with mock.patch.object(tp, "enviar_mensaje", return_value=True):
-                                tp.enviar_pronosticos(incluir_contexto=False)
+        with mock.patch.object(tp.motor, "generar_pronosticos", return_value=_resultado()), \
+             mock.patch.object(tp.motor, "motivacion_por_equipo", return_value={}), \
+             mock.patch.object(tp, "_plan_temporada", return_value={}), \
+             mock.patch("ligamx_api.disponible", return_value=False), \
+             mock.patch.object(tp, "_partidos_jugados_torneo", return_value=100), \
+             mock.patch.object(tp, "_contexto_top_pick") as mctx, \
+             mock.patch.object(tp, "enviar_mensaje", return_value=True):
+            tp.enviar_pronosticos(incluir_contexto=False)
         mctx.assert_not_called()
 
     def test_enviar_pronosticos_api_dormida_no_enriquece_pero_envia(self):
         # Si la API hermana no responde el chequeo rápido, se SALTA el
         # enriquecimiento lento (dossier/goleadores/porteros) y AÚN ASÍ envía.
-        with mock.patch.object(tp.motor, "generar_pronosticos", return_value=_resultado()):
-            with mock.patch.object(tp.motor, "motivacion_por_equipo", return_value={}):
-                with mock.patch("ligamx_api.disponible", return_value=False):
-                    with mock.patch("ligamx_api.goleadores_por_equipo") as mgol:
-                        with mock.patch("ligamx_api.porteros_por_equipo") as mpor:
-                            with mock.patch.object(tp, "_contexto_top_pick") as mctx:
-                                with mock.patch.object(tp, "enviar_mensaje", return_value=True) as menv:
-                                    r = tp.enviar_pronosticos()
+        with mock.patch.object(tp.motor, "generar_pronosticos", return_value=_resultado()), \
+             mock.patch.object(tp.motor, "motivacion_por_equipo", return_value={}), \
+             mock.patch.object(tp, "_plan_temporada", return_value={}), \
+             mock.patch("ligamx_api.disponible", return_value=False), \
+             mock.patch("ligamx_api.goleadores_por_equipo") as mgol, \
+             mock.patch("ligamx_api.porteros_por_equipo") as mpor, \
+             mock.patch.object(tp, "_contexto_top_pick") as mctx, \
+             mock.patch.object(tp, "enviar_mensaje", return_value=True) as menv:
+            r = tp.enviar_pronosticos()
         mgol.assert_not_called()
         mpor.assert_not_called()
         mctx.assert_not_called()
         self.assertTrue(r["enviado"])
         menv.assert_called_once()
+
+    def test_enviar_pronosticos_pick_viene_del_plan(self):
+        # El pick recomendado debe ser el que el PLAN asigna a la jornada, aunque
+        # el pick "miope" de la jornada sea otro (América). Una sola fuente de verdad.
+        plan = {"plan": [{
+            "jornada": 1, "equipo": "Toluca", "rival": "América", "condicion": "Visitante",
+            "no_perder_pct": 70.0, "prob_ganar_pct": 40.0, "prob_empate_pct": 30.0, "nivel": "MEDIA",
+        }]}
+        cap = {}
+        with mock.patch.object(tp.motor, "generar_pronosticos", return_value=_resultado()), \
+             mock.patch.object(tp.motor, "motivacion_por_equipo", return_value={}), \
+             mock.patch.object(tp, "_plan_temporada", return_value=plan), \
+             mock.patch.object(tp, "_jornada_actual_num", return_value=1), \
+             mock.patch("ligamx_api.disponible", return_value=False), \
+             mock.patch.object(tp, "enviar_mensaje", side_effect=lambda m: cap.setdefault("msg", m) or True):
+            tp.enviar_pronosticos()
+        msg = cap.get("msg", "")
+        self.assertIn("PICK: Toluca", msg)       # manda el pick del plan, no el miope
+        self.assertIn("plan de temporada", msg)  # explica que reserva al otro equipo
 
 
 class TestMercadoYMotivacion(unittest.TestCase):
