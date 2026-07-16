@@ -204,6 +204,27 @@ def _enriquecer_lista_con_crowd(picks: list) -> list:
     return [_enriquecer_con_crowd(p) for p in picks]
 
 
+def _totales_jornada(pronosticos: list) -> Dict[str, Any]:
+    """Calcula totales de la jornada: partidos, goles esperados, O/U, BTTS."""
+    if not pronosticos:
+        return {"partidos": 0, "goles_esperados_total": 0.0, "promedio_goles_partido": 0.0,
+                "over_25_count": 0, "under_25_count": 0, "btts_si_count": 0, "btts_no_count": 0}
+    total_goles = sum(p.get("goles_esperados_local", 0) + p.get("goles_esperados_visitante", 0) for p in pronosticos)
+    over_25 = sum(1 for p in pronosticos if p.get("pick_ou") == "Over")
+    under_25 = sum(1 for p in pronosticos if p.get("pick_ou") == "Under")
+    btts_si = sum(1 for p in pronosticos if p.get("pick_btts") == "Sí")
+    btts_no = sum(1 for p in pronosticos if p.get("pick_btts") == "No")
+    return {
+        "partidos": len(pronosticos),
+        "goles_esperados_total": round(total_goles, 1),
+        "promedio_goles_partido": round(total_goles / len(pronosticos), 2),
+        "over_25_count": over_25,
+        "under_25_count": under_25,
+        "btts_si_count": btts_si,
+        "btts_no_count": btts_no,
+    }
+
+
 @router.get("/predicciones", summary="Predicciones reales (ESPN + Poisson)")
 def predicciones() -> Dict[str, Any]:
     """1X2 / Over-Under / BTTS / marcador por cada partido próximo."""
@@ -235,6 +256,7 @@ def survivor(excluir: str = "") -> Dict[str, Any]:
         "pick_survivor": pick,
         "cautela": est.get("cautela"),
         "advertencia": est.get("advertencia"),
+        "totales_jornada": _totales_jornada(data.get("pronosticos", [])),
         "crowd_intelligence": {
             "top_picks_crowd": top_crowd,
             "recommendation": "EVITAR picks >15% crowd salvo confianza >85%"
@@ -282,6 +304,7 @@ def jornada(excluir: str = "", contexto: bool = False) -> Dict[str, Any]:
         "mercado_habilitado": comp.get("mercado_habilitado", False),
         "partidos_con_momios": comp.get("partidos_con_momios", 0),
         "pronosticos": pronos,
+        "totales_jornada": _totales_jornada(pronos),
         "crowd_intelligence": {
             "top_picks_crowd": top_crowd,
             "recommendation": "EVITAR picks >15% crowd salvo confianza >85%"
