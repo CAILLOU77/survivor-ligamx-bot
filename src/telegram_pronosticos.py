@@ -502,6 +502,9 @@ def construir_mensaje(
                 lineas.append(f"📉 Motivación rival: {nivel_mot}")
         if rec.get("razon"):
             lineas.append(f"💬 <i>Por qué: {rec['razon']}</i>")
+        # Advertencia de Riesgo de Manada (Inteligencia de la Comunidad)
+        if rec.get("crowd_risk") == "ALTO":
+            lineas.append(f"🚨 <b>RIESGO MANADA ALTO:</b> {rec.get('crowd_pct', 0)}% del publico lo picka. Sorpresa = eliminados masivos." )
         if rec.get("ajuste_nota"):
             lineas.append(f"🔧 <i>Ajustado por: {rec['ajuste_nota']}</i>")
         # Otras opciones (2º y 3º).
