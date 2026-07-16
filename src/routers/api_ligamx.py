@@ -32,7 +32,7 @@ Endpoints:
 from __future__ import annotations
 
 import unicodedata
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, HTTPException, Query
@@ -66,7 +66,7 @@ _CACHE: Dict[str, Any] = {"datos": None, "fuerzas": None, "ts": None}
 # Helpers de datos (con caché)
 # ---------------------------------------------------------------------------
 def _fresco(ts: Optional[datetime], ttl_min: int = _TTL_MIN) -> bool:
-    return bool(ts) and (datetime.utcnow() - ts < timedelta(minutes=ttl_min))
+    return bool(ts) and (datetime.now(timezone.utc) - ts < timedelta(minutes=ttl_min))
 
 
 def _datos_y_fuerzas() -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -79,7 +79,7 @@ def _datos_y_fuerzas() -> Tuple[Dict[str, Any], Dict[str, Any]]:
             fuerzas = {"avg_home": 0.0, "avg_away": 0.0, "equipos": {}}
         _CACHE["datos"] = datos
         _CACHE["fuerzas"] = fuerzas
-        _CACHE["ts"] = datetime.utcnow()
+        _CACHE["ts"] = datetime.now(timezone.utc)
     return _CACHE["datos"], _CACHE["fuerzas"]
 
 
@@ -468,7 +468,7 @@ def jornada_actual(
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=f"Fecha inválida: {fecha}") from exc
     else:
-        hoy = datetime.utcnow().date()
+        hoy = datetime.now(timezone.utc).date()
 
     info = _calcular_jornada_actual(calendario, hoy)
     objetivo = info.pop("jornada_objetivo", None)

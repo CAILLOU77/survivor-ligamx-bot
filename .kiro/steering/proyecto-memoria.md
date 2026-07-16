@@ -11,7 +11,13 @@ Complementa a `survivor-playdoit-reglas.md` (las reglas del juego).
 ## Arquitectura del bot
 - **Modelo**: Poisson/Dixon-Coles (`poisson_model.py`) con recencia (half-life 365d), shrinkage (4.0), rho (-0.10). Entrena con resultados reales.
 - **Fuente de datos**: `fuentes_datos.py`. ESPN por defecto; `obtener_historico_largo()` prefiere la Liga MX API (~1200 partidos desde 2022) para backtest/calibración.
-- **Pick de jornada**: `motor_pronosticos.mejores_picks_estrategico` — maximiza no-perder, castiga favorito VISITANTE (PEN_VISITANTE), cautela de arranque, victoria como desempate (PESO_VICTORIA_PICK=0.5). **Mezcla momios** (`comparador_mercado.mezclar_pronosticos_con_mercado`, 50/50) en las probabilidades del pick.
+- **Pick UNIFICADO con el plan**: el pick recomendado de `/pick` = el equipo que el
+  PLAN de temporada asigna a esa jornada (`enviar_pronosticos` reordena: greedy →
+  `_rec_desde_plan(_plan_temporada, _jornada_actual_num)` como picks[0] → dossier →
+  ajuste → registro). Así `/pick` y `/plan` SIEMPRE coinciden (una sola fuente de
+  verdad; prioriza sobrevivir las 17). Fallback al pick greedy si no hay calendario/plan.
+  `_contexto_top_pick(pick_override=...)` hace que el dossier siga al pick del plan.
+- **Pick de jornada** (greedy, base): `motor_pronosticos.mejores_picks_estrategico` — maximiza no-perder, castiga favorito VISITANTE (PEN_VISITANTE), cautela de arranque, victoria como desempate (PESO_VICTORIA_PICK=0.5). **Mezcla momios** (`comparador_mercado.mezclar_pronosticos_con_mercado`, 50/50) en las probabilidades del pick.
 - **Plan de temporada**: `planificador_survivor.py` (asignación húngara). NO está predeterminado: se recalcula cada vez según resultados, momios y equipos usados.
 - **Protecciones (partido trampa)**: sensor under/partido cerrado (`_GOLES_CERRADO=2.3`), favorito visitante penalizado, empate alto, sin favorito claro. Medido: favorito visitante falla ~59% vs ~46% local.
 - **Comandos Telegram** (bot @Brucewayneuwu_bot, chat dueño): jugar → `/pick`, `/seguir` (XI ~1h antes), `/plan`, `/momios`. Revisar → `/prueba`, `/confianza`, `/derrotas`, `/ganadores`, `/racha`.

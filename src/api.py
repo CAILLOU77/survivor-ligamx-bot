@@ -6,7 +6,7 @@ from fastapi import HTTPException, Header, Depends, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 # Cargar .env en local (en Render/prod las vars vienen del entorno; esto es no-op).
@@ -34,7 +34,20 @@ def verify_api_key(x_api_key: Optional[str] = Header(None)):
 
 limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(title="Survivor LigaMX API Premium", version="2.1.0", docs_url="/docs")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET", "POST"], allow_headers=["*"])
+# CORS configurable: en producción usa CORS_ORIGINS="https://tudominio.com,https://otro.com"
+# En desarrollo deja vacío o pon "*" (no recomendado en prod).
+_cors_raw = os.getenv("CORS_ORIGINS", "").strip()
+if _cors_raw:
+    allow_origins = [o.strip() for o in _cors_raw.split(",") if o.strip()]
+else:
+    allow_origins = ["*"]  # fallback dev; en prod DEBES definir CORS_ORIGINS
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allow_origins,
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
+)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 from src.routers.cron_router import router as cron_router
@@ -63,7 +76,7 @@ def _predicciones_reales() -> dict:
 
 @app.get("/health", summary="Estado del sistema", tags=["Status"])
 def health():
-    return {"status": "ok", "version": "2.1.0-premium", "timestamp": datetime.utcnow().isoformat()}
+    return {"status": "ok", "version": "2.1.0-premium", "timestamp": datetime.now(timezone.utc).isoformat()}
 
 @app.get("/picks/latest", summary="(Deprecado) Predicciones reales ESPN+Poisson", tags=["Picks"])
 @limiter.limit("10/minute")

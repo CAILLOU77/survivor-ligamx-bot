@@ -11,7 +11,7 @@ memoria (TTL) para no golpear ESPN en cada request.
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter
@@ -58,6 +58,36 @@ except ImportError:  # pragma: no cover
 
 router = APIRouter(tags=["Predicciones"])
 
+# Distribución de picks de la comunidad (Playdoit Survivor Fecha 1).
+# Sirve para identificar "picks populares" que eliminan a muchos si fallan.
+# Fuente: Pick Distribution pública de Playdoit.
+CROWD_DISTRIBUTION: Dict[str, float] = {
+    "Monterrey": 27.94,
+    "Necaxa": 22.25,
+    "FC Juarez": 19.68,
+    "Cruz Azul": 8.84,
+    "America": 6.92,
+    "Leon": 5.97,
+    "Atlante": 1.85,
+    "Tigres UANL": 1.55,
+    "Guadalajara": 1.52,
+    "Pumas UNAM": 0.92,
+    "Tijuana": 0.85,
+    "Atlas": 0.57,
+    "Toluca": 0.35,
+    "Pachuca": 0.27,
+    "Queretaro": 0.17,
+    "Atletico de San Luis": 0.17,
+    "Puebla": 0.15,
+    "Santos": 0.02,
+}
+
+CROWD_HIGH_THRESHOLD = 15.0   # >15% = pick muy popular (riesgo crowd)
+CROWD_MED_THRESHOLD = 5.0     # 5-15% = riesgo medio
+
+# Top 10 crowd picks pre-computado para respuesta rápida
+top_crowd = dict(sorted(CROWD_DISTRIBUTION.items(), key=lambda x: x[1], reverse=True)[:10])
+
 _CACHE: Dict[str, Any] = {"data": None, "ts": None}
 _CACHE_TABLA: Dict[str, Any] = {"data": None, "ts": None}
 _CACHE_RIESGO: Dict[str, Any] = {"data": None, "ts": None}
@@ -68,24 +98,24 @@ _TTL_RIESGO_MIN = 360  # el histórico cambia lento; análisis pesado => caché 
 
 def _fresco() -> bool:
     return bool(_CACHE["data"]) and bool(_CACHE["ts"]) and (
-        datetime.utcnow() - _CACHE["ts"] < timedelta(minutes=_TTL_MIN)
+        datetime.now(timezone.utc) - _CACHE["ts"] < timedelta(minutes=_TTL_MIN)
     )
 
 
 def _obtener() -> Dict[str, Any]:
     if not _fresco():
         _CACHE["data"] = motor.generar_pronosticos()
-        _CACHE["ts"] = datetime.utcnow()
+        _CACHE["ts"] = datetime.now(timezone.utc)
     return _CACHE["data"]
 
 
 def _obtener_tabla() -> Dict[str, Any]:
     fresco = bool(_CACHE_TABLA["data"]) and bool(_CACHE_TABLA["ts"]) and (
-        datetime.utcnow() - _CACHE_TABLA["ts"] < timedelta(minutes=_TTL_MIN)
+        datetime.now(timezone.utc) - _CACHE_TABLA["ts"] < timedelta(minutes=_TTL_MIN)
     )
     if not fresco:
         _CACHE_TABLA["data"] = tabla_mod.obtener_tabla()
-        _CACHE_TABLA["ts"] = datetime.utcnow()
+        _CACHE_TABLA["ts"] = datetime.now(timezone.utc)
     return _CACHE_TABLA["data"]
 
 
@@ -154,6 +184,26 @@ def _partidos_jugados_torneo() -> Optional[int]:
         return None
 
 
+def _enriquecer_con_crowd(pick: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """Añade crowd_pct y crowd_risk al pick si existe el equipo en la distribución."""
+    if not pick:
+        return pick
+    equipo = pick.get("equipo", "")
+    crowd_pct = CROWD_DISTRIBUTION.get(equipo, 0.0)
+    if crowd_pct >= CROWD_HIGH_THRESHOLD:
+        risk = "ALTO"
+    elif crowd_pct >= CROWD_MED_THRESHOLD:
+        risk = "MEDIO"
+    else:
+        risk = "BAJO"
+    return {**pick, "crowd_pct": round(crowd_pct, 2), "crowd_risk": risk}
+
+
+def _enriquecer_lista_con_crowd(picks: list) -> list:
+    """Enriquece una lista de picks con crowd data."""
+    return [_enriquecer_con_crowd(p) for p in picks]
+
+
 @router.get("/predicciones", summary="Predicciones reales (ESPN + Poisson)")
 def predicciones() -> Dict[str, Any]:
     """1X2 / Over-Under / BTTS / marcador por cada partido próximo."""
@@ -172,7 +222,12 @@ def survivor(excluir: str = "") -> Dict[str, Any]:
         data.get("pronosticos", []), usados,
         partidos_jugados_torneo=_partidos_jugados_torneo(), n=1,
     )
-    pick = est["picks"][0] if est.get("picks") else None
+    pick = _enriquecer_con_crowd(est["picks"][0]) if est.get("picks") else None
+    # Top 3 picks crowd para contexto
+    top_crowd = sorted(
+        [{"equipo": k, "crowd_pct": v} for k, v in CROWD_DISTRIBUTION.items()],
+        key=lambda x: -x["crowd_pct"]
+    )[:3]
     return {
         "generado_utc": data.get("generado_utc"),
         "fuente_datos": data.get("fuente_datos"),
@@ -180,6 +235,10 @@ def survivor(excluir: str = "") -> Dict[str, Any]:
         "pick_survivor": pick,
         "cautela": est.get("cautela"),
         "advertencia": est.get("advertencia"),
+        "crowd_intelligence": {
+            "top_picks_crowd": top_crowd,
+            "recommendation": "EVITAR picks >15% crowd salvo confianza >85%"
+        },
         "decision": data.get("decision"),
     }
 
@@ -222,6 +281,10 @@ def jornada(excluir: str = "", contexto: bool = False) -> Dict[str, Any]:
         "mercado_habilitado": comp.get("mercado_habilitado", False),
         "partidos_con_momios": comp.get("partidos_con_momios", 0),
         "pronosticos": pronos,
+        "crowd_intelligence": {
+            "top_picks_crowd": top_crowd,
+            "recommendation": "EVITAR picks >15% crowd salvo confianza >85%"
+        },
         "decision": data.get("decision"),
     }
 
@@ -275,7 +338,7 @@ def analisis_riesgo() -> Dict[str, Any]:
     favorito engañoso. Análisis pesado => caché de 6 horas.
     """
     fresco = bool(_CACHE_RIESGO["data"]) and bool(_CACHE_RIESGO["ts"]) and (
-        datetime.utcnow() - _CACHE_RIESGO["ts"] < timedelta(minutes=_TTL_RIESGO_MIN)
+        datetime.now(timezone.utc) - _CACHE_RIESGO["ts"] < timedelta(minutes=_TTL_RIESGO_MIN)
     )
     if not fresco:
         try:
@@ -285,7 +348,7 @@ def analisis_riesgo() -> Dict[str, Any]:
         except Exception as exc:  # pragma: no cover - fallback defensivo de red
             return {"partidos_evaluados": 0, "error": str(exc),
                     "decision": "INFORMATIVO / REVISIÓN HUMANA"}
-        _CACHE_RIESGO["ts"] = datetime.utcnow()
+        _CACHE_RIESGO["ts"] = datetime.now(timezone.utc)
     return _CACHE_RIESGO["data"]
 
 
@@ -305,7 +368,7 @@ def plan_survivor(excluir: str = "", peso_victoria: float = 0.5, usar_momios: bo
     usar_cache = not usados and abs(peso_victoria - 0.5) < 1e-9 and usar_momios
     if usar_cache:
         fresco = bool(_CACHE_PLAN["data"]) and bool(_CACHE_PLAN["ts"]) and (
-            datetime.utcnow() - _CACHE_PLAN["ts"] < timedelta(minutes=_TTL_RIESGO_MIN)
+            datetime.now(timezone.utc) - _CACHE_PLAN["ts"] < timedelta(minutes=_TTL_RIESGO_MIN)
         )
         if fresco:
             return _CACHE_PLAN["data"]
@@ -331,7 +394,7 @@ def plan_survivor(excluir: str = "", peso_victoria: float = 0.5, usar_momios: bo
                 "decision": "INFORMATIVO / REVISIÓN HUMANA"}
     if usar_cache:
         _CACHE_PLAN["data"] = resultado
-        _CACHE_PLAN["ts"] = datetime.utcnow()
+        _CACHE_PLAN["ts"] = datetime.now(timezone.utc)
     return resultado
 
 
