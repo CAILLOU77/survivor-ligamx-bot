@@ -17,6 +17,7 @@ except Exception:  # pragma: no cover - dotenv es opcional
     pass
 
 from src.database import init_db, get_metrics, get_history, settle_pick
+from src.rate_limit import limiter
 
 # Sin default público: la clave DEBE venir del entorno (Render / GitHub secret).
 # Si no está configurada, los endpoints protegidos fallan en cerrado (503).
@@ -32,19 +33,22 @@ def verify_api_key(x_api_key: Optional[str] = Header(None)):
         raise HTTPException(status_code=403, detail="Clave API inválida o faltante")
     return x_api_key
 
-limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(title="Survivor LigaMX API Premium", version="2.1.0", docs_url="/docs")
 # CORS configurable: en producción usa CORS_ORIGINS="https://tudominio.com,https://otro.com"
-# En desarrollo deja vacío o pon "*" (no recomendado en prod).
+# En desarrollo deja vacío (solo localhost) o define CORS_ORIGINS=* explícitamente.
 _cors_raw = os.getenv("CORS_ORIGINS", "").strip()
 if _cors_raw:
     allow_origins = [o.strip() for o in _cors_raw.split(",") if o.strip()]
 else:
-    allow_origins = ["*"]  # fallback dev; en prod DEBES definir CORS_ORIGINS
+    # Fallback seguro: no abrir CORS a "*" por defecto en prod.
+    allow_origins = ["*"] if os.getenv("CORS_ALLOW_ALL", "false").lower() == "true" else [
+        "http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:8000", "null"
+    ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins,
+    allow_credentials=False,
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )

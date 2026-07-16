@@ -14,7 +14,12 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
+
+try:
+    from rate_limit import limiter
+except ImportError:  # pragma: no cover - contexto de paquete (web)
+    from src.rate_limit import limiter  # type: ignore
 
 try:
     import motor_pronosticos as motor
@@ -61,6 +66,7 @@ router = APIRouter(tags=["Predicciones"])
 # Distribución de picks de la comunidad (Playdoit Survivor Fecha 1).
 # Sirve para identificar "picks populares" que eliminan a muchos si fallan.
 # Fuente: Pick Distribution pública de Playdoit.
+# ⚠️ Actualizar cada jornada: estos % cambian. Fecha de captura: 2026-07-11 (J1).
 CROWD_DISTRIBUTION: Dict[str, float] = {
     "Monterrey": 27.94,
     "Necaxa": 22.25,
@@ -81,6 +87,9 @@ CROWD_DISTRIBUTION: Dict[str, float] = {
     "Puebla": 0.15,
     "Santos": 0.02,
 }
+
+# Fecha de captura del snapshot de la distribución de la comunidad.
+CROWD_CAPTURED_AT = "2026-07-11"  # J1 Apertura 2026
 
 CROWD_HIGH_THRESHOLD = 15.0   # >15% = pick muy popular (riesgo crowd)
 CROWD_MED_THRESHOLD = 5.0     # 5-15% = riesgo medio
@@ -226,13 +235,15 @@ def _totales_jornada(pronosticos: list) -> Dict[str, Any]:
 
 
 @router.get("/predicciones", summary="Predicciones reales (ESPN + Poisson)")
-def predicciones() -> Dict[str, Any]:
+@limiter.limit("30/minute")
+def predicciones(request: Request) -> Dict[str, Any]:
     """1X2 / Over-Under / BTTS / marcador por cada partido próximo."""
     return _obtener()
 
 
 @router.get("/survivor", summary="Mejor pick de Survivor (no perder)")
-def survivor(excluir: str = "") -> Dict[str, Any]:
+@limiter.limit("20/minute")
+def survivor(request: Request, excluir: str = "") -> Dict[str, Any]:
     """
     Mejor equipo para Survivor (mayor prob. de no perder). `excluir`: equipos
     ya usados, separados por coma (ej. ?excluir=America,Toluca).
@@ -259,6 +270,7 @@ def survivor(excluir: str = "") -> Dict[str, Any]:
         "totales_jornada": _totales_jornada(data.get("pronosticos", [])),
         "crowd_intelligence": {
             "top_picks_crowd": top_crowd,
+            "captured_at": CROWD_CAPTURED_AT,
             "recommendation": "EVITAR picks >15% crowd salvo confianza >85%"
         },
         "decision": data.get("decision"),
@@ -266,7 +278,8 @@ def survivor(excluir: str = "") -> Dict[str, Any]:
 
 
 @router.get("/jornada", summary="Vista de jornada: predicciones + pick + top-3 + motivación + momios")
-def jornada(excluir: str = "", contexto: bool = False) -> Dict[str, Any]:
+@limiter.limit("20/minute")
+def jornada(request: Request, excluir: str = "", contexto: bool = False) -> Dict[str, Any]:
     """
     Todo-en-uno para decidir la semana: predicciones, mejor pick de Survivor +
     top-3, motivación de la tabla y comparación vs mercado (si hay momios).
@@ -307,6 +320,7 @@ def jornada(excluir: str = "", contexto: bool = False) -> Dict[str, Any]:
         "totales_jornada": _totales_jornada(pronos),
         "crowd_intelligence": {
             "top_picks_crowd": top_crowd,
+            "captured_at": CROWD_CAPTURED_AT,
             "recommendation": "EVITAR picks >15% crowd salvo confianza >85%"
         },
         "decision": data.get("decision"),
@@ -314,7 +328,8 @@ def jornada(excluir: str = "", contexto: bool = False) -> Dict[str, Any]:
 
 
 @router.get("/tabla", summary="Tabla Liga MX (ESPN) + motivación por equipo")
-def tabla() -> Dict[str, Any]:
+@limiter.limit("20/minute")
+def tabla(request: Request) -> Dict[str, Any]:
     """Tabla general con zona de clasificación y motivación por equipo."""
     try:
         data = _obtener_tabla()
@@ -325,7 +340,8 @@ def tabla() -> Dict[str, Any]:
 
 
 @router.get("/valor", summary="Predicciones + comparación vs mercado (opcional)")
-def valor() -> Dict[str, Any]:
+@limiter.limit("20/minute")
+def valor(request: Request) -> Dict[str, Any]:
     """
     Predicciones del modelo anotadas con comparación vs mercado (dónde el modelo
     ve 'valor'). SOLO activa si hay key de momios configurada (ODDS_API_IO_KEY);
@@ -342,19 +358,22 @@ def valor() -> Dict[str, Any]:
 
 
 @router.get("/valor/diagnostico", summary="Diagnóstico de la conexión a momios (debug)")
-def valor_diagnostico() -> Dict[str, Any]:
+@limiter.limit("10/minute")
+def valor_diagnostico(request: Request) -> Dict[str, Any]:
     """Muestra qué devuelve odds-api.io (eventos/casas/mercados) sin exponer la key."""
     return mercado_mod.diagnostico_mercado()
 
 
 @router.get("/health/fuentes", summary="Salud de las fuentes de datos (ESPN/TheSportsDB/odds)")
-def health_fuentes() -> Dict[str, Any]:
+@limiter.limit("10/minute")
+def health_fuentes(request: Request) -> Dict[str, Any]:
     """Ping a cada fuente para detectar caídas antes de la jornada."""
     return fuentes_mod.estado_fuentes()
 
 
 @router.get("/analisis/riesgo", summary="¿Cuándo falla el favorito? (análisis de upsets, datos reales)")
-def analisis_riesgo() -> Dict[str, Any]:
+@limiter.limit("10/minute")
+def analisis_riesgo(request: Request) -> Dict[str, Any]:
     """
     Mide, sobre el histórico real (walk-forward), cuándo y por qué falla el
     favorito del modelo: por condición (local vs visitante), nivel de confianza
@@ -377,7 +396,8 @@ def analisis_riesgo() -> Dict[str, Any]:
 
 
 @router.get("/plan-survivor", summary="Estrategia de temporada: qué equipo usar en cada jornada")
-def plan_survivor(excluir: str = "", peso_victoria: float = 0.5, usar_momios: bool = True) -> Dict[str, Any]:
+@limiter.limit("10/minute")
+def plan_survivor(request: Request, excluir: str = "", peso_victoria: float = 0.5, usar_momios: bool = True) -> Dict[str, Any]:
     """
     Plan ÓPTIMO de Survivor para toda la temporada (PlayDoit): asigna 1 equipo por
     jornada, sin repetir, maximizando supervivencia (no perder) y victorias.
@@ -423,7 +443,8 @@ def plan_survivor(excluir: str = "", peso_victoria: float = 0.5, usar_momios: bo
 
 
 @router.get("/analisis-partido", summary="Dossier de un partido (Liga MX API): predicción + forma + tarjetas + h2h")
-def analisis_partido(home: str, away: str, prediccion: bool = True) -> Dict[str, Any]:
+@limiter.limit("20/minute")
+def analisis_partido(request: Request, home: str, away: str, prediccion: bool = True) -> Dict[str, Any]:
     """
     Dossier enriquecido de un partido usando la Liga MX API (proyecto hermano):
     predictor de la API, forma reciente, disciplina/tarjetas (jugadores en riesgo
@@ -445,7 +466,8 @@ def analisis_partido(home: str, away: str, prediccion: bool = True) -> Dict[str,
 
 
 @router.get("/jugadores-riesgo", summary="Jugadores en riesgo de suspensión (Liga MX API)")
-def jugadores_riesgo(limit: int = 20) -> Dict[str, Any]:
+@limiter.limit("20/minute")
+def jugadores_riesgo(request: Request, limit: int = 20) -> Dict[str, Any]:
     """
     Jugadores de toda la liga en riesgo de suspensión por acumulación de tarjetas
     (vía Liga MX API /players/discipline). Contexto de riesgo para el pick.
@@ -460,7 +482,8 @@ def jugadores_riesgo(limit: int = 20) -> Dict[str, Any]:
 
 
 @router.get("/noticias", summary="Noticias Liga MX (fichajes/lesiones/bajas) vía Liga MX API")
-def noticias(limit: int = 10) -> Dict[str, Any]:
+@limiter.limit("20/minute")
+def noticias(request: Request, limit: int = 10) -> Dict[str, Any]:
     """
     Noticias recientes de Liga MX (365Scores + Google News) tomadas de la Liga MX
     API: fichajes, lesiones, bajas y boletines. Compacto (título, fuente, fecha,
@@ -476,7 +499,8 @@ def noticias(limit: int = 10) -> Dict[str, Any]:
 
 
 @router.get("/alineacion", summary="Alineación confirmada de un partido (365Scores, ~1h antes)")
-def alineacion(home: str, away: str) -> Dict[str, Any]:
+@limiter.limit("20/minute")
+def alineacion(request: Request, home: str, away: str) -> Dict[str, Any]:
     """
     Alineación confirmada de un partido por nombre (ej. ?home=America&away=Toluca).
     365Scores publica el XI ~1h antes del inicio; antes de eso `disponible=false`.
@@ -495,7 +519,8 @@ def alineacion(home: str, away: str) -> Dict[str, Any]:
 
 
 @router.get("/historial/pronosticos", summary="Track-record de pronósticos (marcador + aciertos)")
-def historial_pronosticos(limit: int = 50, solo_resueltos: bool = False) -> Dict[str, Any]:
+@limiter.limit("20/minute")
+def historial_pronosticos(request: Request, limit: int = 50, solo_resueltos: bool = False) -> Dict[str, Any]:
     """
     Historial de pronósticos con marcador predicho vs real y si acertó (1X2 y
     marcador exacto). Se llena solo (cada envío guarda; el cron diario resuelve).
@@ -514,7 +539,8 @@ def historial_pronosticos(limit: int = 50, solo_resueltos: bool = False) -> Dict
 
 
 @router.get("/historial/rentabilidad", summary="Rentabilidad/precisión del modelo (aciertos)")
-def historial_rentabilidad() -> Dict[str, Any]:
+@limiter.limit("20/minute")
+def historial_rentabilidad(request: Request) -> Dict[str, Any]:
     """% de aciertos 1X2 y de marcador exacto sobre los pronósticos ya resueltos."""
     try:
         try:
@@ -528,7 +554,8 @@ def historial_rentabilidad() -> Dict[str, Any]:
 
 
 @router.get("/analisis-ia", summary="Análisis de riesgo por IA (Groq) sobre noticias reales")
-def analisis_ia(home: str, away: str) -> Dict[str, Any]:
+@limiter.limit("10/minute")
+def analisis_ia(request: Request, home: str, away: str) -> Dict[str, Any]:
     """
     Usa IA (Groq) para EXTRAER señales de riesgo (lesión/suspensión/duda/rotación)
     de las noticias reales de ambos equipos, citando el titular fuente. Opcional:
