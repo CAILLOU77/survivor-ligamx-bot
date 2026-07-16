@@ -267,7 +267,8 @@ def jornada(excluir: str = "", contexto: bool = False) -> Dict[str, Any]:
         partidos_jugados_torneo=_partidos_jugados_torneo(), n=3,
     )
     top = est.get("picks", [])
-    pick = top[0] if top else None
+    pick = _enriquecer_con_crowd(top[0]) if top else None
+    top = _enriquecer_lista_con_crowd(top)
     if contexto and pick:
         pick = {**pick, "contexto_api": _contexto_pick(pick)}
     return {
