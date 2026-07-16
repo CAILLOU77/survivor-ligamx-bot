@@ -1068,8 +1068,6 @@ def enviar_pronosticos(equipos_usados: Optional[List[str]] = None,
             from src.team_normalizer import canonical_team_key as _kp  # type: ignore
         _picks = est.get("picks") or []
         _rec_plan = _rec_desde_plan(_plan_temporada(equipos_usados), _jornada_actual_num())
-        if _jornada_actual_num() == 1:
-            _rec_plan = _OVERRIDE_JORNADA_1
         if _rec_plan and _picks:
             _miope = _picks[0].get("equipo")
             if _kp(_rec_plan.get("equipo")) != _kp(_miope):
