@@ -408,6 +408,28 @@ PESO_VICTORIA_PICK = 0.5
 PESO_VICTORIA_PICK_CAUTELA = 0.25
 
 
+# ---------------------------------------------------------------------------
+# Penalizacion por RIESGO DE MANADA (Crowd Risk)
+# ---------------------------------------------------------------------------
+CROWD_PEN_ALTO_PCT = 15.0
+CROWD_PEN_MED_PCT = 5.0
+PEN_CROWD_ALTO = 5.0
+PEN_CROWD_MEDIO = 2.0
+
+try:
+    try:
+        from routers.predicciones import CROWD_DISTRIBUTION as _CROWD_DIST
+    except ImportError:
+        from src.routers.predicciones import CROWD_DISTRIBUTION as _CROWD_DIST
+except Exception:
+    _CROWD_DIST = {}
+
+def _penalizacion_crowd(equipo):
+    pct = _CROWD_DIST.get(equipo, 0.0)
+    if pct >= CROWD_PEN_ALTO_PCT: return PEN_CROWD_ALTO
+    if pct >= CROWD_PEN_MED_PCT: return PEN_CROWD_MEDIO
+    return 0.0
+
 def _razon_pick(c: Dict[str, Any], es_local: bool, cautela: bool) -> str:
     """Explica en una frase por qué (o por qué no) conviene este pick, con números."""
     rival_mot = (c.get("rival_motivacion") or "").lower()
@@ -474,9 +496,13 @@ def mejores_picks_estrategico(
         victoria = float(c.get("prob_victoria_pct") or 0.0)
         # Sobrevivir manda (no_perder), pero premiamos GANAR (desempate del Survivor)
         # y penalizamos al favorito visitante. El empate no aporta al score extra.
-        c["_score"] = no_perder + peso_victoria * victoria - (0.0 if es_local else pen)
+        pen_crowd = _penalizacion_crowd(c.get("equipo", ""))
+        c["_score"] = no_perder + peso_victoria * victoria - (0.0 if es_local else pen) - pen_crowd
         c["nivel"] = _nivel_estrategico(no_perder, c.get("prob_victoria_pct"), es_local, cautela)
         c["razon"] = _razon_pick(c, es_local, cautela)
+        if pen_crowd > 0:
+            crowd_pct = _CROWD_DIST.get(c.get("equipo", ""), 0.0)
+            c["razon"] += " Riesgo manada: " + str(round(crowd_pct, 1)) + "% del publico lo picka."
     base.sort(
         key=lambda c: (c["_score"], c.get("prob_victoria_pct") or 0.0, _rank_motivacion(c.get("rival_motivacion"))),
         reverse=True,
