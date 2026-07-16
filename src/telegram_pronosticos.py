@@ -580,6 +580,18 @@ def construir_mensaje(
         lineas.append(div)
         lineas.append("Sin pronósticos disponibles (faltan datos de ESPN o fixtures).")
 
+    # TOTALES DE LA JORNADA
+    if pronosticos:
+        lineas.append(div)
+        lineas.append("📊 <b>TOTALES DE LA JORNADA</b>")
+        totales = _totales_jornada(pronosticos)
+        lineas.append(f"⚽ Goles esperados totales: {totales['goles_esperados_total']}")
+        lineas.append(f"📊 Promedio por partido: {totales['promedio_goles_partido']}")
+        lineas.append(f"🔺 Over 2.5: {totales['over_25_count']} partidos")
+        lineas.append(f"🔻 Under 2.5: {totales['under_25_count']} partidos")
+        lineas.append(f"✅ BTTS Sí: {totales['btts_si_count']} partidos")
+        lineas.append(f"❌ BTTS No: {totales['btts_no_count']} partidos")
+
     lineas += [div, DISCLAIMER]
     return "\n".join(lineas)
 
@@ -613,6 +625,27 @@ def _dividir_mensaje(texto: str, limite: int = _TELEGRAM_LIMITE) -> List[str]:
     if actual:
         partes.append(actual)
     return partes
+
+
+def _totales_jornada(pronosticos: list) -> Dict[str, Any]:
+    """Calcula totales de la jornada: partidos, goles esperados, O/U, BTTS."""
+    if not pronosticos:
+        return {"partidos": 0, "goles_esperados_total": 0.0, "promedio_goles_partido": 0.0,
+                "over_25_count": 0, "under_25_count": 0, "btts_si_count": 0, "btts_no_count": 0}
+    total_goles = sum(p.get("goles_esperados_local", 0) + p.get("goles_esperados_visitante", 0) for p in pronosticos)
+    over_25 = sum(1 for p in pronosticos if p.get("pick_ou") == "Over")
+    under_25 = sum(1 for p in pronosticos if p.get("pick_ou") == "Under")
+    btts_si = sum(1 for p in pronosticos if p.get("pick_btts") == "Sí")
+    btts_no = sum(1 for p in pronosticos if p.get("pick_btts") == "No")
+    return {
+        "partidos": len(pronosticos),
+        "goles_esperados_total": round(total_goles, 1),
+        "promedio_goles_partido": round(total_goles / len(pronosticos), 2),
+        "over_25_count": over_25,
+        "under_25_count": under_25,
+        "btts_si_count": btts_si,
+        "btts_no_count": btts_no,
+    }
 
 
 def enviar_mensaje(mensaje: str) -> bool:
