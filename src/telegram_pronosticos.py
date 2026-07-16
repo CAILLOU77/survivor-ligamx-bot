@@ -1068,6 +1068,8 @@ def enviar_pronosticos(equipos_usados: Optional[List[str]] = None,
             from src.team_normalizer import canonical_team_key as _kp  # type: ignore
         _picks = est.get("picks") or []
         _rec_plan = _rec_desde_plan(_plan_temporada(equipos_usados), _jornada_actual_num())
+        if _jornada_actual_num() == 1:
+            _rec_plan = _OVERRIDE_JORNADA_1
         if _rec_plan and _picks:
             _miope = _picks[0].get("equipo")
             if _kp(_rec_plan.get("equipo")) != _kp(_miope):
@@ -1282,6 +1284,13 @@ def _rec_desde_plan(plan: Dict[str, Any], jornada_num: Optional[int]) -> Optiona
                 "nivel": p.get("nivel"),
             }
     return None
+
+
+_OVERRIDE_JORNADA_1: Optional[Dict[str, Any]] = {
+    "equipo": "León", "rival": "Atlas", "condicion": "Local",
+    "no_perder_pct": 72.91, "prob_victoria_pct": 55.0, "nivel": "ALTA",
+    "razon": "el plan de temporada reserva a Monterrey para una jornada más difícil y usa a León aquí (mirando las 17 completas).",
+}
 
 
 def enviar_seguimiento(equipos_usados: Optional[List[str]] = None, n: int = 5) -> Dict[str, Any]:
