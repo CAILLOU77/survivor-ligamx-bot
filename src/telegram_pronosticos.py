@@ -1286,13 +1286,6 @@ def _rec_desde_plan(plan: Dict[str, Any], jornada_num: Optional[int]) -> Optiona
     return None
 
 
-_OVERRIDE_JORNADA_1: Optional[Dict[str, Any]] = {
-    "equipo": "León", "rival": "Atlas", "condicion": "Local",
-    "no_perder_pct": 72.91, "prob_victoria_pct": 55.0, "nivel": "ALTA",
-    "razon": "el plan de temporada reserva a Monterrey para una jornada más difícil y usa a León aquí (mirando las 17 completas).",
-}
-
-
 def enviar_seguimiento(equipos_usados: Optional[List[str]] = None, n: int = 5) -> Dict[str, Any]:
     """
     Envía por Telegram la lista de seguimiento (candidatos priorizados, ordenados
