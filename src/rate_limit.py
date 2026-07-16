@@ -16,5 +16,4 @@ limiter = Limiter(
     key_func=get_remote_address,
     default_limits=[DEFAULT_LIMIT],
     enabled=RATE_LIMIT_ENABLED,
-    headers_enabled=True,  # expone X-RateLimit-* en las respuestas
 )
