@@ -502,7 +502,8 @@ def mejores_picks_estrategico(
         c["razon"] = _razon_pick(c, es_local, cautela)
         if pen_crowd > 0:
             crowd_pct = _CROWD_DIST.get(c.get("equipo", ""), 0.0)
-            c["razon"] += " Riesgo manada: " + str(round(crowd_pct, 1)) + "% del publico lo picka."
+            c["razon"] += (" ⚠️ OJO: es un pick de manada (" + str(round(crowd_pct, 1)) +
+                  "% del publico lo picka). PERO el bot lo prioriza porque su probabilidad de no perder es tan alta que una sorpresa seria un upset historico: estadisticamente vale mas la pena arriesgarse con el favorito que ir contra la logica por miedo a la manada.")
     base.sort(
         key=lambda c: (c["_score"], c.get("prob_victoria_pct") or 0.0, _rank_motivacion(c.get("rival_motivacion"))),
         reverse=True,
