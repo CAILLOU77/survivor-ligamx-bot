@@ -254,15 +254,7 @@ def survivor(request: Request, excluir: str = "") -> Dict[str, Any]:
         data.get("pronosticos", []), usados,
         partidos_jugados_torneo=_partidos_jugados_torneo(), n=1,
     )
-    _picks = est.get("picks") or []
-    pick = _enriquecer_con_crowd(_picks[0]) if _picks else None
-    # Anti-manada: si el #1 es "riesgo ALTO" (crowd > 15%), auto-degradar y sugerir el #2.
-    if pick and pick.get("crowd_risk") == "ALTO" and len(_picks) > 1:
-        # Mostrar el #2 como recomendacion, pero reportar el #1 como "evitado".
-        pick_evitado = pick
-        segundo = _enriquecer_con_crowd(_picks[1])
-        pick = segundo
-        pick["pick_evitado_crowd"] = pick_evitado
+    pick = _enriquecer_con_crowd(est["picks"][0]) if est.get("picks") else None
     # Top 3 picks crowd para contexto
     top_crowd = sorted(
         [{"equipo": k, "crowd_pct": v} for k, v in CROWD_DISTRIBUTION.items()],
