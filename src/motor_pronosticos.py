@@ -413,7 +413,7 @@ PESO_VICTORIA_PICK_CAUTELA = 0.25
 # ---------------------------------------------------------------------------
 CROWD_PEN_ALTO_PCT = 15.0
 CROWD_PEN_MED_PCT = 5.0
-PEN_CROWD_ALTO = 5.0
+PEN_CROWD_ALTO = 12.0
 PEN_CROWD_MEDIO = 2.0
 
 try:
