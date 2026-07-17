@@ -94,7 +94,39 @@ def _predicciones_reales() -> dict:
 
 @app.get("/health", summary="Estado del sistema", tags=["Status"])
 def health():
-    return {"status": "ok", "version": "2.1.0-premium", "timestamp": datetime.now(timezone.utc).isoformat()}
+    """Healthcheck extendido con estado de dependencias críticas."""
+    import database as _db
+    db_ok = False
+    try:
+        _db.get_equipos_usados()
+        db_ok = True
+    except Exception:
+        pass
+    
+    espn_ok = False
+    try:
+        r = requests.get("https://site.api.espn.com/apis/v2/sports/soccer/ligamx/teams", timeout=5)
+        espn_ok = r.status_code == 200
+    except Exception:
+        pass
+    
+    ligamx_api_ok = False
+    try:
+        r = requests.get("https://ligamx-api.onrender.com/teams", timeout=5)
+        ligamx_api_ok = r.status_code == 200
+    except Exception:
+        pass
+    
+    return {
+        "status": "ok" if db_ok else "degradado",
+        "version": "2.1.0-premium",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "dependencias": {
+            "base_de_datos": "ok" if db_ok else "error",
+            "espn": "ok" if espn_ok else "error",
+            "ligamx_api": "ok" if ligamx_api_ok else "error"
+        }
+    }
 
 
 @app.get("/picks/latest", summary="(Deprecado) Predicciones reales ESPN+Poisson", tags=["Picks"])
