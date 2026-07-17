@@ -115,7 +115,7 @@ def health():
 
     # 2) ESPN
     try:
-        r = requests.get("https://site.api.espn.com/apis/site/v2/sports/soccer/mex.1/scoreboard", timeout=5)
+        r = requests.get("https://site.api.espn.com/apis/site/v2/sports/soccer/mex.1/scoreboard", timeout=10)
         if r.status_code == 200:
             deps["espn"] = "ok"
         else:
@@ -127,7 +127,7 @@ def health():
 
     # 3) ligamx-api (hermana)
     try:
-        r = requests.get("https://ligamx-api.onrender.com/health", timeout=5)
+        r = requests.get("https://ligamx-api.onrender.com/health", timeout=10)
         if r.status_code == 200:
             deps["ligamx_api"] = "ok"
         else:
