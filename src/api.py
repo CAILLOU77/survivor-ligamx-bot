@@ -94,9 +94,6 @@ def _predicciones_reales() -> dict:
 
 @app.get("/health", summary="Estado del sistema", tags=["Status"])
 def health():
-
-@app.get("/health", summary="Estado del sistema", tags=["Status"])
-def health():
     """
     Healthcheck del sistema con estado de cada dependencia.
     - base_de_datos: ok si responde, error si no
@@ -145,7 +142,6 @@ def health():
         "version": "2.1.0-premium",
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "dependencias": deps,
-    }
     }
 
 

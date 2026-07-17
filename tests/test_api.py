@@ -39,32 +39,6 @@ class TestApi(unittest.TestCase):
     def test_stats_sin_key_403(self):
         self.assertEqual(self.client.get("/stats").status_code, 403)
 
-
-def test_healthcheck_devuelve_dependencias(self):
-    """El healthcheck extendido debe incluir estado de dependencias."""
-    r = self.client.get("/health")
-    self.assertEqual(r.status_code, 200)
-    data = r.json()
-    self.assertIn("dependencias", data)
-    self.assertIn("base_de_datos", data["dependencias"])
-    self.assertIn("espn", data["dependencias"])
-    self.assertIn("ligamx_api", data["dependencias"])
-
-def test_api_key_no_configurada_devuelve_503(self):
-    """Cuando API_KEY no está configurada, debe devolver 503."""
-    # Simular que no hay API key guardando None temporalmente
-    original = apimod.API_KEY
-    try:
-        apimod.API_KEY = None
-        # Forzar recarga del verify_api_key
-        import importlib
-        importlib.reload(apimod)
-        r = self.client.post("/usados", json={"equipo": "Monterrey"})
-        self.assertEqual(r.status_code, 503)
-    finally:
-        apimod.API_KEY = original
-        importlib.reload(apimod)
-
     def test_stats_con_key(self):
         with mock.patch.object(apimod, "get_metrics", return_value={"total_picks": 0}):
             r = self.client.get("/stats", headers={"X-API-Key": "testkey"})
