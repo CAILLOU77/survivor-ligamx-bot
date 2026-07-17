@@ -3,11 +3,9 @@
 ## 1. Identidad
 - **Repo:** `BRUCEWAYNE0180/survivor-ligamx-bot` · rama principal `main`
 - **Stack:** Python **3.12**, FastAPI (web en **Render**: `survivor-ligamx-bot.onrender.com`), Postgres (prod) / SQLite (local)
-- **Estado:** **434 tests** ✅ · **ruff** limpio · **CI corre lint+tests** en cada PR
-- **Objetivo:** asistir decisiones de **Survivor Liga MX** + pronósticos (1X2, O/U, BTTS) para el **Apertura 2026** (arranca 16 de julio).
+ **Objetivo:** asistir decisiones de **Survivor Liga MX** + pronósticos (1X2, O/U, BTTS) para el **Apertura 2026** (arranca 16 de julio).
 
 ## 1b. Infraestructura / bases de datos (IMPORTANTE — sin caducidad)
-- **Bot Survivor** → código en Render (free, duerme a los 15 min) · BD en **Neon** (Postgres, plan gratis **permanente**, no caduca).
 - **API hermana `ligamx-api`** (`ligamx-api.onrender.com`) → código en Render (free) · BD **migrada de Render Postgres a Neon** (jul 2026) para evitar la caducidad de 30 días del Postgres gratis de Render. Se re-pobló con `POST /sync` (Apertura 2026, 153 partidos) y `POST /sync/backfill` (Apertura 2025, histórico).
 - **Neon Auth**: NO se usa (es para login de usuarios; el bot no lo necesita).
 - El plan **web** gratis de Render **no** caduca a los 30 días (eso era el Postgres gratis de Render, ya evitado). 750 h/mes colectivas; como los servicios duermen, sobra.
