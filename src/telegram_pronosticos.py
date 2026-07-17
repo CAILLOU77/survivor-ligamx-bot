@@ -1564,7 +1564,8 @@ def enviar_plan(
                 except ImportError:
                     from src import ligamx_api as _rach_lmx
                 try:
-                                    except ImportError:
+                    pass  # por si se necesita en el futuro
+                except ImportError:
                     pass  # type: ignore
                 _rach_mapa = _rach_lmx.mapa_equipos()
                 for _rach_i, _rach_pk in enumerate(picks[:3]):
