@@ -1562,10 +1562,11 @@ def enviar_plan(
                 try:
                     import ligamx_api as _rach_lmx
                 except ImportError:
-                    from src import ligamx_api as _rach_lmx
+                    from src import ligamx_api as _rach_lmx  # type: ignore
                 try:
-                                    except ImportError:
-                    pass  # type: ignore
+                    from team_normalizer import canonical_team_key as _rach_ctk
+                except ImportError:
+                    from src.team_normalizer import canonical_team_key as _rach_ctk  # type: ignore
                 _rach_mapa = _rach_lmx.mapa_equipos()
                 for _rach_i, _rach_pk in enumerate(picks[:3]):
                     _rach_tid = _rach_lmx.id_de_equipo(_rach_pk["equipo"], _rach_mapa)
