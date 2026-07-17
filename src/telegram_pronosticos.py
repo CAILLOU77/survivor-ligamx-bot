@@ -1265,10 +1265,14 @@ def _plan_temporada(equipos_usados: Optional[List[str]]) -> Dict[str, Any]:
 
 
 def _jornada_actual_num() -> Optional[int]:
-    """Número de la próxima jornada por jugar (según data/calendario.json)."""
+    """Número de la próxima jornada por jugar (según data/calendario.json).
+    Siempre toma la primera jornada del calendario como predeterminada.
+    Así /pick y /plan SIEMPRE coinciden aunque el calendario sea futuro."""
     try:
-        j = proxima_jornada()
-        return int(j.get("jornada")) if j else None
+        cal = _cargar_calendario_local()
+        if cal:
+            return int(cal[0].get("jornada", 1))
+        return None
     except Exception:  # pragma: no cover
         return None
 
