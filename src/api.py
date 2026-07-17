@@ -94,38 +94,58 @@ def _predicciones_reales() -> dict:
 
 @app.get("/health", summary="Estado del sistema", tags=["Status"])
 def health():
-    """Healthcheck extendido con estado de dependencias críticas."""
-    import database as _db
-    db_ok = False
+
+@app.get("/health", summary="Estado del sistema", tags=["Status"])
+def health():
+    """
+    Healthcheck del sistema con estado de cada dependencia.
+    - base_de_datos: ok si responde, error si no
+    - espn: ok si responde, error si no
+    - ligamx_api: ok si responde, error si no
+    """
+    import requests
+    deps = {"base_de_datos": "error", "espn": "error", "ligamx_api": "error"}
+    status_global = "ok"
+
+    # 1) Base de datos
     try:
-        _db.get_equipos_usados()
-        db_ok = True
-    except Exception:
-        pass
-    
-    espn_ok = False
+        from src.database import get_equipos_usados
+        get_equipos_usados()
+        deps["base_de_datos"] = "ok"
+    except Exception as e:
+        status_global = "degradado"
+        deps["base_de_datos"] = f"error: {e}"
+
+    # 2) ESPN
     try:
-        r = requests.get("https://site.api.espn.com/apis/v2/sports/soccer/ligamx/teams", timeout=5)
-        espn_ok = r.status_code == 200
-    except Exception:
-        pass
-    
-    ligamx_api_ok = False
+        r = requests.get("https://site.api.espn.com/apis/site/v2/sports/soccer/mex.1/scoreboard", timeout=5)
+        if r.status_code == 200:
+            deps["espn"] = "ok"
+        else:
+            deps["espn"] = f"error: HTTP {r.status_code}"
+            status_global = "degradado"
+    except Exception as e:
+        deps["espn"] = f"error: {e}"
+        status_global = "degradado"
+
+    # 3) ligamx-api (hermana)
     try:
-        r = requests.get("https://ligamx-api.onrender.com/teams", timeout=5)
-        ligamx_api_ok = r.status_code == 200
-    except Exception:
-        pass
-    
+        r = requests.get("https://ligamx-api.onrender.com/health", timeout=5)
+        if r.status_code == 200:
+            deps["ligamx_api"] = "ok"
+        else:
+            deps["ligamx_api"] = f"error: HTTP {r.status_code}"
+            status_global = "degradado"
+    except Exception as e:
+        deps["ligamx_api"] = f"error: {e}"
+        status_global = "degradado"
+
     return {
-        "status": "ok" if db_ok else "degradado",
+        "status": status_global,
         "version": "2.1.0-premium",
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "dependencias": {
-            "base_de_datos": "ok" if db_ok else "error",
-            "espn": "ok" if espn_ok else "error",
-            "ligamx_api": "ok" if ligamx_api_ok else "error"
-        }
+        "dependencias": deps,
+    }
     }
 
 

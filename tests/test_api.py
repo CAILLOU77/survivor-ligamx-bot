@@ -27,7 +27,12 @@ class TestApi(unittest.TestCase):
         self.client = TestClient(apimod.app)
 
     def test_health_ok(self):
-        r = self.client.get("/health")
+        with (
+            mock.patch("src.database.get_equipos_usados", return_value=[]),
+            mock.patch("requests.get") as mock_get,
+        ):
+            mock_get.return_value.status_code = 200
+            r = self.client.get("/health")
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.json().get("status"), "ok")
 
@@ -118,6 +123,70 @@ def test_api_key_no_configurada_devuelve_503(self):
             )
         self.assertEqual(r.status_code, 403)
 
+
+
+
+class TestAuth(unittest.TestCase):
+    def setUp(self):
+        apimod.API_KEY = "testkey"
+        self.client = TestClient(apimod.app)
+
+    def test_api_key_no_configurada_devuelve_503(self):
+        """Si API_KEY='' (no configurada), debe dar 503"""
+        apimod.API_KEY = ""
+        r = self.client.get("/stats", headers={"X-API-Key": ""})
+        self.assertEqual(r.status_code, 503)
+        self.assertIn("API_KEY no configurada", r.json().get("detail", ""))
+        apimod.API_KEY = "testkey"  # restaurar
+
+    def test_api_key_invalida_devuelve_403(self):
+        """Si API_KEY es distinta, debe dar 403"""
+        r = self.client.get("/stats", headers={"X-API-Key": "wrong"})
+        self.assertEqual(r.status_code, 403)
+        self.assertIn("inválida", r.json().get("detail", ""))
+
+    def test_healthcheck_devuelve_dependencias(self):
+        """Healthcheck debe incluir campo 'dependencias'"""
+        from unittest import mock as _mock
+        with (
+            _mock.patch("src.database.get_equipos_usados", return_value=[]),
+            _mock.patch("requests.get") as mock_get,
+        ):
+            mock_get.return_value.status_code = 200
+            r = self.client.get("/health")
+        self.assertEqual(r.status_code, 200)
+        data = r.json()
+        self.assertIn("dependencias", data)
+        self.assertIn("base_de_datos", data["dependencias"])
+        self.assertIn("espn", data["dependencias"])
+        self.assertIn("ligamx_api", data["dependencias"])
+
+    def test_healthcheck_db_fallando_muestra_degradado(self):
+        """Si la BD falla, status='degradado'"""
+        from unittest import mock as _mock
+        with (
+            _mock.patch("src.database.get_equipos_usados", side_effect=Exception("DB caída")),
+            _mock.patch("requests.get") as mock_get,
+        ):
+            mock_get.return_value.status_code = 200
+            r = self.client.get("/health")
+        self.assertEqual(r.status_code, 200)
+        data = r.json()
+        self.assertEqual(data["status"], "degradado")
+        self.assertIn("error", data["dependencias"]["base_de_datos"])
+
+    def test_healthcheck_espn_fallando_muestra_degradado(self):
+        """Si ESPN falla, status='degradado'"""
+        from unittest import mock as _mock
+        with (
+            _mock.patch("src.database.get_equipos_usados", return_value=[]),
+            _mock.patch("requests.get", side_effect=Exception("Timeout")) as mock_get,
+        ):
+            r = self.client.get("/health")
+        self.assertEqual(r.status_code, 200)
+        data = r.json()
+        self.assertEqual(data["status"], "degradado")
+        self.assertIn("error", data["dependencias"]["espn"])
 
 if __name__ == "__main__":
     unittest.main()
