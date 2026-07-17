@@ -1486,6 +1486,41 @@ def enviar_plan(equipos_usados: Optional[List[str]] = None,
                         sede = "vs" if pk.get("condicion") == "Local" else "en"
                         partes_mensaje.append(f"  {i}️⃣ {pk['equipo']} ({sede} {pk['rival']}) — sobrevive {_pct(pk['no_perder_pct'])}% [{pk.get('nivel', '—')}]")
                     partes_mensaje.append("")
+                # Racha / forma del pick recomendado y alternativas
+                try:
+                    import ligamx_api as _rach_lmx
+                except ImportError:
+                    from src import ligamx_api as _rach_lmx
+                from team_normalizer import canonical_team_key as _rach_ctk
+                _rach_mapa = _rach_lmx.mapa_equipos()
+                for _rach_i, _rach_pk in enumerate(picks[:3]):
+                    _rach_tid = _rach_lmx.id_de_equipo(_rach_pk["equipo"], _rach_mapa)
+                    if _rach_tid is not None:
+                        try:
+                            _rach_streak = _rach_lmx.racha_equipo(_rach_tid)
+                            _rach_str = _rach_streak.get("streaks", {})
+                            _rach_parts = []
+                            w = _rach_str.get("wins", 0)
+                            l = _rach_str.get("losses", 0)
+                            u = _rach_str.get("unbeaten", 0)
+                            s = _rach_str.get("scoring", 0)
+                            c = _rach_str.get("clean_sheets", 0)
+                            if w >= 2:
+                                _rach_parts.append(f"🔥 {w} victorias seguidas")
+                            elif w == 1 and u >= 3:
+                                _rach_parts.append(f"✅ {u} sin perder")
+                            if l >= 2:
+                                _rach_parts.append(f"⚠️ {l} derrotas seguidas")
+                            if s >= 5:
+                                _rach_parts.append(f"⚽ {s} partidos anotando")
+                            if c >= 3:
+                                _rach_parts.append(f"🧤 {c} porterías a cero")
+                            if _rach_parts:
+                                _rach_label = "🎯" if _rach_i == 0 else f"{_rach_i+1}️⃣"
+                                partes_mensaje.append(f"{_rach_label} {_rach_pk["equipo"]}: {" · ".join(_rach_parts)}")
+                        except Exception:
+                            pass
+                partes_mensaje.append("")
             trampas = [p for p in pronosticos if p.get("precaucion")]
             if trampas:
                 partes_mensaje.append("⚠️ <b>PARTIDOS TRAMPA (precaución)</b>")
