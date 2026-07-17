@@ -1495,7 +1495,10 @@ def enviar_plan(equipos_usados: Optional[List[str]] = None,
                     import ligamx_api as _rach_lmx
                 except ImportError:
                     from src import ligamx_api as _rach_lmx
-                from team_normalizer import canonical_team_key as _rach_ctk
+                try:
+                    from team_normalizer import canonical_team_key as _rach_ctk
+                except ImportError:
+                    from src.team_normalizer import canonical_team_key as _rach_ctk  # type: ignore
                 _rach_mapa = _rach_lmx.mapa_equipos()
                 for _rach_i, _rach_pk in enumerate(picks[:3]):
                     _rach_tid = _rach_lmx.id_de_equipo(_rach_pk["equipo"], _rach_mapa)
@@ -1545,7 +1548,10 @@ def enviar_plan(equipos_usados: Optional[List[str]] = None,
             try:
                 horarios = {}
                 fuerza_xi: Dict[str, float] = {}
+                try:
                 from team_normalizer import canonical_team_key as _ctk
+            except ImportError:
+                from src.team_normalizer import canonical_team_key as _ctk  # type: ignore
                 for p in pronosticos:
                     for eq_key in [p.get("local", ""), p.get("visitante", "")]:
                         if p.get("fecha"):
