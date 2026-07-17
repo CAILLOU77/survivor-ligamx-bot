@@ -1,7 +1,7 @@
-# 🤝 HANDOFF — Survivor Liga MX Bot
+r# 🤝 HANDOFF — Survivor Liga MX Bot
 
 ## 1. Identidad
-- **Repo:** `BRUCEWAYNE0180/survivor-ligamx-bot` · rama principal `main`
+- **Repo:** `CAILLOU77/survivor-ligamx-bot` · rama principal `main`
 - **Stack:** Python **3.12**, FastAPI (web en **Render**: `survivor-ligamx-bot.onrender.com`), Postgres (prod) / SQLite (local)
  **Objetivo:** asistir decisiones de **Survivor Liga MX** + pronósticos (1X2, O/U, BTTS) para el **Apertura 2026** (arranca 16 de julio).
 

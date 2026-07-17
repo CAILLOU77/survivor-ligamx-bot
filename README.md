@@ -5,7 +5,7 @@ de partidos (1X2, Over/Under, BTTS, marcador). **No apuesta ni envía picks
 automáticos**: toda salida es informativa y para revisión humana.
 
 ![Python](https://img.shields.io/badge/Python-3.12-blue)
-![CI](https://github.com/BRUCEWAYNE0180/survivor-ligamx-bot/workflows/CI%2FCD/badge.svg)
+![CI](https://github.com/CAILLOU77/survivor-ligamx-bot/workflows/CI%2FCD/badge.svg)
 
 ## Arquitectura (ESPN + Poisson)
 
@@ -68,7 +68,7 @@ ESPN fixtures ───────────────────┼──
 Requiere **Python 3.12** (ver `runtime.txt`).
 
 ```bash
-git clone https://github.com/BRUCEWAYNE0180/survivor-ligamx-bot.git
+git clone https://github.com/CAILLOU77/survivor-ligamx-bot.git
 cd survivor-ligamx-bot
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
