@@ -1505,15 +1505,33 @@ def enviar_plan(equipos_usados: Optional[List[str]] = None,
                 from src import seguimiento_jornada as _seg
             try:
                 horarios = {}
-                fuerza_xi = {}
+                fuerza_xi: Dict[str, float] = {}
                 from team_normalizer import canonical_team_key as _ctk
                 for p in pronosticos:
                     for eq_key in [p.get("local", ""), p.get("visitante", "")]:
                         if p.get("fecha"):
                             horarios[_ctk(eq_key)] = p["fecha"]
+                # Consultar fuerza del XI para cada candidato (picks)
+                try:
+                    import ligamx_api as _lmx
+                except ImportError:
+                    from src import ligamx_api as _lmx
+                _lmx_inst = _lmx.LigaMXAPI()
+                for _pk in picks:
+                    es_local = _pk.get("condicion") == "Local"
+                    _home = _pk["equipo"] if es_local else _pk["rival"]
+                    _away = _pk["rival"] if es_local else _pk["equipo"]
+                    try:
+                        _imp = _lmx_inst.lineup_impact_partido(_home, _away)
+                        if isinstance(_imp, dict) and _imp.get("disponible"):
+                            for _eq, _info in (_imp.get("equipos") or {}).items():
+                                if isinstance(_info, dict) and _info.get("fuerza_xi_pct") is not None:
+                                    fuerza_xi[_ctk(_eq)] = _info["fuerza_xi_pct"]
+                    except Exception:
+                        pass
                 watch = _seg.lista_seguimiento(picks, horarios, fuerza_xi, n=5)
                 if watch:
-                    partes_mensaje.append("🕐 <b>CUÁNDO JUEGAN (pendiente confirmar XI)</b>")
+                    partes_mensaje.append("🕐 <b>CUÁNDO JUEGAN (XI tracking)</b>")
                     for w in watch:
                         v = w.get("veredicto", {})
                         status = v.get("emoji", "⏳") if isinstance(v, dict) else "⏳"
