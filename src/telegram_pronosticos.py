@@ -1549,9 +1549,9 @@ def enviar_plan(equipos_usados: Optional[List[str]] = None,
                 horarios = {}
                 fuerza_xi: Dict[str, float] = {}
                 try:
-                from team_normalizer import canonical_team_key as _ctk
-            except ImportError:
-                from src.team_normalizer import canonical_team_key as _ctk  # type: ignore
+                    from team_normalizer import canonical_team_key as _ctk
+                except ImportError:
+                    from src.team_normalizer import canonical_team_key as _ctk  # type: ignore
                 for p in pronosticos:
                     for eq_key in [p.get("local", ""), p.get("visitante", "")]:
                         if p.get("fecha"):
