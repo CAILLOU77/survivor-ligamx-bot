@@ -24,7 +24,7 @@ from typing import Any, Dict, Optional, Tuple
 AYUDA = (
     "🤖 <b>Comandos Survivor</b>\n"
     "/pick (o /picks) — pronóstico + pick recomendado de la jornada\n"
-    "/plan — plan de temporada: qué equipo usar en cada jornada (todas las 17)\n"
+    "/plan — ANÁLISIS INTELIGENTE + plan de temporada (revisa TODO lo que pasa y te dice qué hacer)"
     "/momios — baja los momios (1X2/OU/hándicap) y muestra la cobertura\n"
     "/seguir — lista de seguimiento: candidatos por hora para decidir secuencial\n"
     "/prueba — pone a prueba la estrategia con torneos pasados (¿sobrevive?)\n"
@@ -32,6 +32,7 @@ AYUDA = (
     "/derrotas — aprende de las derrotas pasadas (en qué partido cayó y por qué)\n"
     "/ganadores — el 'Survivor perfecto' (con diario del futuro) vs el bot\n"
     "/racha — tu track-record: jornadas sobrevividas, victorias y si sigues vivo\n"
+    "\n"
     "/usado &lt;equipo&gt; — marca un equipo como usado (lo excluye)\n"
     "/usados — lista tus equipos usados\n"
     "/quitar &lt;equipo&gt; — quita un equipo de la lista\n"
@@ -66,6 +67,8 @@ CMDS_GANADORES = {"ganadores", "perfecto", "oraculo", "ideal"}
 
 # "Racha" = track-record REAL del pick de Survivor del bot (ligero -> lee la BD).
 CMDS_RACHA = {"racha", "rachas", "vivo", "trackrecord", "mirracha"}
+
+
 
 
 def parsear_comando(texto: str) -> Tuple[Optional[str], str]:

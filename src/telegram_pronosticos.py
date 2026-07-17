@@ -1417,8 +1417,9 @@ def construir_mensaje_plan(plan: Dict[str, Any]) -> str:
 def enviar_plan(equipos_usados: Optional[List[str]] = None,
                 peso_victoria: float = 0.5, usar_momios: bool = True) -> Dict[str, Any]:
     """
-    Construye el plan de temporada (ESPN + Poisson, momios opcionales) y lo envía
-    por Telegram. Defensivo: si falta calendario/histórico, envía un aviso claro.
+    Construye el ANÁLISIS INTELIGENTE DE LA JORNADA + plan de temporada y lo envía
+    por Telegram. El análisis ejecutivo (pronósticos, picks, trampas, contexto) va
+    PRIMERO; luego el plan de toda la temporada. Defensivo: si falta todo, avisa.
     """
     try:
         import planificador_survivor as plan_mod
@@ -1431,6 +1432,110 @@ def enviar_plan(equipos_usados: Optional[List[str]] = None,
     if equipos_usados is None:
         equipos_usados = _usados_persistidos()
 
+    # --- 1) Análisis inteligente de la jornada actual ---
+    partes_mensaje: List[str] = []
+    div = "━━━━━━━━━━"
+
+    try:
+        resultado = motor.generar_pronosticos()
+        pronosticos = resultado.get("pronosticos", [])
+        if pronosticos:
+            try:
+                motivacion = motor.motivacion_por_equipo()
+            except Exception:
+                motivacion = {}
+            est = motor.mejores_picks_estrategico(
+                pronosticos, equipos_usados, motivacion,
+                partidos_jugados_torneo=None, n=3,
+            )
+            picks = est.get("picks", [])
+            advertencia = est.get("advertencia")
+            try:
+                import database as _db
+            except ImportError:
+                from src import database as _db
+            usados = _db.get_equipos_usados() if equipos_usados is None else equipos_usados
+
+            partes_mensaje = [
+                "🧠 <b>ANÁLISIS INTELIGENTE DE LA JORNADA</b>",
+                f"<i>Revisando {len(pronosticos)} partidos · {resultado.get('fuente_datos', 'ESPN')}</i>",
+                div,
+            ]
+            totales = _totales_jornada(pronosticos)
+            partes_mensaje.append(f"📊 {len(pronosticos)} partidos · ⚽ {totales['goles_esperados_total']} goles esp. · Over 2.5 en {totales['over_25_count']}")
+            partes_mensaje.append("")
+            if picks:
+                rec = picks[0]
+                gana = rec.get("prob_victoria_pct")
+                noperder = rec.get("no_perder_pct")
+                cond = "local" if rec.get("condicion") == "Local" else "visitante"
+                if rec.get("condicion") == "Local":
+                    local_eq, visita_eq = rec["equipo"], rec["rival"]
+                else:
+                    local_eq, visita_eq = rec["rival"], rec["equipo"]
+                partes_mensaje.append(f"🎯 <b>PICK RECOMENDADO: {rec['equipo']}</b>")
+                partes_mensaje.append(f"🏠 {local_eq} vs {visita_eq} ✈️ · juega de {cond}")
+                partes_mensaje.append(f"✅ Sobrevive: <b>{_pct(noperder)}%</b> · 🏆 Gana: <b>{_pct(gana)}%</b>")
+                partes_mensaje.append(f"🎯 Confianza: <b>{rec.get('nivel', '—')}</b>")
+                if rec.get("razon"):
+                    partes_mensaje.append(f"💬 {rec['razon']}")
+                partes_mensaje.append("")
+                if len(picks) > 1:
+                    partes_mensaje.append("<b>Alternativas:</b>")
+                    for i, pk in enumerate(picks[1:3], 2):
+                        sede = "vs" if pk.get("condicion") == "Local" else "en"
+                        partes_mensaje.append(f"  {i}️⃣ {pk['equipo']} ({sede} {pk['rival']}) — sobrevive {_pct(pk['no_perder_pct'])}% [{pk.get('nivel', '—')}]")
+                    partes_mensaje.append("")
+            trampas = [p for p in pronosticos if p.get("precaucion")]
+            if trampas:
+                partes_mensaje.append("⚠️ <b>PARTIDOS TRAMPA (precaución)</b>")
+                for p in trampas[:3]:
+                    motivos = " · ".join(p.get("motivos_alerta", []))
+                    alarma = p.get("nivel_alerta", "⚠️")
+                    partes_mensaje.append(f"  {alarma} {p['local']} vs {p['visitante']}: {motivos}")
+                partes_mensaje.append("")
+            if usados:
+                partes_mensaje.append(f"🔒 <b>YA USASTE</b> ({len(usados)}): {', '.join(usados)}")
+            else:
+                partes_mensaje.append("🔓 <b>No has usado ningún equipo aún</b> (temporada nueva)")
+            partes_mensaje.append("")
+            try:
+                import seguimiento_jornada as _seg
+            except ImportError:
+                from src import seguimiento_jornada as _seg
+            try:
+                horarios = {}
+                fuerza_xi = {}
+                from team_normalizer import canonical_team_key as _ctk
+                for p in pronosticos:
+                    for eq_key in [p.get("local", ""), p.get("visitante", "")]:
+                        if p.get("fecha"):
+                            horarios[_ctk(eq_key)] = p["fecha"]
+                watch = _seg.lista_seguimiento(picks, horarios, fuerza_xi, n=5)
+                if watch:
+                    partes_mensaje.append("🕐 <b>CUÁNDO JUEGAN (pendiente confirmar XI)</b>")
+                    for w in watch:
+                        v = w.get("veredicto", {})
+                        status = v.get("emoji", "⏳") if isinstance(v, dict) else "⏳"
+                        xtra = f" — {v.get('texto', '')}" if isinstance(v, dict) and v.get("texto") else ""
+                        partes_mensaje.append(f"  {status} {w['equipo']} ({w.get('cuando', 'sin hora')}{xtra})")
+                    partes_mensaje.append("")
+            except Exception:
+                pass
+            if advertencia:
+                partes_mensaje.append(f"<i>{advertencia}</i>")
+                partes_mensaje.append("")
+            partes_mensaje.append(div)
+            partes_mensaje.append("")
+    except Exception as exc:
+        partes_mensaje = [
+            "⚠️ No se pudo generar el análisis inteligente.",
+            f"<i>Error: {exc}</i>",
+            div,
+            "",
+        ]
+
+    # --- 2) Plan de temporada (lo de siempre) ---
     calendario = plan_mod.cargar_calendario()
     if not calendario:
         plan = {"calendario_incompleto": True, "plan": []}
@@ -1441,11 +1546,12 @@ def enviar_plan(equipos_usados: Optional[List[str]] = None,
             odds = plan_mod.construir_odds_por_partido(calendario) if usar_momios else None
             plan = plan_mod.planificar(calendario, fuerzas, equipos_usados=equipos_usados,
                                        peso_victoria=peso_victoria, odds_por_partido=odds)
-        except Exception as exc:  # pragma: no cover
+        except Exception as exc:
             plan = {"calendario_incompleto": True, "plan": [], "error": str(exc)}
 
-    mensaje = construir_mensaje_plan(plan)
-    enviado = enviar_mensaje(mensaje)
+    plan_texto = construir_mensaje_plan(plan)
+    mensaje_completo = "\n".join(partes_mensaje) + "\n" + plan_texto
+    enviado = enviar_mensaje(mensaje_completo)
     return {"enviado": enviado, "jornadas": len(plan.get("plan", [])),
             "calendario_incompleto": bool(plan.get("calendario_incompleto"))}
 
@@ -1984,3 +2090,8 @@ def enviar_recordatorio_si_aplica(dias_antes: int = 1,
 if __name__ == "__main__":
     res = enviar_pronosticos()
     print(f"Enviado: {res['enviado']} | pronósticos: {res['total_pronosticos']} | fuente: {res['fuente']}")
+
+
+# ---------------------------------------------------------------------------
+# ANÁLISIS INTELIGENTE DE JORNADA (usa todas las piezas del bot)
+# ---------------------------------------------------------------------------
