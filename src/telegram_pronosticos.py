@@ -9,6 +9,7 @@ pick de Survivor + 1X2/Over-Under/BTTS por partido.
 Envío propio vía la API de Telegram (no importa la capa de DB/Postgres).
 Mensaje informativo, con disclaimer de revisión humana. No es consejo de apuesta.
 """
+
 from __future__ import annotations
 
 import json
@@ -87,14 +88,28 @@ def _formatear_contexto(ctx: Optional[Dict[str, Any]]) -> List[str]:
     impacto_ok = bool(ctx.get("impacto_xi"))
     probable = ctx.get("alineacion_probable") if isinstance(ctx.get("alineacion_probable"), list) else None
     probable_ok = bool(probable)
-    if not (pred or forma_l or forma_v or riesgo_l or riesgo_v or h2h or noticias or ali_ok or js_ok or fichajes_ok or impacto_ok or probable_ok):
+    if not (
+        pred
+        or forma_l
+        or forma_v
+        or riesgo_l
+        or riesgo_v
+        or h2h
+        or noticias
+        or ali_ok
+        or js_ok
+        or fichajes_ok
+        or impacto_ok
+        or probable_ok
+    ):
         return []  # pretemporada: sin datos aún, no ensuciar el mensaje
 
     lineas.append(f"🔎 <b>Contexto (Liga MX API)</b> — {ctx.get('home')} vs {ctx.get('away')}:")
     if ali_ok:
         forms = " · ".join(
             f"{e.get('equipo', '')} {e.get('formacion') or ''}".strip()
-            for e in ali.get("equipos", []) if e.get("equipo")
+            for e in ali.get("equipos", [])
+            if e.get("equipo")
         )
         lineas.append(f"📋 XI CONFIRMADO — {forms}")
         alerta_xi = ctx.get("alerta_xi") if isinstance(ctx.get("alerta_xi"), dict) else None
@@ -108,7 +123,8 @@ def _formatear_contexto(ctx: Optional[Dict[str, Any]]) -> List[str]:
     elif probable_ok:
         forms = " · ".join(
             f"{e.get('equipo', '')} {e.get('formacion') or ''}".strip()
-            for e in probable if isinstance(e, dict) and e.get("equipo")
+            for e in probable
+            if isinstance(e, dict) and e.get("equipo")
         )
         lineas.append(f"🔮 XI PROBABLE (aún no confirmado) — {forms}")
         lineas.append("<i>Alineación esperada de 365Scores; confirma ~1h antes.</i>")
@@ -215,9 +231,7 @@ def _lineas_mercado(p: Dict[str, Any]) -> List[str]:
     o = mercado.get("1x2") or {}
     m = o.get("momios") or {}
     if m.get("local") and m.get("empate") and m.get("visita"):
-        out.append(
-            f"💰 Momios: {local} {m['local']} · Empate {m['empate']} · {visita} {m['visita']}"
-        )
+        out.append(f"💰 Momios: {local} {m['local']} · Empate {m['empate']} · {visita} {m['visita']}")
     ou = mercado.get("over_under") or {}
     mou = ou.get("momios") or {}
     if mou.get("over") and mou.get("under"):
@@ -243,9 +257,9 @@ def _norm_simple(s: str) -> str:
     return " ".join(str(s or "").lower().split())
 
 
-def _jugadores_seguir_partido(p: Dict[str, Any],
-                              goleadores_map: Dict[str, List[Dict[str, Any]]]) -> str:
+def _jugadores_seguir_partido(p: Dict[str, Any], goleadores_map: Dict[str, List[Dict[str, Any]]]) -> str:
     """'A seguir' de un partido a partir del mapa de goleadores por equipo."""
+
     def _para(equipo: str) -> str:
         # match tolerante por nombre normalizado
         lst = goleadores_map.get(equipo)
@@ -284,8 +298,7 @@ def _jugadores_seguir_partido(p: Dict[str, Any],
     return " · ".join(partes)
 
 
-def _porteros_partido(p: Dict[str, Any],
-                      porteros_map: Dict[str, Dict[str, Any]]) -> str:
+def _porteros_partido(p: Dict[str, Any], porteros_map: Dict[str, Dict[str, Any]]) -> str:
     """
     Portero + vallas invictas, pero SOLO cuando es relevante al pronóstico:
     - Se espera que un equipo deje su portería a 0 (el rival anota 0 en el
@@ -293,6 +306,7 @@ def _porteros_partido(p: Dict[str, Any],
     - el partido pinta cerrado (Under 2.5 o BTTS No).
     Si el modelo espera goles de ambos (p. ej. 2-1), no se muestra (sería absurdo).
     """
+
     def _gk(equipo: str) -> str:
         gk = porteros_map.get(equipo)
         if gk is None:
@@ -337,12 +351,14 @@ def _porteros_partido(p: Dict[str, Any],
 
     # Sin clean sheet claro, pero partido cerrado: destaca el mejor muro.
     if not partes and (p.get("pick_ou") == "Under" or p.get("pick_btts") == "No"):
+
         def _vallas(equipo: str) -> int:
             gk = porteros_map.get(equipo) or {}
             try:
                 return int(gk.get("vallas_invictas") or 0)
             except (TypeError, ValueError):
                 return 0
+
         mejor = local if _vallas(local) >= _vallas(visita) else visita
         g = _gk(mejor)
         if g:
@@ -365,6 +381,7 @@ def _fecha_mx(generado_utc: str) -> str:
     try:
         from datetime import datetime
         from zoneinfo import ZoneInfo
+
         dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
         return dt.astimezone(ZoneInfo("America/Mexico_City")).strftime("%d/%m/%Y %H:%M") + " h (CDMX)"
     except Exception:
@@ -378,6 +395,7 @@ def _cerca_de_jornada(pronosticos, dias: int = 2) -> bool:
     extras; lejos de la jornada, mejor responder rápido y sin enriquecer.
     """
     from datetime import date, datetime, timezone
+
     hoy = datetime.now(timezone.utc).date()
     fechas = []
     for p in pronosticos or []:
@@ -429,11 +447,15 @@ def _linea_goles(p: Dict[str, Any]) -> str:
             total = None
     if total is not None:
         if pick_ou == "Over" and total <= 2:
-            linea += ("\nℹ️ <i>La moda (2 goles) es baja, pero el grueso de "
-                      "escenarios apunta a más goles: por eso el pick es Over.</i>")
+            linea += (
+                "\nℹ️ <i>La moda (2 goles) es baja, pero el grueso de "
+                "escenarios apunta a más goles: por eso el pick es Over.</i>"
+            )
         elif pick_ou == "Under" and total >= 3:
-            linea += ("\nℹ️ <i>Ese marcador exacto es el más probable, pero el "
-                      "grueso de escenarios queda por debajo: por eso el pick es Under.</i>")
+            linea += (
+                "\nℹ️ <i>Ese marcador exacto es el más probable, pero el "
+                "grueso de escenarios queda por debajo: por eso el pick es Under.</i>"
+            )
     return linea
 
 
@@ -504,7 +526,9 @@ def construir_mensaje(
             lineas.append(f"💬 <i>Por qué: {rec['razon']}</i>")
         # Advertencia de Riesgo de Manada (Inteligencia de la Comunidad)
         if rec.get("crowd_risk") == "ALTO":
-            lineas.append(f"🚨 <b>RIESGO MANADA ALTO:</b> {rec.get('crowd_pct', 0)}% del publico lo picka. Sorpresa = eliminados masivos." )
+            lineas.append(
+                f"🚨 <b>RIESGO MANADA ALTO:</b> {rec.get('crowd_pct', 0)}% del publico lo picka. Sorpresa = eliminados masivos."
+            )
         if rec.get("ajuste_nota"):
             lineas.append(f"🔧 <i>Ajustado por: {rec['ajuste_nota']}</i>")
         # Otras opciones (2º y 3º).
@@ -549,7 +573,9 @@ def construir_mensaje(
             pptxt = f" ({_pct(prob_pick)}%)" if prob_pick is not None else ""
             lineas.append(f"{n} <b>{p['local']}</b> 🏠 vs <b>{p['visitante']}</b> ✈️")
             lineas.append(f"🎯 Pick: <b>{_pick_club(p)}</b>{pptxt}{conf}")
-            lineas.append(f"📊 Local {_pct(p['prob_local_pct'])}% · Empate {_pct(p['prob_empate_pct'])}% · Visita {_pct(p['prob_visitante_pct'])}%")
+            lineas.append(
+                f"📊 Local {_pct(p['prob_local_pct'])}% · Empate {_pct(p['prob_empate_pct'])}% · Visita {_pct(p['prob_visitante_pct'])}%"
+            )
             _lg = _linea_goles(p)
             if _lg:
                 lineas.append(_lg)
@@ -633,8 +659,15 @@ def _dividir_mensaje(texto: str, limite: int = _TELEGRAM_LIMITE) -> List[str]:
 def _totales_jornada(pronosticos: list) -> Dict[str, Any]:
     """Calcula totales de la jornada: partidos, goles esperados, O/U, BTTS."""
     if not pronosticos:
-        return {"partidos": 0, "goles_esperados_total": 0.0, "promedio_goles_partido": 0.0,
-                "over_25_count": 0, "under_25_count": 0, "btts_si_count": 0, "btts_no_count": 0}
+        return {
+            "partidos": 0,
+            "goles_esperados_total": 0.0,
+            "promedio_goles_partido": 0.0,
+            "over_25_count": 0,
+            "under_25_count": 0,
+            "btts_si_count": 0,
+            "btts_no_count": 0,
+        }
     total_goles = sum(p.get("goles_esperados_local", 0) + p.get("goles_esperados_visitante", 0) for p in pronosticos)
     over_25 = sum(1 for p in pronosticos if p.get("pick_ou") == "Over")
     under_25 = sum(1 for p in pronosticos if p.get("pick_ou") == "Under")
@@ -668,9 +701,7 @@ def enviar_mensaje(mensaje: str) -> bool:
     ok = True
     for parte in _dividir_mensaje(mensaje):
         try:
-            resp = requests.post(
-                url, data={"chat_id": chat_id, "text": parte, "parse_mode": "HTML"}, timeout=20
-            )
+            resp = requests.post(url, data={"chat_id": chat_id, "text": parte, "parse_mode": "HTML"}, timeout=20)
             if resp.status_code != 200:
                 ok = False
                 print(f"Telegram HTTP {resp.status_code}: {resp.text[:200]}")
@@ -737,9 +768,9 @@ def _fmt_fichajes(mov: Dict[str, Any]) -> str:
     return " · ".join(partes)
 
 
-def _ajustar_pick_top(picks: List[Dict[str, Any]],
-                      pronosticos: List[Dict[str, Any]],
-                      contexto_pick: Optional[Dict[str, Any]]) -> None:
+def _ajustar_pick_top(
+    picks: List[Dict[str, Any]], pronosticos: List[Dict[str, Any]], contexto_pick: Optional[Dict[str, Any]]
+) -> None:
     """
     Aplica el ajuste MODERADO (XI + H2H) al pick #1 y refleja el resultado en sus
     números (no-perder, gana, nivel) y en `razon`. Muta `picks[0]` in situ.
@@ -761,8 +792,7 @@ def _ajustar_pick_top(picks: List[Dict[str, Any]],
     local = rec["equipo"] if es_local else rec["rival"]
     visita = rec["rival"] if es_local else rec["equipo"]
     pron = next(
-        (p for p in pronosticos
-         if _k(p.get("local", "")) == _k(local) and _k(p.get("visitante", "")) == _k(visita)),
+        (p for p in pronosticos if _k(p.get("local", "")) == _k(local) and _k(p.get("visitante", "")) == _k(visita)),
         None,
     )
     if not pron:
@@ -786,10 +816,12 @@ def _ajustar_pick_top(picks: List[Dict[str, Any]],
         contexto_pick["ajuste_pick"] = {"notas": notas, "base": base}
 
 
-def _contexto_top_pick(pronosticos: List[Dict[str, Any]],
-                       equipos_usados: Optional[List[str]],
-                       motivacion: Optional[Dict[str, Dict[str, Any]]],
-                       pick_override: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+def _contexto_top_pick(
+    pronosticos: List[Dict[str, Any]],
+    equipos_usados: Optional[List[str]],
+    motivacion: Optional[Dict[str, Dict[str, Any]]],
+    pick_override: Optional[Dict[str, Any]] = None,
+) -> Optional[Dict[str, Any]]:
     """
     Dossier compacto (Liga MX API) del pick #1. Tolerante: None si algo falla.
     Si se pasa `pick_override` (dict con equipo/rival/condicion), el dossier se arma
@@ -891,8 +923,11 @@ def _registrar_historial(pronosticos) -> None:
     for p in pronosticos or []:
         try:
             registrar_pronostico(
-                p.get("local", ""), p.get("visitante", ""), p.get("pick_1x2", ""),
-                p.get("prob_local_pct", 0), p.get("prob_empate_pct", 0),
+                p.get("local", ""),
+                p.get("visitante", ""),
+                p.get("pick_1x2", ""),
+                p.get("prob_local_pct", 0),
+                p.get("prob_empate_pct", 0),
                 p.get("prob_visitante_pct", 0),
                 p.get("marcador_pick") or p.get("marcador_mas_probable", ""),
                 fecha=p.get("fecha", ""),
@@ -905,6 +940,7 @@ def _iso_week(fecha: str) -> str:
     """Etiqueta de jornada = semana ISO de la fecha (YYYY-Www). '' si no se puede."""
     try:
         from datetime import date
+
         y, m, d = str(fecha)[:10].split("-")
         yr, wk, _ = date(int(y), int(m), int(d)).isocalendar()
         return f"{yr}-W{wk:02d}"
@@ -956,9 +992,12 @@ def _registrar_survivor_historial(picks, pronosticos) -> None:
         return
     try:
         _db.registrar_survivor_pick(
-            jornada=jornada, equipo=equipo, rival=rival or "",
+            jornada=jornada,
+            equipo=equipo,
+            rival=rival or "",
             condicion=pk.get("condicion", ""),
-            local=partido.get("local", ""), visitante=partido.get("visitante", ""),
+            local=partido.get("local", ""),
+            visitante=partido.get("visitante", ""),
             no_perder_pct=pk.get("no_perder_pct", 0),
             prob_victoria_pct=pk.get("prob_victoria_pct", 0),
             fecha=fecha,
@@ -967,8 +1006,7 @@ def _registrar_survivor_historial(picks, pronosticos) -> None:
         pass
 
 
-def enviar_pronosticos(equipos_usados: Optional[List[str]] = None,
-                       incluir_contexto: bool = True) -> Dict[str, Any]:
+def enviar_pronosticos(equipos_usados: Optional[List[str]] = None, incluir_contexto: bool = True) -> Dict[str, Any]:
     """
     Genera pronósticos reales y los envía por Telegram, enriquecidos con:
     - momios/valor del mercado (si hay ODDS_API_IO_KEY; si no, no-op),
@@ -1002,8 +1040,7 @@ def enviar_pronosticos(equipos_usados: Optional[List[str]] = None,
         # Mezcla los momios en las probabilidades del pick (ensemble modelo+mercado).
         # Sin key/momios es no-op (el pick sigue siendo el del modelo).
         resultado["pronosticos"] = cm.mezclar_pronosticos_con_mercado(pron_anotados, momios=momios)
-        con_momios = sum(1 for m in (momios or {}).values()
-                         if isinstance(m, dict) and m.get("ml"))
+        con_momios = sum(1 for m in (momios or {}).values() if isinstance(m, dict) and m.get("ml"))
         # Fallback: partidos que el modelo no pudo pronosticar (equipo sin histórico,
         # p.ej. un recién ascendido como Atlante). Si el mercado tiene momios de ese
         # juego, lo mostramos con probabilidades del mercado en vez de omitirlo.
@@ -1011,11 +1048,10 @@ def enviar_pronosticos(equipos_usados: Optional[List[str]] = None,
             faltantes = resultado.get("fixtures_sin_modelo") or []
             extra = []
             for fx in faltantes:
-                merc = cm.buscar_mercado_partido(fx.get("home_team", ""),
-                                                 fx.get("away_team", ""), momios or {})
-                pr = cm.pronostico_desde_momios(fx.get("home_team", ""),
-                                                fx.get("away_team", ""), merc,
-                                                fx.get("fecha", ""))
+                merc = cm.buscar_mercado_partido(fx.get("home_team", ""), fx.get("away_team", ""), momios or {})
+                pr = cm.pronostico_desde_momios(
+                    fx.get("home_team", ""), fx.get("away_team", ""), merc, fx.get("fecha", "")
+                )
                 if pr:
                     extra.append(pr)
             if extra:
@@ -1058,8 +1094,11 @@ def enviar_pronosticos(equipos_usados: Optional[List[str]] = None,
 
     # Pick ESTRATÉGICO de la jornada (cautela de arranque + anti-sorpresa visitante).
     est = motor.mejores_picks_estrategico(
-        resultado.get("pronosticos", []), equipos_usados, motivacion,
-        partidos_jugados_torneo=_partidos_jugados_torneo() if api_ok else None, n=3,
+        resultado.get("pronosticos", []),
+        equipos_usados,
+        motivacion,
+        partidos_jugados_torneo=_partidos_jugados_torneo() if api_ok else None,
+        n=3,
     )
     # UNIFICAR con el PLAN de temporada: el pick recomendado = el equipo que el plan
     # asigna a ESTA jornada (una sola fuente de verdad; prioriza sobrevivir las 17).
@@ -1089,12 +1128,12 @@ def enviar_pronosticos(equipos_usados: Optional[List[str]] = None,
     contexto_pick = None
     if incluir_contexto and api_ok:
         _top = (est.get("picks") or [None])[0]
-        contexto_pick = _contexto_top_pick(resultado.get("pronosticos", []),
-                                           equipos_usados, motivacion, pick_override=_top)
+        contexto_pick = _contexto_top_pick(
+            resultado.get("pronosticos", []), equipos_usados, motivacion, pick_override=_top
+        )
     # Ajuste MODERADO del pick #1 por XI confirmado + H2H (con tope; nunca voltea).
     try:
-        _ajustar_pick_top(est.get("picks") or [], resultado.get("pronosticos", []),
-                          contexto_pick)
+        _ajustar_pick_top(est.get("picks") or [], resultado.get("pronosticos", []), contexto_pick)
     except Exception:  # pragma: no cover - el ajuste nunca debe tumbar el envío
         pass
     # Registra el pick de Survivor de la jornada para el track-record (racha).
@@ -1123,9 +1162,16 @@ def enviar_pronosticos(equipos_usados: Optional[List[str]] = None,
             porteros_map = lmx.porteros_por_equipo()
         except Exception:  # pragma: no cover - nunca debe tumbar el envío
             porteros_map = None
-    mensaje = construir_mensaje(resultado, equipos_usados, motivacion, contexto_pick,
-                                tops=est.get("picks"), advertencia=est.get("advertencia"),
-                                goleadores_map=goleadores_map, porteros_map=porteros_map)
+    mensaje = construir_mensaje(
+        resultado,
+        equipos_usados,
+        motivacion,
+        contexto_pick,
+        tops=est.get("picks"),
+        advertencia=est.get("advertencia"),
+        goleadores_map=goleadores_map,
+        porteros_map=porteros_map,
+    )
     enviado = enviar_mensaje(mensaje)
     return {
         "enviado": enviado,
@@ -1136,19 +1182,19 @@ def enviar_pronosticos(equipos_usados: Optional[List[str]] = None,
     }
 
 
-def construir_mensaje_seguimiento(items: List[Dict[str, Any]],
-                                  descartados: Optional[List[str]] = None,
-                                  recomendado: Optional[Dict[str, Any]] = None,
-                                  nota_plan: Optional[str] = None) -> str:
+def construir_mensaje_seguimiento(
+    items: List[Dict[str, Any]],
+    descartados: Optional[List[str]] = None,
+    recomendado: Optional[Dict[str, Any]] = None,
+    nota_plan: Optional[str] = None,
+) -> str:
     """
     Mensaje (HTML) centrado en UN pick claro y UN momento para actuar (no un menú).
     El respaldo solo se menciona; el día del partido, el veredicto del XI decide
     si se mantiene o se cambia.
     """
     if not items:
-        return ("📋 <b>LISTA DE SEGUIMIENTO</b>\n\n"
-                "Aún no hay candidatos (faltan datos de la jornada).\n\n"
-                f"{DISCLAIMER}")
+        return f"📋 <b>LISTA DE SEGUIMIENTO</b>\n\nAún no hay candidatos (faltan datos de la jornada).\n\n{DISCLAIMER}"
 
     def _sede(c: Dict[str, Any]) -> str:
         return "🏠 local" if c.get("condicion") == "Local" else "✈️ visita"
@@ -1184,8 +1230,10 @@ def construir_mensaje_seguimiento(items: List[Dict[str, Any]],
             lineas.append(f"👉 Mejor alternativa: <b>{alt}</b>. Manda /seguir para verla.")
     else:  # PENDIENTE
         momento = f"el <b>{cuando.split()[0]}</b> " if cuando else ""
-        lineas.append(f"👉 <b>Qué hacer:</b> manda <code>/seguir</code> {momento}~1h antes de su partido "
-                      "y te confirmo su alineación. Antes de eso no necesitas hacer nada.")
+        lineas.append(
+            f"👉 <b>Qué hacer:</b> manda <code>/seguir</code> {momento}~1h antes de su partido "
+            "y te confirmo su alineación. Antes de eso no necesitas hacer nada."
+        )
 
     otras = [it["equipo"] for it in items if it.get("equipo") != rec.get("equipo")][:2]
     if otras:
@@ -1214,8 +1262,10 @@ def construir_mensaje_seguimiento(items: List[Dict[str, Any]],
         if alt_ver.get("estado") and alt_ver["estado"] != "PENDIENTE":
             lineas.append(f"{alt_ver.get('emoji', '')} {alt_resp['equipo']}: {alt_ver.get('texto', '')}")
     lineas.append("")
-    lineas.append("💡 <i>Si te preocupa el internet, puedes meter tu pick en PlayDoit desde ya "
-                  "y cambiarlo solo si su alineación sale mermada.</i>")
+    lineas.append(
+        "💡 <i>Si te preocupa el internet, puedes meter tu pick en PlayDoit desde ya "
+        "y cambiarlo solo si su alineación sale mermada.</i>"
+    )
     lineas += ["", DISCLAIMER]
     return "\n".join(lineas)
 
@@ -1258,8 +1308,9 @@ def _plan_temporada(equipos_usados: Optional[List[str]]) -> Dict[str, Any]:
         datos = fuentes_datos.obtener_resultados(meses=18)
         fuerzas = pm.calcular_fuerzas(datos["resultados"])
         odds = plan_mod.construir_odds_por_partido(calendario)
-        return plan_mod.planificar(calendario, fuerzas, equipos_usados=equipos_usados,
-                                   peso_victoria=0.5, odds_por_partido=odds)
+        return plan_mod.planificar(
+            calendario, fuerzas, equipos_usados=equipos_usados, peso_victoria=0.5, odds_por_partido=odds
+        )
     except Exception:  # pragma: no cover - nunca debe tumbar /seguir
         return {}
 
@@ -1284,8 +1335,11 @@ def _rec_desde_plan(plan: Dict[str, Any], jornada_num: Optional[int]) -> Optiona
     for p in plan.get("plan", []):
         if p.get("jornada") == jornada_num:
             return {
-                "equipo": p["equipo"], "rival": p["rival"], "condicion": p["condicion"],
-                "no_perder_pct": p["no_perder_pct"], "prob_victoria_pct": p.get("prob_ganar_pct"),
+                "equipo": p["equipo"],
+                "rival": p["rival"],
+                "condicion": p["condicion"],
+                "no_perder_pct": p["no_perder_pct"],
+                "prob_victoria_pct": p.get("prob_ganar_pct"),
                 "nivel": p.get("nivel"),
             }
     return None
@@ -1314,8 +1368,11 @@ def enviar_seguimiento(equipos_usados: Optional[List[str]] = None, n: int = 5) -
     except Exception:  # pragma: no cover
         motivacion = {}
     est = motor.mejores_picks_estrategico(
-        pronosticos, equipos_usados, motivacion,
-        partidos_jugados_torneo=_partidos_jugados_torneo(), n=max(n, 5),
+        pronosticos,
+        equipos_usados,
+        motivacion,
+        partidos_jugados_torneo=_partidos_jugados_torneo(),
+        n=max(n, 5),
     )
     picks = est.get("picks") or []
     horarios = _mapa_horarios(lmx)
@@ -1341,7 +1398,8 @@ def enviar_seguimiento(equipos_usados: Optional[List[str]] = None, n: int = 5) -
     usados_set = {_k(e) for e in (equipos_usados or [])}
     seguidos = {_k(it["equipo"]) for it in items}
     descartados = [
-        p.get("local", "") for p in pronosticos
+        p.get("local", "")
+        for p in pronosticos
         if _k(p.get("local", "")) not in seguidos and _k(p.get("local", "")) not in usados_set
     ][:6]
     # Recomendación PLAN-AWARE: el plan de temporada reserva a los fuertes.
@@ -1353,11 +1411,15 @@ def enviar_seguimiento(equipos_usados: Optional[List[str]] = None, n: int = 5) -
         if rec_plan:
             miope = picks[0]["equipo"] if picks else None
             if miope and _k(rec_plan["equipo"]) != _k(miope):
-                nota_plan = (f"📅 Plan de temporada: usa <b>{rec_plan['equipo']}</b> esta jornada "
-                             f"y GUARDA a {miope} para una jornada más difícil.")
+                nota_plan = (
+                    f"📅 Plan de temporada: usa <b>{rec_plan['equipo']}</b> esta jornada "
+                    f"y GUARDA a {miope} para una jornada más difícil."
+                )
             else:
-                nota_plan = (f"📅 Plan de temporada: <b>{rec_plan['equipo']}</b> es tu equipo de esta "
-                             "jornada (mirando las 17 completas, sin quemar fuertes).")
+                nota_plan = (
+                    f"📅 Plan de temporada: <b>{rec_plan['equipo']}</b> es tu equipo de esta "
+                    "jornada (mirando las 17 completas, sin quemar fuertes)."
+                )
             recomendado = rec_plan
             # Asegurar que el equipo del plan esté en la lista (para XI/hora/veredicto).
             if not any(_k(it["equipo"]) == _k(rec_plan["equipo"]) for it in items):
@@ -1365,8 +1427,9 @@ def enviar_seguimiento(equipos_usados: Optional[List[str]] = None, n: int = 5) -
                 items = extra + items
     except Exception:  # pragma: no cover - nunca debe tumbar /seguir
         pass
-    mensaje = construir_mensaje_seguimiento(items, descartados=descartados,
-                                            recomendado=recomendado, nota_plan=nota_plan)
+    mensaje = construir_mensaje_seguimiento(
+        items, descartados=descartados, recomendado=recomendado, nota_plan=nota_plan
+    )
     enviado = enviar_mensaje(mensaje)
     return {"enviado": enviado, "candidatos": len(items)}
 
@@ -1374,10 +1437,12 @@ def enviar_seguimiento(equipos_usados: Optional[List[str]] = None, n: int = 5) -
 def construir_mensaje_plan(plan: Dict[str, Any]) -> str:
     """Mensaje (HTML) con el plan de temporada del Survivor."""
     if plan.get("calendario_incompleto") or not plan.get("plan"):
-        return ("📅 <b>PLAN SURVIVOR</b>\n\n"
-                "Aún no hay calendario completo (data/calendario.json). "
-                "Córrelo de nuevo cuando se publique el calendario del torneo.\n\n"
-                f"{DISCLAIMER}")
+        return (
+            "📅 <b>PLAN SURVIVOR</b>\n\n"
+            "Aún no hay calendario completo (data/calendario.json). "
+            "Córrelo de nuevo cuando se publique el calendario del torneo.\n\n"
+            f"{DISCLAIMER}"
+        )
     lineas = [
         "📅 <b>PLAN SURVIVOR — temporada</b> (modelo · datos ESPN)",
         f"<i>🛡️ Sobrevivir las 17 jornadas: {_pct(plan.get('prob_supervivencia_total_pct'))}% · "
@@ -1387,16 +1452,12 @@ def construir_mensaje_plan(plan: Dict[str, Any]) -> str:
         "",
     ]
     for p in plan["plan"]:
-        lineas.append(
-            f"<b>J{p['jornada']} · {p['equipo']}</b> ({p['condicion']} vs {p['rival']})"
-        )
-        lineas.append(
-            f"🏆 gana {_pct(p['prob_ganar_pct'])}% · 🛡️ sobrevive {_pct(p['no_perder_pct'])}% [{p['nivel']}]"
-        )
+        lineas.append(f"<b>J{p['jornada']} · {p['equipo']}</b> ({p['condicion']} vs {p['rival']})")
+        lineas.append(f"🏆 gana {_pct(p['prob_ganar_pct'])}% · 🛡️ sobrevive {_pct(p['no_perder_pct'])}% [{p['nivel']}]")
     riesgosas = plan.get("jornadas_riesgosas") or []
     if riesgosas:
         lineas.append("")
-        lineas.append(f"⚠️ Jornadas riesgosas: {', '.join('J'+str(j) for j in riesgosas)}")
+        lineas.append(f"⚠️ Jornadas riesgosas: {', '.join('J' + str(j) for j in riesgosas)}")
     no_usados = plan.get("equipos_no_usados") or []
     if no_usados:
         lineas.append("")
@@ -1411,15 +1472,15 @@ def construir_mensaje_plan(plan: Dict[str, Any]) -> str:
                 f"<b>{', '.join(no_usados)}</b> — sin jornada lo bastante buena."
             )
         lineas.append(
-            "<i>El resto de los flojos ya está colocado en su partido menos malo "
-            "(de local vs rival débil).</i>"
+            "<i>El resto de los flojos ya está colocado en su partido menos malo (de local vs rival débil).</i>"
         )
     lineas += ["", DISCLAIMER]
     return "\n".join(lineas)
 
 
-def enviar_plan(equipos_usados: Optional[List[str]] = None,
-                peso_victoria: float = 0.5, usar_momios: bool = True) -> Dict[str, Any]:
+def enviar_plan(
+    equipos_usados: Optional[List[str]] = None, peso_victoria: float = 0.5, usar_momios: bool = True
+) -> Dict[str, Any]:
     """
     Construye el ANÁLISIS INTELIGENTE DE LA JORNADA + plan de temporada y lo envía
     por Telegram. El análisis ejecutivo (pronósticos, picks, trampas, contexto) va
@@ -1449,8 +1510,11 @@ def enviar_plan(equipos_usados: Optional[List[str]] = None,
             except Exception:
                 motivacion = {}
             est = motor.mejores_picks_estrategico(
-                pronosticos, equipos_usados, motivacion,
-                partidos_jugados_torneo=None, n=3,
+                pronosticos,
+                equipos_usados,
+                motivacion,
+                partidos_jugados_torneo=None,
+                n=3,
             )
             picks = est.get("picks", [])
             advertencia = est.get("advertencia")
@@ -1466,7 +1530,9 @@ def enviar_plan(equipos_usados: Optional[List[str]] = None,
                 div,
             ]
             totales = _totales_jornada(pronosticos)
-            partes_mensaje.append(f"📊 {len(pronosticos)} partidos · ⚽ {totales['goles_esperados_total']} goles esp. · Over 2.5 en {totales['over_25_count']}")
+            partes_mensaje.append(
+                f"📊 {len(pronosticos)} partidos · ⚽ {totales['goles_esperados_total']} goles esp. · Over 2.5 en {totales['over_25_count']}"
+            )
             partes_mensaje.append("")
             if picks:
                 rec = picks[0]
@@ -1488,7 +1554,9 @@ def enviar_plan(equipos_usados: Optional[List[str]] = None,
                     partes_mensaje.append("<b>Alternativas:</b>")
                     for i, pk in enumerate(picks[1:3], 2):
                         sede = "vs" if pk.get("condicion") == "Local" else "en"
-                        partes_mensaje.append(f"  {i}️⃣ {pk['equipo']} ({sede} {pk['rival']}) — sobrevive {_pct(pk['no_perder_pct'])}% [{pk.get('nivel', '—')}]")
+                        partes_mensaje.append(
+                            f"  {i}️⃣ {pk['equipo']} ({sede} {pk['rival']}) — sobrevive {_pct(pk['no_perder_pct'])}% [{pk.get('nivel', '—')}]"
+                        )
                     partes_mensaje.append("")
                 # Racha / forma del pick recomendado y alternativas
                 try:
@@ -1496,9 +1564,8 @@ def enviar_plan(equipos_usados: Optional[List[str]] = None,
                 except ImportError:
                     from src import ligamx_api as _rach_lmx
                 try:
-                    from team_normalizer import canonical_team_key as _rach_ctk
-                except ImportError:
-                    from src.team_normalizer import canonical_team_key as _rach_ctk  # type: ignore
+                                    except ImportError:
+                    pass  # type: ignore
                 _rach_mapa = _rach_lmx.mapa_equipos()
                 for _rach_i, _rach_pk in enumerate(picks[:3]):
                     _rach_tid = _rach_lmx.id_de_equipo(_rach_pk["equipo"], _rach_mapa)
@@ -1523,8 +1590,8 @@ def enviar_plan(equipos_usados: Optional[List[str]] = None,
                             if c >= 3:
                                 _rach_parts.append(f"🧤 {c} porterías a cero")
                             if _rach_parts:
-                                _rach_label = "🎯" if _rach_i == 0 else f"{_rach_i+1}️⃣"
-                                partes_mensaje.append(f"{_rach_label} {_rach_pk["equipo"]}: {" · ".join(_rach_parts)}")
+                                _rach_label = "🎯" if _rach_i == 0 else f"{_rach_i + 1}️⃣"
+                                partes_mensaje.append(f"{_rach_label} {_rach_pk['equipo']}: {' · '.join(_rach_parts)}")
                         except Exception:
                             pass
                 partes_mensaje.append("")
@@ -1607,16 +1674,20 @@ def enviar_plan(equipos_usados: Optional[List[str]] = None,
             datos = fuentes_datos.obtener_resultados(meses=18)
             fuerzas = pm.calcular_fuerzas(datos["resultados"])
             odds = plan_mod.construir_odds_por_partido(calendario) if usar_momios else None
-            plan = plan_mod.planificar(calendario, fuerzas, equipos_usados=equipos_usados,
-                                       peso_victoria=peso_victoria, odds_por_partido=odds)
+            plan = plan_mod.planificar(
+                calendario, fuerzas, equipos_usados=equipos_usados, peso_victoria=peso_victoria, odds_por_partido=odds
+            )
         except Exception as exc:
             plan = {"calendario_incompleto": True, "plan": [], "error": str(exc)}
 
     plan_texto = construir_mensaje_plan(plan)
     mensaje_completo = "\n".join(partes_mensaje) + "\n" + plan_texto
     enviado = enviar_mensaje(mensaje_completo)
-    return {"enviado": enviado, "jornadas": len(plan.get("plan", [])),
-            "calendario_incompleto": bool(plan.get("calendario_incompleto"))}
+    return {
+        "enviado": enviado,
+        "jornadas": len(plan.get("plan", [])),
+        "calendario_incompleto": bool(plan.get("calendario_incompleto")),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1630,11 +1701,13 @@ def construir_mensaje_prueba(comp: Dict[str, Any]) -> str:
     ingenua = por.get("ingenua", {})
 
     if not real or real.get("torneos_evaluados", 0) == 0:
-        return ("🧪 <b>PRUEBA DE LA ESTRATEGIA</b>\n\n"
-                "Todavía no hay suficiente historial de temporadas para probarla "
-                "(hace falta más calendario/resultados de ESPN). Vuelve a intentar "
-                "cuando el torneo ya tenga jornadas jugadas.\n\n"
-                f"{DISCLAIMER}")
+        return (
+            "🧪 <b>PRUEBA DE LA ESTRATEGIA</b>\n\n"
+            "Todavía no hay suficiente historial de temporadas para probarla "
+            "(hace falta más calendario/resultados de ESPN). Vuelve a intentar "
+            "cuando el torneo ya tenga jornadas jugadas.\n\n"
+            f"{DISCLAIMER}"
+        )
 
     n = real.get("torneos_evaluados")
     parciales = real.get("torneos_parciales") or 0
@@ -1665,15 +1738,19 @@ def construir_mensaje_prueba(comp: Dict[str, Any]) -> str:
         i_vic = ingenua.get("victorias_prom_por_torneo") or 0
         r_jor = real.get("jornadas_sobrevividas_prom") or 0
         if r_tasa == 0 and i_tasa == 0:
-            concl = ("👉 <b>La verdad del Survivor:</b> sobrevivir las 17 jornadas es MUY "
-                     "difícil. En el histórico NINGUNA estrategia lo logró completo; el bot "
-                     f"aguantó ~{r_jor} jornadas en promedio antes de caer. Te da la mejor "
-                     "chance cada semana, pero no hay garantía: una derrota elimina.")
+            concl = (
+                "👉 <b>La verdad del Survivor:</b> sobrevivir las 17 jornadas es MUY "
+                "difícil. En el histórico NINGUNA estrategia lo logró completo; el bot "
+                f"aguantó ~{r_jor} jornadas en promedio antes de caer. Te da la mejor "
+                "chance cada semana, pero no hay garantía: una derrota elimina."
+            )
         elif r_tasa > i_tasa or (r_tasa == i_tasa and r_vic >= i_vic):
             concl = "👉 La estrategia del bot va igual o mejor que elegir a lo simple."
         else:
-            concl = ("👉 En este histórico, elegir a lo simple no salió peor. La estrategia "
-                     "del bot prioriza SEGURIDAD (menos sorpresas), no más victorias.")
+            concl = (
+                "👉 En este histórico, elegir a lo simple no salió peor. La estrategia "
+                "del bot prioriza SEGURIDAD (menos sorpresas), no más victorias."
+            )
         lineas += ["", concl]
     lineas += [div, DISCLAIMER]
     return "\n".join(lineas)
@@ -1707,10 +1784,12 @@ def construir_mensaje_confianza(rep: Dict[str, Any]) -> str:
     """Mensaje (HTML, simple) del reporte de calibración, para el comando /confianza."""
     div = "━━━━━━━━━━"
     if not rep or rep.get("n_muestras", 0) < 20:
-        return ("📐 <b>¿LA CONFIANZA DEL BOT ES HONESTA?</b>\n\n"
-                "Aún no hay suficientes pronósticos pasados para revisarlo. "
-                "Vuelve a intentar cuando el torneo tenga más jornadas jugadas.\n\n"
-                f"{DISCLAIMER}")
+        return (
+            "📐 <b>¿LA CONFIANZA DEL BOT ES HONESTA?</b>\n\n"
+            "Aún no hay suficientes pronósticos pasados para revisarlo. "
+            "Vuelve a intentar cuando el torneo tenga más jornadas jugadas.\n\n"
+            f"{DISCLAIMER}"
+        )
 
     alpha = rep.get("alpha_sugerido", 0.0)
     ayuda = rep.get("calibracion_ayuda")
@@ -1718,10 +1797,8 @@ def construir_mensaje_confianza(rep: Dict[str, Any]) -> str:
         diagnostico = "🟢 El modelo ya está bien calibrado: su confianza es de fiar."
         recomendacion = "👉 No hace falta ajustar nada."
     else:
-        diagnostico = ("🟡 El modelo es un poco OPTIMISTA: a veces dice más confianza "
-                       "de la real.")
-        recomendacion = ("👉 Conviene bajarle un poco la confianza. Si quieres, dime "
-                         "y activo el ajuste.")
+        diagnostico = "🟡 El modelo es un poco OPTIMISTA: a veces dice más confianza de la real."
+        recomendacion = "👉 Conviene bajarle un poco la confianza. Si quieres, dime y activo el ajuste."
     lineas = [
         "📐 <b>¿LA CONFIANZA DEL BOT ES HONESTA?</b>",
         f"<i>Revisé {rep.get('n_muestras')} pronósticos pasados vs lo que pasó</i>",
@@ -1769,10 +1846,12 @@ def construir_mensaje_derrotas(rep: Dict[str, Any]) -> str:
     div = "━━━━━━━━━━"
     n = (rep or {}).get("total_derrotas", 0)
     if not rep or n == 0:
-        return ("🔍 <b>APRENDER DE LAS DERROTAS</b>\n\n"
-                "Aún no hay suficientes eliminaciones en el histórico para analizar. "
-                "Vuelve a intentar cuando haya más temporadas.\n\n"
-                f"{DISCLAIMER}")
+        return (
+            "🔍 <b>APRENDER DE LAS DERROTAS</b>\n\n"
+            "Aún no hay suficientes eliminaciones en el histórico para analizar. "
+            "Vuelve a intentar cuando haya más temporadas.\n\n"
+            f"{DISCLAIMER}"
+        )
     lineas = [
         "🔍 <b>APRENDER DE LAS DERROTAS</b>",
         "<i>Revisé los partidos donde el bot fue eliminado en el histórico</i>",
@@ -1783,16 +1862,22 @@ def construir_mensaje_derrotas(rep: Dict[str, Any]) -> str:
         cond = "🏠" if d.get("condicion") == "Local" else "✈️"
         alerta = " ⚠️(ya había alerta)" if d.get("tenia_alerta") else ""
         sem = str(d.get("jornada", "")).split("-")[-1]  # "2024-W14" -> "W14"
-        lineas.append(f"• {d.get('torneo')} {sem}: {cond} <b>{d.get('pick')}</b> "
-                      f"vs {d.get('rival')} → {d.get('resultado')}{alerta}")
+        lineas.append(
+            f"• {d.get('torneo')} {sem}: {cond} <b>{d.get('pick')}</b> "
+            f"vs {d.get('rival')} → {d.get('resultado')}{alerta}"
+        )
         # ¿Fue evitable de verdad o mala suerte?
         alt = d.get("mejor_alternativa")
         if d.get("evitable") and alt:
-            lineas.append(f"   ↳ 🟡 Evitable: <b>{alt.get('equipo')}</b> estaba libre, más "
-                          f"seguro ({alt.get('no_perder_pct')}%) y sobrevivió")
+            lineas.append(
+                f"   ↳ 🟡 Evitable: <b>{alt.get('equipo')}</b> estaba libre, más "
+                f"seguro ({alt.get('no_perder_pct')}%) y sobrevivió"
+            )
         elif alt:
-            lineas.append(f"   ↳ 🎲 Mala suerte: elegiste el más seguro; {alt.get('equipo')} "
-                          f"sobrevivió pero el modelo lo veía menos seguro ({alt.get('no_perder_pct')}%)")
+            lineas.append(
+                f"   ↳ 🎲 Mala suerte: elegiste el más seguro; {alt.get('equipo')} "
+                f"sobrevivió pero el modelo lo veía menos seguro ({alt.get('no_perder_pct')}%)"
+            )
     pat = rep.get("patrones", {})
     lineas += [
         div,
@@ -1803,8 +1888,7 @@ def construir_mensaje_derrotas(rep: Dict[str, Any]) -> str:
         f"⚠️ Ya traían alerta: <b>{pat.get('tenian_alerta_pct')}%</b>",
     ]
     if pat.get("no_perder_promedio_al_perder") is not None:
-        lineas.append(f"🛡️ Perdió con ~<b>{pat.get('no_perder_promedio_al_perder')}%</b> "
-                      "de no-perder promedio")
+        lineas.append(f"🛡️ Perdió con ~<b>{pat.get('no_perder_promedio_al_perder')}%</b> de no-perder promedio")
     lecciones = rep.get("lecciones", [])
     if lecciones:
         lineas += ["", "🎓 <b>Lecciones:</b>"]
@@ -1854,11 +1938,13 @@ def construir_mensaje_survivor_historial(resumen: Dict[str, Any]) -> str:
     pendientes = int(resumen.get("pendientes", 0) or 0)
     detalle = resumen.get("detalle", []) or []
     if not jugadas and not pendientes:
-        return ("🏆 <b>RACHA SURVIVOR</b>\n\n"
-                "Aún no hay picks registrados. Cuando use /pick en una jornada guardo "
-                "el pick recomendado; al resolverse los partidos verás aquí si ganó, "
-                "empató (sobrevive) o cayó.\n\n"
-                f"{DISCLAIMER}")
+        return (
+            "🏆 <b>RACHA SURVIVOR</b>\n\n"
+            "Aún no hay picks registrados. Cuando use /pick en una jornada guardo "
+            "el pick recomendado; al resolverse los partidos verás aquí si ganó, "
+            "empató (sobrevive) o cayó.\n\n"
+            f"{DISCLAIMER}"
+        )
 
     victorias = int(resumen.get("victorias", 0) or 0)
     empates = int(resumen.get("empates", 0) or 0)
@@ -1908,9 +1994,7 @@ def construir_mensaje_survivor_historial(resumen: Dict[str, Any]) -> str:
             pieza += f" vs {rival}"
             lineas.append(pieza)
 
-    lineas += [div,
-               "ℹ️ Mide el pick del bot, no tus picks manuales de /usado.",
-               DISCLAIMER]
+    lineas += [div, "ℹ️ Mide el pick del bot, no tus picks manuales de /usado.", DISCLAIMER]
     return "\n".join(lineas)
 
 
@@ -1922,10 +2006,12 @@ def construir_mensaje_ganadores(rep: Dict[str, Any]) -> str:
     div = "━━━━━━━━━━"
     n = (rep or {}).get("torneos", 0)
     if not rep or n == 0:
-        return ("🏆 <b>EL SURVIVOR PERFECTO</b>\n\n"
-                "Aún no hay torneos completos para comparar. Vuelve a intentar "
-                "cuando haya más historial.\n\n"
-                f"{DISCLAIMER}")
+        return (
+            "🏆 <b>EL SURVIVOR PERFECTO</b>\n\n"
+            "Aún no hay torneos completos para comparar. Vuelve a intentar "
+            "cuando haya más historial.\n\n"
+            f"{DISCLAIMER}"
+        )
     lineas = [
         "🏆 <b>EL SURVIVOR PERFECTO vs EL BOT</b>",
         "<i>Con los resultados ya sabidos, ¿existía una jugada que ganara todo?</i>",
@@ -1936,8 +2022,9 @@ def construir_mensaje_ganadores(rep: Dict[str, Any]) -> str:
         # Cayó en la jornada (sobrevividas + 1): si sobrevivió 0, cayó en la J1.
         cayo_en = int(c.get("bot_sobrevividas") or 0) + 1
         bot = "ganó TODO" if c.get("bot_completo") else f"cayó en la J{cayo_en}"
-        lineas.append(f"• <b>{c.get('torneo')}</b>: perfecto={perfecto} · bot={bot} "
-                      f"(sobrevivió {c.get('bot_sobrevividas')})")
+        lineas.append(
+            f"• <b>{c.get('torneo')}</b>: perfecto={perfecto} · bot={bot} (sobrevivió {c.get('bot_sobrevividas')})"
+        )
     lineas += [
         div,
         "📊 <b>Resumen:</b>",
@@ -1983,10 +2070,12 @@ def construir_mensaje_rentabilidad(data: Dict[str, Any]) -> str:
     resueltos = int(data.get("resueltos") or 0)
     pend = int(data.get("pendientes") or 0)
     if resueltos == 0:
-        return ("📊 <b>RESUMEN DE PRONÓSTICOS</b>\n\n"
-                f"Aún no hay pronósticos resueltos (pendientes: {pend}). "
-                "Se llenará cuando se jueguen las jornadas.\n\n"
-                f"{DISCLAIMER}")
+        return (
+            "📊 <b>RESUMEN DE PRONÓSTICOS</b>\n\n"
+            f"Aún no hay pronósticos resueltos (pendientes: {pend}). "
+            "Se llenará cuando se jueguen las jornadas.\n\n"
+            f"{DISCLAIMER}"
+        )
     a1 = data.get("aciertos_1x2") or 0
     p1 = data.get("acierto_1x2_pct")
     am = data.get("aciertos_marcador_exacto") or 0
@@ -2023,11 +2112,13 @@ def enviar_resumen_rentabilidad() -> Dict[str, Any]:
 def construir_mensaje_momios(momios: Dict[str, Any], fuente: Optional[str]) -> str:
     """Mensaje (HTML) con el estado/cobertura de los momios por mercado."""
     if not momios:
-        return ("💰 <b>MOMIOS</b>\n\n"
-                "Todavía no hay líneas publicadas para estos partidos (ni odds-api.io "
-                "ni ESPN, ni guardadas). El pick usa solo el modelo por ahora; "
-                "vuelve a intentar más cerca de la jornada.\n\n"
-                f"{DISCLAIMER}")
+        return (
+            "💰 <b>MOMIOS</b>\n\n"
+            "Todavía no hay líneas publicadas para estos partidos (ni odds-api.io "
+            "ni ESPN, ni guardadas). El pick usa solo el modelo por ahora; "
+            "vuelve a intentar más cerca de la jornada.\n\n"
+            f"{DISCLAIMER}"
+        )
     n_ml = sum(1 for m in momios.values() if isinstance(m, dict) and m.get("ml"))
     n_tot = sum(1 for m in momios.values() if isinstance(m, dict) and m.get("totals"))
     n_hdp = sum(1 for m in momios.values() if isinstance(m, dict) and m.get("handicap"))
@@ -2129,8 +2220,7 @@ def construir_recordatorio(jornada: Dict[str, Any], dias: int) -> str:
     return "\n".join(lineas)
 
 
-def enviar_recordatorio_si_aplica(dias_antes: int = 1,
-                                  hoy: Optional[date] = None) -> Dict[str, Any]:
+def enviar_recordatorio_si_aplica(dias_antes: int = 1, hoy: Optional[date] = None) -> Dict[str, Any]:
     """
     Envía un recordatorio SOLO si la próxima jornada arranca dentro de `dias_antes`
     días (0..dias_antes). Pensado para un cron diario: no spamea porque solo

@@ -17,6 +17,7 @@ Seguridad: el endpoint solo atiende mensajes del TELEGRAM_CHAT_ID configurado
 Telegram. Este módulo NO decide picks ni apuesta: solo registra estado y dispara
 el envío informativo. INFORMATIVO / REVISIÓN HUMANA.
 """
+
 from __future__ import annotations
 
 from typing import Any, Dict, Optional, Tuple
@@ -67,8 +68,6 @@ CMDS_GANADORES = {"ganadores", "perfecto", "oraculo", "ideal"}
 
 # "Racha" = track-record REAL del pick de Survivor del bot (ligero -> lee la BD).
 CMDS_RACHA = {"racha", "rachas", "vivo", "trackrecord", "mirracha"}
-
-
 
 
 def parsear_comando(texto: str) -> Tuple[Optional[str], str]:

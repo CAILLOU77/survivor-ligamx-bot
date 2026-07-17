@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Tests para src/analisis_riesgo.py (fallos de favoritos). Sin red."""
+
 from __future__ import annotations
 
 import sys
@@ -20,10 +21,8 @@ def _liga(n_semanas=12):
     d0 = date(2026, 1, 5)  # lunes
     for w in range(n_semanas):
         d = (d0 + timedelta(days=7 * w)).isoformat()
-        out.append({"home_team": "Fuerte", "away_team": "Debil",
-                    "home_goals": 3, "away_goals": 0, "fecha": d})
-        out.append({"home_team": "Medio", "away_team": "Otro",
-                    "home_goals": 1, "away_goals": 1, "fecha": d})
+        out.append({"home_team": "Fuerte", "away_team": "Debil", "home_goals": 3, "away_goals": 0, "fecha": d})
+        out.append({"home_team": "Medio", "away_team": "Otro", "home_goals": 1, "away_goals": 1, "fecha": d})
     return out
 
 
@@ -49,8 +48,7 @@ class TestHelpers(unittest.TestCase):
 
     def test_tasas_vacias_y_llenas(self):
         self.assertEqual(ar._tasas([])["n"], 0)
-        evs = [{"outcome": "gano"}, {"outcome": "empato"}, {"outcome": "perdio"},
-               {"outcome": "gano"}]
+        evs = [{"outcome": "gano"}, {"outcome": "empato"}, {"outcome": "perdio"}, {"outcome": "gano"}]
         t = ar._tasas(evs)
         self.assertEqual(t["n"], 4)
         self.assertEqual(t["gano_pct"], 50.0)
@@ -68,17 +66,26 @@ class TestHelpers(unittest.TestCase):
         arr = ar._labels_arranque(jornadas, n=3)
         # Primeras 3 de cada torneo => 6 etiquetas.
         self.assertEqual(len(arr), 6)
-        self.assertIn(jornadas[0]["jornada"], arr)   # J1 torneo A
-        self.assertIn(jornadas[5]["jornada"], arr)   # J1 torneo B
+        self.assertIn(jornadas[0]["jornada"], arr)  # J1 torneo A
+        self.assertIn(jornadas[5]["jornada"], arr)  # J1 torneo B
         self.assertNotIn(jornadas[4]["jornada"], arr)  # J5 torneo A (no arranque)
 
 
 class TestAnalisis(unittest.TestCase):
     def test_estructura(self):
         r = ar.analizar_riesgo_favoritos(_liga(12), min_train=4)
-        for k in ("partidos_evaluados", "global", "por_condicion", "por_confianza",
-                  "por_tipo_partido", "muy_favorito", "arranque_vs_resto",
-                  "perfil_de_los_fallos", "recomendaciones", "decision"):
+        for k in (
+            "partidos_evaluados",
+            "global",
+            "por_condicion",
+            "por_confianza",
+            "por_tipo_partido",
+            "muy_favorito",
+            "arranque_vs_resto",
+            "perfil_de_los_fallos",
+            "recomendaciones",
+            "decision",
+        ):
             self.assertIn(k, r)
         self.assertEqual(r["decision"], "INFORMATIVO / REVISIÓN HUMANA")
         self.assertGreaterEqual(r["partidos_evaluados"], 1)

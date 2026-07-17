@@ -22,6 +22,7 @@ Salidas locales (NO se commitean; data/ y reports/ están en .gitignore):
 - reports/fbref_schedule_import_preview.txt
 - reports/fbref_vs_jornadas_compare.txt
 """
+
 from __future__ import annotations
 
 import argparse
@@ -140,7 +141,15 @@ def normalizar_nombre_equipo(nombre: str) -> str:
 # Normalización de estadios y horas
 # ---------------------------------------------------------------------------
 ESTADIO_STOPWORDS = {
-    "estadio", "stadium", "de", "del", "la", "el", "los", "las", "y",
+    "estadio",
+    "stadium",
+    "de",
+    "del",
+    "la",
+    "el",
+    "los",
+    "las",
+    "y",
 }
 
 
@@ -267,8 +276,7 @@ def parse_schedule_html(html_text: str) -> Tuple[List[Dict[str, str]], Set[str]]
     parser.feed(html_text)
     if not parser.rows:
         raise FBrefImportError(
-            "No se encontró ninguna fila de tabla en el HTML. "
-            "¿Guardaste la página correcta de FBref como HTML Only?"
+            "No se encontró ninguna fila de tabla en el HTML. ¿Guardaste la página correcta de FBref como HTML Only?"
         )
     return parser.rows, parser.datastats
 
@@ -389,7 +397,9 @@ def comparar(filas_jornada: List[Dict[str, str]], partidos: List[Dict[str, Any]]
         if df and dj and df != dj:
             diffs.append({"campo": "FECHA", "jornadas": dj, "fbref": df, "critico": "si"})
         elif df and not dj:
-            diffs.append({"campo": "FECHA", "jornadas": (_p_fecha(partido) or "pendiente"), "fbref": df, "critico": "no"})
+            diffs.append(
+                {"campo": "FECHA", "jornadas": (_p_fecha(partido) or "pendiente"), "fbref": df, "critico": "no"}
+            )
 
         # Estadio (flexible)
         ej = _p_estadio(partido)
@@ -421,11 +431,18 @@ def escribir_csv(path: Path, filas: List[Dict[str, str]]) -> None:
         writer = csv.writer(fh)
         writer.writerow(CSV_HEADER)
         for f in filas:
-            writer.writerow([
-                f.get("wk", ""), f.get("date", ""), f.get("time", ""),
-                f.get("home", ""), f.get("away", ""),
-                f.get("home_norm", ""), f.get("away_norm", ""), f.get("venue", ""),
-            ])
+            writer.writerow(
+                [
+                    f.get("wk", ""),
+                    f.get("date", ""),
+                    f.get("time", ""),
+                    f.get("home", ""),
+                    f.get("away", ""),
+                    f.get("home_norm", ""),
+                    f.get("away_norm", ""),
+                    f.get("venue", ""),
+                ]
+            )
 
 
 def escribir_preview(path: Path, jornada: int, filas_jornada: List[Dict[str, str]], total_full: int) -> None:
@@ -493,9 +510,7 @@ def escribir_compare(
             lineas.append(f"- {f['home_norm']} vs {f['away_norm']} [{estado}]")
             for d in m["diffs"]:
                 marca = "‼" if d.get("critico") == "si" else "·"
-                lineas.append(
-                    f"    {marca} {d['campo']}: jornadas='{d['jornadas']}' | fbref='{d['fbref']}'"
-                )
+                lineas.append(f"    {marca} {d['campo']}: jornadas='{d['jornadas']}' | fbref='{d['fbref']}'")
     else:
         lineas.append("- (ninguno)")
 

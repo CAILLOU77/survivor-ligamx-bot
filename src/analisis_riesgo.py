@@ -17,6 +17,7 @@ Método (walk-forward honesto, igual que simulador_survivor):
 Todo se deriva del modelo (poisson_model) + resultados reales. Sin inventar nada.
 INFORMATIVO / REVISIÓN HUMANA.
 """
+
 from __future__ import annotations
 
 from datetime import date
@@ -58,8 +59,9 @@ def _fecha_semana_iso(wk: str):
         return None
 
 
-def _labels_arranque(jornadas: Sequence[Dict[str, Any]],
-                     n: int = JORNADAS_ARRANQUE, gap_dias: int = GAP_TORNEO_DIAS) -> set:
+def _labels_arranque(
+    jornadas: Sequence[Dict[str, Any]], n: int = JORNADAS_ARRANQUE, gap_dias: int = GAP_TORNEO_DIAS
+) -> set:
     """
     Etiquetas de jornada que son 'arranque de torneo' (las primeras `n` tras un
     hueco de calendario > `gap_dias`, típico entre Apertura/Clausura). Detecta el
@@ -136,8 +138,7 @@ def _tasas(eventos: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     """Cuenta y tasas (ganó/empató/perdió/no-ganó) sobre una lista de evaluaciones."""
     n = len(eventos)
     if n == 0:
-        return {"n": 0, "gano_pct": None, "empato_pct": None,
-                "perdio_pct": None, "no_gano_pct": None}
+        return {"n": 0, "gano_pct": None, "empato_pct": None, "perdio_pct": None, "no_gano_pct": None}
     gano = sum(1 for e in eventos if e["outcome"] == "gano")
     empato = sum(1 for e in eventos if e["outcome"] == "empato")
     perdio = sum(1 for e in eventos if e["outcome"] == "perdio")
@@ -150,9 +151,13 @@ def _tasas(eventos: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
-def _recomendaciones(por_cond: Dict[str, Any], cerrado: Dict[str, Any],
-                     abierto: Dict[str, Any], arranque_vs_resto: Optional[Dict[str, Any]] = None,
-                     muy_favorito: Optional[Dict[str, Any]] = None) -> List[str]:
+def _recomendaciones(
+    por_cond: Dict[str, Any],
+    cerrado: Dict[str, Any],
+    abierto: Dict[str, Any],
+    arranque_vs_resto: Optional[Dict[str, Any]] = None,
+    muy_favorito: Optional[Dict[str, Any]] = None,
+) -> List[str]:
     """Conclusiones accionables, SOLO si los números las sostienen (no opinión)."""
     recs: List[str] = []
     loc, vis = por_cond.get("local", {}), por_cond.get("visitante", {})
@@ -162,7 +167,12 @@ def _recomendaciones(por_cond: Dict[str, Any], cerrado: Dict[str, Any],
                 f"El favorito VISITANTE no gana el {vis['no_gano_pct']}% de las veces, "
                 f"vs {loc['no_gano_pct']}% del favorito local: prioriza favoritos LOCALES."
             )
-    if cerrado.get("n") and abierto.get("n") and cerrado["no_gano_pct"] is not None and abierto["no_gano_pct"] is not None:
+    if (
+        cerrado.get("n")
+        and abierto.get("n")
+        and cerrado["no_gano_pct"] is not None
+        and abierto["no_gano_pct"] is not None
+    ):
         if cerrado["no_gano_pct"] - abierto["no_gano_pct"] >= 5.0:
             recs.append(
                 f"En partidos CERRADOS (pocos goles esperados, 'under') el favorito no gana "
@@ -190,8 +200,10 @@ def _recomendaciones(por_cond: Dict[str, Any], cerrado: Dict[str, Any],
                 f"seguro en Survivor."
             )
     if not recs:
-        recs.append("No hay diferencias grandes y consistentes en los datos disponibles; "
-                    "usa la confianza del modelo y revisa caso por caso.")
+        recs.append(
+            "No hay diferencias grandes y consistentes en los datos disponibles; "
+            "usa la confianza del modelo y revisa caso por caso."
+        )
     return recs
 
 
@@ -213,7 +225,8 @@ def analizar_riesgo_favoritos(
     idx = 0
     for j in jornadas:
         while idx < len(ordenados) and _semana_iso(ordenados[idx].get("fecha")) < j["jornada"]:
-            historico.append(ordenados[idx]); idx += 1
+            historico.append(ordenados[idx])
+            idx += 1
         if len(historico) < min_train:
             continue
         try:
@@ -262,9 +275,15 @@ def analizar_riesgo_favoritos(
     fallos = [e for e in eventos if e["fallo"]]
     perfil_fallos = {
         "total_fallos": len(fallos),
-        "fueron_visitantes_pct": round(100.0 * sum(1 for e in fallos if not e["favorito_local"]) / len(fallos), 1) if fallos else None,
-        "fueron_partido_cerrado_pct": round(100.0 * sum(1 for e in fallos if e["partido_cerrado"]) / len(fallos), 1) if fallos else None,
-        "terminaron_en_empate_pct": round(100.0 * sum(1 for e in fallos if e["outcome"] == "empato") / len(fallos), 1) if fallos else None,
+        "fueron_visitantes_pct": round(100.0 * sum(1 for e in fallos if not e["favorito_local"]) / len(fallos), 1)
+        if fallos
+        else None,
+        "fueron_partido_cerrado_pct": round(100.0 * sum(1 for e in fallos if e["partido_cerrado"]) / len(fallos), 1)
+        if fallos
+        else None,
+        "terminaron_en_empate_pct": round(100.0 * sum(1 for e in fallos if e["outcome"] == "empato") / len(fallos), 1)
+        if fallos
+        else None,
     }
 
     return {
@@ -277,8 +296,7 @@ def analizar_riesgo_favoritos(
         "arranque_vs_resto": arranque_vs_resto,
         "perfil_de_los_fallos": perfil_fallos,
         "umbral_partido_cerrado_goles": UMBRAL_PARTIDO_CERRADO,
-        "recomendaciones": _recomendaciones(por_condicion, cerrado, abierto,
-                                            arranque_vs_resto, muy_favorito),
+        "recomendaciones": _recomendaciones(por_condicion, cerrado, abierto, arranque_vs_resto, muy_favorito),
         "decision": DEC_INFORMATIVA,
     }
 
@@ -294,12 +312,16 @@ def main() -> int:
     g = r["global"]
     print(f"Fuente: {datos['fuente']} | partidos evaluados: {r['partidos_evaluados']}")
     if g["n"]:
-        print(f"Favorito: ganó {g['gano_pct']}% | empató {g['empato_pct']}% | "
-              f"perdió {g['perdio_pct']}% (no ganó {g['no_gano_pct']}%)")
-    loc = r["por_condicion"]["local"]; vis = r["por_condicion"]["visitante"]
+        print(
+            f"Favorito: ganó {g['gano_pct']}% | empató {g['empato_pct']}% | "
+            f"perdió {g['perdio_pct']}% (no ganó {g['no_gano_pct']}%)"
+        )
+    loc = r["por_condicion"]["local"]
+    vis = r["por_condicion"]["visitante"]
     print(f"  Local    (n={loc['n']}): no gana {loc['no_gano_pct']}%")
     print(f"  Visitante(n={vis['n']}): no gana {vis['no_gano_pct']}%")
-    cer = r["por_tipo_partido"]["cerrado_under"]; abi = r["por_tipo_partido"]["abierto"]
+    cer = r["por_tipo_partido"]["cerrado_under"]
+    abi = r["por_tipo_partido"]["abierto"]
     print(f"  Cerrado/under (n={cer['n']}): no gana {cer['no_gano_pct']}%")
     print(f"  Abierto       (n={abi['n']}): no gana {abi['no_gano_pct']}%")
     print("Por confianza del modelo:")
@@ -309,13 +331,16 @@ def main() -> int:
             print(f"  {b}: no gana {t['no_gano_pct']}% (n={t['n']})")
     mf = r.get("muy_favorito", {}).get("global", {})
     if mf.get("n"):
-        print(f"MUY favoritos (>= {r['muy_favorito']['umbral_confianza_pct']}%): "
-              f"no ganan {mf['no_gano_pct']}% (n={mf['n']})")
+        print(
+            f"MUY favoritos (>= {r['muy_favorito']['umbral_confianza_pct']}%): "
+            f"no ganan {mf['no_gano_pct']}% (n={mf['n']})"
+        )
     avr = r.get("arranque_vs_resto", {})
     a, rest = avr.get("arranque_j1a3", {}), avr.get("resto_temporada", {})
     if a.get("n") and rest.get("n"):
-        print(f"Arranque J1-3: no gana {a['no_gano_pct']}% (n={a['n']}) | "
-              f"resto: {rest['no_gano_pct']}% (n={rest['n']})")
+        print(
+            f"Arranque J1-3: no gana {a['no_gano_pct']}% (n={a['n']}) | resto: {rest['no_gano_pct']}% (n={rest['n']})"
+        )
     print("Recomendaciones (según TUS datos):")
     for rec in r["recomendaciones"]:
         print(f"  • {rec}")

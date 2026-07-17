@@ -17,6 +17,7 @@ Método honesto (partición temporal en 3):
 
 Menor Brier = probabilidades mejor calibradas. Informativo / revisión humana.
 """
+
 from __future__ import annotations
 
 from typing import Any, Dict, Optional, Sequence, Tuple
@@ -71,8 +72,7 @@ def _brier_conjunto(
         except (KeyError, TypeError, ValueError):
             continue
         pr = pm.pronostico(h, a, fuerzas, rho=rho)
-        probs = [pr["prob_local_pct"] / 100.0, pr["prob_empate_pct"] / 100.0,
-                 pr["prob_visitante_pct"] / 100.0]
+        probs = [pr["prob_local_pct"] / 100.0, pr["prob_empate_pct"] / 100.0, pr["prob_visitante_pct"] / 100.0]
         total += brier_score(probs, _resultado_1x2(hg, ag))
         n += 1
     return (total / n if n else None, n)
@@ -91,8 +91,7 @@ def tunear_hiperparametros(
     ordenados = sorted(resultados, key=lambda r: str(r.get("fecha", "")))
     n = len(ordenados)
     if n < 120:
-        return {"n": n, "mensaje": "Datos insuficientes para afinar (se necesitan ~120+).",
-                "decision": DEC_INFORMATIVA}
+        return {"n": n, "mensaje": "Datos insuficientes para afinar (se necesitan ~120+).", "decision": DEC_INFORMATIVA}
     a, b = int(n * 0.6), int(n * 0.8)
     train, val, holdout = ordenados[:a], ordenados[a:b], ordenados[b:]
 
@@ -104,26 +103,23 @@ def tunear_hiperparametros(
                 if br is None or cnt == 0:
                     continue
                 if mejor is None or br < mejor["brier_val"]:
-                    mejor = {"half_life_dias": hl, "shrink": sk, "rho": rho,
-                             "brier_val": round(br, 4)}
+                    mejor = {"half_life_dias": hl, "shrink": sk, "rho": rho, "brier_val": round(br, 4)}
     if mejor is None:
-        return {"n": n, "mensaje": "No se pudo evaluar ninguna combinación.",
-                "decision": DEC_INFORMATIVA}
+        return {"n": n, "mensaje": "No se pudo evaluar ninguna combinación.", "decision": DEC_INFORMATIVA}
 
     # Confirmación en holdout: sugeridos vs actuales (entrenando en train+val).
     trainval = ordenados[:b]
-    br_sug, _ = _brier_conjunto(trainval, holdout, mejor["half_life_dias"],
-                                mejor["shrink"], mejor["rho"])
-    br_act, _ = _brier_conjunto(trainval, holdout, pm.RECENCIA_HALF_LIFE_DIAS,
-                                pm.SHRINK_PRIOR, pm.RHO_DIXON_COLES)
-    mejora = (round(br_act - br_sug, 4) if (br_sug is not None and br_act is not None)
-              else None)
+    br_sug, _ = _brier_conjunto(trainval, holdout, mejor["half_life_dias"], mejor["shrink"], mejor["rho"])
+    br_act, _ = _brier_conjunto(trainval, holdout, pm.RECENCIA_HALF_LIFE_DIAS, pm.SHRINK_PRIOR, pm.RHO_DIXON_COLES)
+    mejora = round(br_act - br_sug, 4) if (br_sug is not None and br_act is not None) else None
     return {
         "n": n,
-        "actuales": {"half_life_dias": pm.RECENCIA_HALF_LIFE_DIAS,
-                     "shrink": pm.SHRINK_PRIOR, "rho": pm.RHO_DIXON_COLES},
-        "sugeridos": {"half_life_dias": mejor["half_life_dias"],
-                      "shrink": mejor["shrink"], "rho": mejor["rho"]},
+        "actuales": {
+            "half_life_dias": pm.RECENCIA_HALF_LIFE_DIAS,
+            "shrink": pm.SHRINK_PRIOR,
+            "rho": pm.RHO_DIXON_COLES,
+        },
+        "sugeridos": {"half_life_dias": mejor["half_life_dias"], "shrink": mejor["shrink"], "rho": mejor["rho"]},
         "brier_holdout_actual": round(br_act, 4) if br_act is not None else None,
         "brier_holdout_sugerido": round(br_sug, 4) if br_sug is not None else None,
         "mejora_holdout": mejora,
@@ -196,8 +192,7 @@ def medir_altitud(
     trainval = ordenados[:b]
     br_alt, _ = _brier_altitud(trainval, holdout, mejor_k)
     br_off, _ = _brier_altitud(trainval, holdout, 0.0)
-    mejora = (round(br_off - br_alt, 4) if (br_alt is not None and br_off is not None)
-              else None)
+    mejora = round(br_off - br_alt, 4) if (br_alt is not None and br_off is not None) else None
     return {
         "n": n,
         "k_sugerido": mejor_k,
@@ -223,13 +218,14 @@ def main() -> int:
     print(f"Partidos: {r['n']}")
     print(f"Actuales:  {r['actuales']}")
     print(f"Sugeridos: {r['sugeridos']}")
-    print(f"Brier holdout — actual: {r['brier_holdout_actual']} | "
-          f"sugerido: {r['brier_holdout_sugerido']} | mejora: {r['mejora_holdout']}")
+    print(
+        f"Brier holdout — actual: {r['brier_holdout_actual']} | "
+        f"sugerido: {r['brier_holdout_sugerido']} | mejora: {r['mejora_holdout']}"
+    )
     if r["aplicar"]:
         print(f"¿Aplicar?: SÍ (mejora {r['mejora_holdout']} > umbral {r['mejora_minima']})")
     else:
-        print(f"¿Aplicar?: NO — la mejora ({r['mejora_holdout']}) es ruido; el modelo "
-              "ya está bien calibrado.")
+        print(f"¿Aplicar?: NO — la mejora ({r['mejora_holdout']}) es ruido; el modelo ya está bien calibrado.")
     return 0
 
 

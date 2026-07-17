@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Tests para comparador_mercado.mezclar_pronosticos_con_mercado. Sin red."""
+
 from __future__ import annotations
 
 import sys
@@ -14,12 +15,19 @@ import comparador_mercado as cm  # noqa: E402
 
 
 def _pron():
-    return [{
-        "local": "América", "visitante": "Toluca",
-        "prob_local_pct": 50.0, "prob_empate_pct": 25.0, "prob_visitante_pct": 25.0,
-        "no_perder_local_pct": 75.0, "no_perder_visitante_pct": 50.0,
-        "pick_1x2": "Gana Local", "prob_over_pct": 55.0,
-    }]
+    return [
+        {
+            "local": "América",
+            "visitante": "Toluca",
+            "prob_local_pct": 50.0,
+            "prob_empate_pct": 25.0,
+            "prob_visitante_pct": 25.0,
+            "no_perder_local_pct": 75.0,
+            "no_perder_visitante_pct": 50.0,
+            "pick_1x2": "Gana Local",
+            "prob_over_pct": 55.0,
+        }
+    ]
 
 
 class TestMezcla(unittest.TestCase):
@@ -31,12 +39,9 @@ class TestMezcla(unittest.TestCase):
         p = out[0]
         # Solo mercado: prob_local sube muy por encima del 50% del modelo.
         self.assertGreater(p["prob_local_pct"], 60.0)
-        self.assertAlmostEqual(
-            p["prob_local_pct"] + p["prob_empate_pct"] + p["prob_visitante_pct"],
-            100.0, places=1)
+        self.assertAlmostEqual(p["prob_local_pct"] + p["prob_empate_pct"] + p["prob_visitante_pct"], 100.0, places=1)
         # no-perder coherente con las probs mezcladas.
-        self.assertAlmostEqual(p["no_perder_local_pct"],
-                               p["prob_local_pct"] + p["prob_empate_pct"], places=2)
+        self.assertAlmostEqual(p["no_perder_local_pct"], p["prob_local_pct"] + p["prob_empate_pct"], places=2)
         self.assertIn("mezcla_mercado", p)
 
     def test_mitad_y_mitad_queda_entre_modelo_y_mercado(self):

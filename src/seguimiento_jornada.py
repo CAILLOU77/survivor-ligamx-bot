@@ -13,6 +13,7 @@ Este módulo es la capa de presentación/orden: recibe los candidatos ya rankead
 (del motor estratégico) y un mapa de horarios, y arma la lista ordenada con el
 plan. Los veredictos por alineación (cuando el XI ya salió) se inyectan aparte.
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -27,8 +28,8 @@ _DIAS = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"]
 
 # Umbrales de veredicto por fuerza del XI confirmado (cautelosos: en Survivor una
 # derrota elimina, así que solo "confirma" con XI casi completo).
-_XI_CONFIRMA = 88.0   # XI casi completo -> quédate
-_XI_DESCARTA = 75.0   # XI mermado -> descarta, espera al siguiente
+_XI_CONFIRMA = 88.0  # XI casi completo -> quédate
+_XI_DESCARTA = 75.0  # XI mermado -> descarta, espera al siguiente
 
 
 def _parse_dt(iso: Any) -> Optional[datetime]:
@@ -60,32 +61,30 @@ def veredicto_xi(fuerza_xi_pct: Optional[float]) -> Dict[str, str]:
     Devuelve {estado, emoji, texto}. 'PENDIENTE' si aún no hay XI.
     """
     if fuerza_xi_pct is None:
-        return {"estado": "PENDIENTE", "emoji": "⏳",
-                "texto": "revisa su alineación ~1h antes"}
+        return {"estado": "PENDIENTE", "emoji": "⏳", "texto": "revisa su alineación ~1h antes"}
     try:
         f = float(fuerza_xi_pct)
     except (TypeError, ValueError):
         return {"estado": "PENDIENTE", "emoji": "⏳", "texto": "alineación no disponible"}
     if f >= _XI_CONFIRMA:
-        return {"estado": "CONFIRMA", "emoji": "✅",
-                "texto": f"XI casi completo ({f}%) — puedes quedarte con él"}
+        return {"estado": "CONFIRMA", "emoji": "✅", "texto": f"XI casi completo ({f}%) — puedes quedarte con él"}
     if f < _XI_DESCARTA:
-        return {"estado": "DESCARTA", "emoji": "⚠️",
-                "texto": f"XI mermado ({f}%) — considera descartarlo y pasar al siguiente"}
-    return {"estado": "DUDA", "emoji": "🟡",
-            "texto": f"XI aceptable ({f}%) — decide con cuidado"}
+        return {
+            "estado": "DESCARTA",
+            "emoji": "⚠️",
+            "texto": f"XI mermado ({f}%) — considera descartarlo y pasar al siguiente",
+        }
+    return {"estado": "DUDA", "emoji": "🟡", "texto": f"XI aceptable ({f}%) — decide con cuidado"}
 
 
-def alternativa_con_respaldo(items: List[Dict[str, Any]],
-                             recomendado: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def alternativa_con_respaldo(items: List[Dict[str, Any]], recomendado: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """
     Si el pick recomendado juega de los ÚLTIMOS de la jornada (sin partidos de
     respaldo después), devuelve la mejor opción que juega ANTES (por no-perder),
     para conservar plan B. None si el pick no juega tarde o no hay alternativa
     más temprana con hora conocida.
     """
-    rec_iso = next((it.get("cuando_iso") for it in items
-                    if it.get("equipo") == recomendado.get("equipo")), None)
+    rec_iso = next((it.get("cuando_iso") for it in items if it.get("equipo") == recomendado.get("equipo")), None)
     if not rec_iso:
         return None
     rec_iso = str(rec_iso)

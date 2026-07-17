@@ -20,6 +20,7 @@ Probabilidades reales del modelo Poisson/Dixon-Coles (ESPN). Si se pasan momios
 reales (odds-api.io) se pueden mezclar. NUNCA inventa datos.
 INFORMATIVO / REVISIÓN HUMANA.
 """
+
 from __future__ import annotations
 
 import json
@@ -49,9 +50,9 @@ UMBRAL_NO_PERDER_MEDIA: float = 0.65
 # Se descuenta su probabilidad de no-perder SOLO para el valor de asignación
 # (decidir en qué jornada gastarlo), NUNCA para los % que se le muestran al
 # usuario (esos siguen siendo los reales del modelo: honestidad).
-DESCUENTO_VISITANTE: float = 0.05          # -5% a picks visitantes
+DESCUENTO_VISITANTE: float = 0.05  # -5% a picks visitantes
 DESCUENTO_VISITANTE_ARRANQUE: float = 0.10  # extra en jornadas de arranque
-JORNADAS_ARRANQUE_PLAN: int = 3            # primeras N jornadas = más sorpresas
+JORNADAS_ARRANQUE_PLAN: int = 3  # primeras N jornadas = más sorpresas
 
 
 # ---------------------------------------------------------------------------
@@ -119,8 +120,7 @@ def _nivel(p_no_perder: float, p_ganar: float) -> str:
     return "RIESGOSA"
 
 
-def _nivel_estrategico(p_no_perder: float, p_ganar: float, es_local: bool,
-                       es_arranque: bool) -> str:
+def _nivel_estrategico(p_no_perder: float, p_ganar: float, es_local: bool, es_arranque: bool) -> str:
     """
     Nivel ajustado por sorpresa (coherente con motor_pronosticos._nivel_estrategico):
     un favorito VISITANTE nunca es 'ALTA', y en el arranque 'ALTA' exige más margen.
@@ -162,7 +162,8 @@ def _opciones_por_jornada(
                 pe_eq = _probs_equipo(pl, pe, pv, es_local)
                 equipos.add(_norm(equipo))
                 celdas[(jnum, _norm(equipo))] = {
-                    "equipo": equipo, "rival": rival,
+                    "equipo": equipo,
+                    "rival": rival,
                     "condicion": "Local" if es_local else "Visitante",
                     **pe_eq,
                 }
@@ -198,14 +199,14 @@ def planificar(
     import numpy as np
 
     usados = {_norm(e) for e in (equipos_usados or [])}
-    jornadas, equipos_all, celdas = _opciones_por_jornada(
-        calendario, fuerzas, odds_por_partido, peso_modelo
-    )
+    jornadas, equipos_all, celdas = _opciones_por_jornada(calendario, fuerzas, odds_por_partido, peso_modelo)
     equipos = [e for e in equipos_all if e not in usados]
 
     if not jornadas or not equipos:
         return {
-            "plan": [], "jornadas_total": len(jornadas), "equipos_disponibles": len(equipos),
+            "plan": [],
+            "jornadas_total": len(jornadas),
+            "equipos_disponibles": len(equipos),
             "calendario_incompleto": True,
             "mensaje": "Faltan jornadas o equipos (¿calendario vacío o sin histórico?).",
             "decision": DEC_INFORMATIVA,
@@ -227,9 +228,7 @@ def planificar(
             # Castigo por sorpresa a picks visitantes (solo para decidir, no para
             # mostrar): reduce su no-perder efectivo, extra en el arranque.
             if c["condicion"] == "Visitante":
-                desc = descuento_visitante + (
-                    descuento_visitante_arranque if jnum in arranque else 0.0
-                )
+                desc = descuento_visitante + (descuento_visitante_arranque if jnum in arranque else 0.0)
                 desc = max(0.0, min(desc, 0.9))
                 p_np = p_np * (1.0 - desc)
                 p_win = p_win * (1.0 - desc)
@@ -333,9 +332,7 @@ def construir_odds_por_partido(
                 dv = cm.quitar_vig(ml["local"], ml["empate"], ml["visita"])
             except (ValueError, KeyError, TypeError):
                 continue
-            out[(_norm(home), _norm(away))] = (
-                dv["prob_local"], dv["prob_empate"], dv["prob_visita"]
-            )
+            out[(_norm(home), _norm(away))] = (dv["prob_local"], dv["prob_empate"], dv["prob_visita"])
     return out
 
 
@@ -371,8 +368,9 @@ def main() -> int:
     calendario = cargar_calendario()
     if not calendario:
         print("⚠️  No hay calendario completo en data/calendario.json.")
-        print("    Esquema esperado: [{\"jornada\": 1, \"partidos\": "
-              "[{\"home_team\": \"...\", \"away_team\": \"...\"}, ...]}, ...]")
+        print(
+            '    Esquema esperado: [{"jornada": 1, "partidos": [{"home_team": "...", "away_team": "..."}, ...]}, ...]'
+        )
         print("    El calendario del Apertura 2026 se publica cerca del 17-jul;")
         print("    cuando lo tengas, guárdalo ahí y vuelve a correr esto.")
         return 0
@@ -385,13 +383,16 @@ def main() -> int:
         return 0
 
     r = planificar(calendario, fuerzas)
-    print(f"Fuente: {datos['fuente']} | jornadas: {r['jornadas_total']} | "
-          f"equipos: {r['equipos_disponibles']}")
-    print(f"Prob. de sobrevivir TODA la temporada: {r['prob_supervivencia_total_pct']}% | "
-          f"victorias esperadas: {r['victorias_esperadas']}")
+    print(f"Fuente: {datos['fuente']} | jornadas: {r['jornadas_total']} | equipos: {r['equipos_disponibles']}")
+    print(
+        f"Prob. de sobrevivir TODA la temporada: {r['prob_supervivencia_total_pct']}% | "
+        f"victorias esperadas: {r['victorias_esperadas']}"
+    )
     for p in r["plan"]:
-        print(f"  J{p['jornada']:>2}: {p['equipo']} ({p['condicion']} vs {p['rival']}) "
-              f"— ganar {p['prob_ganar_pct']}% / no-perder {p['no_perder_pct']}% [{p['nivel']}]")
+        print(
+            f"  J{p['jornada']:>2}: {p['equipo']} ({p['condicion']} vs {p['rival']}) "
+            f"— ganar {p['prob_ganar_pct']}% / no-perder {p['no_perder_pct']}% [{p['nivel']}]"
+        )
     if r["jornadas_riesgosas"]:
         print(f"⚠️  Jornadas riesgosas: {r['jornadas_riesgosas']}")
     return 0

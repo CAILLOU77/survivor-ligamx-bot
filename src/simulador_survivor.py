@@ -14,6 +14,7 @@ Método (walk-forward, sin trampas):
 
 Reutiliza poisson_model (mismo modelo del bot). Informativo / revisión humana.
 """
+
 from __future__ import annotations
 
 from datetime import date
@@ -59,14 +60,24 @@ def _no_perder_candidatos(partidos: Sequence[Dict[str, Any]], fuerzas: Dict[str,
         if pm._norm(h) not in eq or pm._norm(a) not in eq:
             continue
         pr = pm.pronostico(h, a, fuerzas)
-        cands.append({
-            "equipo": h, "rival": a, "es_local": True, "partido": p,
-            "no_perder_pct": round(pr["prob_local_pct"] + pr["prob_empate_pct"], 2),
-        })
-        cands.append({
-            "equipo": a, "rival": h, "es_local": False, "partido": p,
-            "no_perder_pct": round(pr["prob_visitante_pct"] + pr["prob_empate_pct"], 2),
-        })
+        cands.append(
+            {
+                "equipo": h,
+                "rival": a,
+                "es_local": True,
+                "partido": p,
+                "no_perder_pct": round(pr["prob_local_pct"] + pr["prob_empate_pct"], 2),
+            }
+        )
+        cands.append(
+            {
+                "equipo": a,
+                "rival": h,
+                "es_local": False,
+                "partido": p,
+                "no_perder_pct": round(pr["prob_visitante_pct"] + pr["prob_empate_pct"], 2),
+            }
+        )
     return cands
 
 
@@ -99,15 +110,15 @@ def simular_temporada(
     for j in jornadas:
         # histórico = todo lo ANTERIOR a esta jornada
         while idx < len(ordenados) and _semana_iso(ordenados[idx].get("fecha")) < j["jornada"]:
-            historico.append(ordenados[idx]); idx += 1
+            historico.append(ordenados[idx])
+            idx += 1
         if len(historico) < min_train:
             continue
         try:
             fuerzas = pm.calcular_fuerzas(historico)
         except ValueError:
             continue
-        cands = [c for c in _no_perder_candidatos(j["partidos"], fuerzas)
-                 if pm._norm(c["equipo"]) not in usados]
+        cands = [c for c in _no_perder_candidatos(j["partidos"], fuerzas) if pm._norm(c["equipo"]) not in usados]
         if not cands:
             continue
         elegido = max(cands, key=lambda c: c["no_perder_pct"])
@@ -115,14 +126,17 @@ def simular_temporada(
         jugadas += 1
         usados.add(pm._norm(elegido["equipo"]))
         p_ = elegido["partido"]
-        detalle.append({
-            "jornada": j["jornada"], "pick": elegido["equipo"],
-            "condicion": "Local" if elegido["es_local"] else "Visitante",
-            "rival": elegido["rival"], "no_perder_pct": elegido["no_perder_pct"],
-            "partido": f"{p_.get('home_team')} {p_.get('home_goals')}-"
-                       f"{p_.get('away_goals')} {p_.get('away_team')}",
-            "sobrevivio": vivo,
-        })
+        detalle.append(
+            {
+                "jornada": j["jornada"],
+                "pick": elegido["equipo"],
+                "condicion": "Local" if elegido["es_local"] else "Visitante",
+                "rival": elegido["rival"],
+                "no_perder_pct": elegido["no_perder_pct"],
+                "partido": f"{p_.get('home_team')} {p_.get('home_goals')}-{p_.get('away_goals')} {p_.get('away_team')}",
+                "sobrevivio": vivo,
+            }
+        )
         if vivo:
             sobrevividas += 1
         else:
@@ -147,16 +161,19 @@ def main() -> int:
     print("🎮 Simulando temporada de Survivor con el modelo (datos reales ESPN)...")
     datos = fuentes_datos.obtener_resultados(meses=18)
     r = simular_temporada(datos["resultados"])
-    print(f"Fuente: {datos['fuente']} | jornadas jugadas: {r['jornadas_jugadas']} | "
-          f"sobrevividas: {r['jornadas_sobrevividas']}")
+    print(
+        f"Fuente: {datos['fuente']} | jornadas jugadas: {r['jornadas_jugadas']} | "
+        f"sobrevividas: {r['jornadas_sobrevividas']}"
+    )
     if r["eliminado_en"]:
         print(f"💀 Eliminado en la jornada {r['eliminado_en']}")
     else:
         print("🏆 Sobrevivió todas las jornadas evaluadas")
     for d in r["detalle"]:
         ico = "✅" if d["sobrevivio"] else "💀"
-        print(f"  {ico} {d['jornada']}: {d['pick']} ({d['condicion']}, "
-              f"no-perder {d['no_perder_pct']}%) — {d['partido']}")
+        print(
+            f"  {ico} {d['jornada']}: {d['pick']} ({d['condicion']}, no-perder {d['no_perder_pct']}%) — {d['partido']}"
+        )
     return 0
 
 

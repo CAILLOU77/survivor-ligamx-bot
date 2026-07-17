@@ -13,6 +13,7 @@ Backend según `DATABASE_URL`:
 Las funciones públicas (init_db, save_pick, get_metrics, get_history,
 settle_pick) funcionan igual en ambos backends.
 """
+
 import os
 import unicodedata
 from contextlib import contextmanager
@@ -36,6 +37,7 @@ def get_db():
     """Conexión al backend activo. Cierra siempre al salir."""
     if USE_POSTGRES:
         import psycopg2
+
         # Neon/algunas URLs ya incluyen `sslmode=...` (y `channel_binding=...`)
         # en la query string; pasarlo TAMBIÉN como kwarg provoca error de
         # "parámetro duplicado". Solo forzamos sslmode si la URL no lo trae.
@@ -45,6 +47,7 @@ def get_db():
             conn = psycopg2.connect(DATABASE_URL, sslmode="require")
     else:
         import sqlite3
+
         carpeta = os.path.dirname(SQLITE_PATH)
         if carpeta:
             os.makedirs(carpeta, exist_ok=True)
@@ -192,9 +195,16 @@ def _clave_pronostico(local: str, visitante: str, fecha: str) -> str:
     return f"{_norm_equipo(local)}|{_norm_equipo(visitante)}|{str(fecha or '')[:10]}"
 
 
-def registrar_pronostico(local: str, visitante: str, pick_1x2: str,
-                         prob_local: float, prob_empate: float, prob_visitante: float,
-                         marcador_predicho: str, fecha: str = "") -> bool:
+def registrar_pronostico(
+    local: str,
+    visitante: str,
+    pick_1x2: str,
+    prob_local: float,
+    prob_empate: float,
+    prob_visitante: float,
+    marcador_predicho: str,
+    fecha: str = "",
+) -> bool:
     """Guarda un pronóstico si no existe (dedup por equipos+fecha). True si se insertó."""
     clave = _clave_pronostico(local, visitante, fecha)
     with get_db() as conn:
@@ -207,9 +217,17 @@ def registrar_pronostico(local: str, visitante: str, pick_1x2: str,
                 (clave, fecha, local, visitante, pick_1x2, prob_local, prob_empate,
                  prob_visitante, marcador_predicho)
                 VALUES ({PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH})""",
-            (clave, str(fecha or "")[:10], str(local), str(visitante), str(pick_1x2),
-             float(prob_local or 0), float(prob_empate or 0), float(prob_visitante or 0),
-             str(marcador_predicho or "")),
+            (
+                clave,
+                str(fecha or "")[:10],
+                str(local),
+                str(visitante),
+                str(pick_1x2),
+                float(prob_local or 0),
+                float(prob_empate or 0),
+                float(prob_visitante or 0),
+                str(marcador_predicho or ""),
+            ),
         )
         conn.commit()
         return True
@@ -221,8 +239,7 @@ def historial_pronosticos(limit: int = 50, offset: int = 0, solo_resueltos: bool
         cur = conn.cursor()
         filtro = "WHERE resuelto = 1" if solo_resueltos else ""
         cur.execute(
-            f"SELECT * FROM pronosticos_historial {filtro} "
-            f"ORDER BY created_at DESC, clave LIMIT {PH} OFFSET {PH}",
+            f"SELECT * FROM pronosticos_historial {filtro} ORDER BY created_at DESC, clave LIMIT {PH} OFFSET {PH}",
             (limit, offset),
         )
         cols = [d[0] for d in cur.description]
@@ -244,14 +261,13 @@ def settle_pronosticos(resultados) -> int:
             continue
         info = {"hg": hg, "ag": ag, "home": r.get("home_team", ""), "away": r.get("away_team", "")}
         por_clave[_clave_pronostico(r.get("home_team", ""), r.get("away_team", ""), r.get("fecha", ""))] = info
-        por_equipos.setdefault(
-            f"{_norm_equipo(r.get('home_team',''))}|{_norm_equipo(r.get('away_team',''))}", info
-        )
+        por_equipos.setdefault(f"{_norm_equipo(r.get('home_team', ''))}|{_norm_equipo(r.get('away_team', ''))}", info)
     settled = 0
     with get_db() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT clave, local, visitante, pick_1x2, marcador_predicho "
-                    "FROM pronosticos_historial WHERE resuelto = 0")
+        cur.execute(
+            "SELECT clave, local, visitante, pick_1x2, marcador_predicho FROM pronosticos_historial WHERE resuelto = 0"
+        )
         pendientes = cur.fetchall()
         for clave, local, visitante, pick_1x2, marcador_pred in pendientes:
             info = por_clave.get(clave)
@@ -303,9 +319,17 @@ def rentabilidad_pronosticos() -> dict:
 # ---------------------------------------------------------------------------
 # Historial del PICK DE SURVIVOR (racha real: sobrevive / gana / cae por jornada)
 # ---------------------------------------------------------------------------
-def registrar_survivor_pick(jornada: str, equipo: str, rival: str, condicion: str,
-                            local: str, visitante: str, no_perder_pct: float,
-                            prob_victoria_pct: float, fecha: str = "") -> bool:
+def registrar_survivor_pick(
+    jornada: str,
+    equipo: str,
+    rival: str,
+    condicion: str,
+    local: str,
+    visitante: str,
+    no_perder_pct: float,
+    prob_victoria_pct: float,
+    fecha: str = "",
+) -> bool:
     """
     Registra (o actualiza si aún está pendiente) el pick de Survivor de una
     jornada. Una fila por jornada. Si ya está RESUELTO, no se sobreescribe.
@@ -324,9 +348,17 @@ def registrar_survivor_pick(jornada: str, equipo: str, rival: str, condicion: st
                 f"""UPDATE survivor_historial SET fecha={PH}, equipo={PH}, rival={PH},
                     condicion={PH}, local={PH}, visitante={PH}, no_perder_pct={PH},
                     prob_victoria_pct={PH} WHERE jornada={PH}""",
-                (str(fecha or "")[:10], str(equipo), str(rival or ""), str(condicion or ""),
-                 str(local or ""), str(visitante or ""), float(no_perder_pct or 0),
-                 float(prob_victoria_pct or 0), str(jornada)),
+                (
+                    str(fecha or "")[:10],
+                    str(equipo),
+                    str(rival or ""),
+                    str(condicion or ""),
+                    str(local or ""),
+                    str(visitante or ""),
+                    float(no_perder_pct or 0),
+                    float(prob_victoria_pct or 0),
+                    str(jornada),
+                ),
             )
         else:
             cur.execute(
@@ -334,9 +366,17 @@ def registrar_survivor_pick(jornada: str, equipo: str, rival: str, condicion: st
                     (jornada, fecha, equipo, rival, condicion, local, visitante,
                      no_perder_pct, prob_victoria_pct)
                     VALUES ({PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH})""",
-                (str(jornada), str(fecha or "")[:10], str(equipo), str(rival or ""),
-                 str(condicion or ""), str(local or ""), str(visitante or ""),
-                 float(no_perder_pct or 0), float(prob_victoria_pct or 0)),
+                (
+                    str(jornada),
+                    str(fecha or "")[:10],
+                    str(equipo),
+                    str(rival or ""),
+                    str(condicion or ""),
+                    str(local or ""),
+                    str(visitante or ""),
+                    float(no_perder_pct or 0),
+                    float(prob_victoria_pct or 0),
+                ),
             )
         conn.commit()
         return True
@@ -359,8 +399,7 @@ def settle_survivor(resultados) -> int:
     settled = 0
     with get_db() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT jornada, condicion, local, visitante "
-                    "FROM survivor_historial WHERE resuelto = 0")
+        cur.execute("SELECT jornada, condicion, local, visitante FROM survivor_historial WHERE resuelto = 0")
         pendientes = cur.fetchall()
         for jornada, condicion, local, visitante in pendientes:
             info = por_equipos.get(f"{_norm_equipo(local)}|{_norm_equipo(visitante)}")
@@ -402,9 +441,17 @@ def resumen_survivor() -> dict:
     detalle = []
     vivo = True
     for jornada, fecha, equipo, rival, condicion, marcador, estado in filas:
-        detalle.append({"jornada": jornada, "fecha": fecha, "equipo": equipo,
-                        "rival": rival, "condicion": condicion,
-                        "marcador": marcador, "estado": estado})
+        detalle.append(
+            {
+                "jornada": jornada,
+                "fecha": fecha,
+                "equipo": equipo,
+                "rival": rival,
+                "condicion": condicion,
+                "marcador": marcador,
+                "estado": estado,
+            }
+        )
         if estado == "perdio":
             if eliminado_en is None:
                 eliminado_en = jornada

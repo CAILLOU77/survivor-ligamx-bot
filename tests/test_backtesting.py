@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Tests para src/backtesting.py (ROI, Win Rate, Brier, distribución VIG)."""
+
 from __future__ import annotations
 
 import sys
@@ -32,8 +33,7 @@ class TestRoiWinRate(unittest.TestCase):
         self.assertAlmostEqual(bt.roi(apuestas), 0.5)
 
     def test_win_rate(self):
-        apuestas = [{"odds": 2, "gano": True}, {"odds": 2, "gano": False},
-                    {"odds": 2, "gano": True}]
+        apuestas = [{"odds": 2, "gano": True}, {"odds": 2, "gano": False}, {"odds": 2, "gano": True}]
         self.assertAlmostEqual(bt.win_rate(apuestas), 2 / 3)
 
     def test_vacio(self):
@@ -54,8 +54,7 @@ class TestBrier(unittest.TestCase):
             bt.brier_score([0.5, 0.3, 0.2], 4)
 
     def test_promedio(self):
-        items = [{"prob": [1.0, 0, 0], "resultado": 1},
-                 {"prob": [0, 0, 1.0], "resultado": 3}]
+        items = [{"prob": [1.0, 0, 0], "resultado": 1}, {"prob": [0, 0, 1.0], "resultado": 3}]
         self.assertAlmostEqual(bt.brier_promedio(items), 0.0)
 
 
@@ -66,20 +65,35 @@ class TestEstrategiaYEvaluacion(unittest.TestCase):
 
     def test_evaluar_dataset(self):
         filas = [
-            {"momio_1": 1.8, "momio_2": 3.5, "momio_3": 4.5,
-             "true_prob_1": 0.55, "true_prob_2": 0.25, "true_prob_3": 0.20, "resultado": 1},
-            {"momio_1": 2.5, "momio_2": 3.2, "momio_3": 2.8,
-             "true_prob_1": 0.40, "true_prob_2": 0.28, "true_prob_3": 0.32, "resultado": 3},
+            {
+                "momio_1": 1.8,
+                "momio_2": 3.5,
+                "momio_3": 4.5,
+                "true_prob_1": 0.55,
+                "true_prob_2": 0.25,
+                "true_prob_3": 0.20,
+                "resultado": 1,
+            },
+            {
+                "momio_1": 2.5,
+                "momio_2": 3.2,
+                "momio_3": 2.8,
+                "true_prob_1": 0.40,
+                "true_prob_2": 0.28,
+                "true_prob_3": 0.32,
+                "resultado": 3,
+            },
         ]
         r = bt.evaluar_dataset(filas)
         self.assertEqual(r["n_apuestas"], 2)
-        self.assertEqual(r["aciertos"], 1)   # acierta el 1o (favorito local gana), falla el 2o
+        self.assertEqual(r["aciertos"], 1)  # acierta el 1o (favorito local gana), falla el 2o
         self.assertIn("roi", r)
         self.assertEqual(r["decision"], "ESPERAR / NO ENVIAR")
 
     def test_ignora_filas_sin_resultado(self):
-        filas = [{"momio_1": 1.8, "momio_2": 3.5, "momio_3": 4.5,
-                  "true_prob_1": 0.5, "true_prob_2": 0.3, "true_prob_3": 0.2}]
+        filas = [
+            {"momio_1": 1.8, "momio_2": 3.5, "momio_3": 4.5, "true_prob_1": 0.5, "true_prob_2": 0.3, "true_prob_3": 0.2}
+        ]
         r = bt.evaluar_dataset(filas)
         self.assertEqual(r["n_apuestas"], 0)
 

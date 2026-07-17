@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Tests de seguimiento_jornada: lista priorizada por hora + veredicto por XI."""
+
 import os
 import sys
 import unittest
@@ -11,10 +12,22 @@ import seguimiento_jornada as seg  # noqa: E402
 
 def _picks():
     return [
-        {"equipo": "Cruz Azul", "rival": "Querétaro", "condicion": "Local",
-         "no_perder_pct": 88.0, "prob_victoria_pct": 64.0, "nivel": "ALTA"},
-        {"equipo": "América", "rival": "Pachuca", "condicion": "Local",
-         "no_perder_pct": 78.0, "prob_victoria_pct": 52.0, "nivel": "MEDIA"},
+        {
+            "equipo": "Cruz Azul",
+            "rival": "Querétaro",
+            "condicion": "Local",
+            "no_perder_pct": 88.0,
+            "prob_victoria_pct": 64.0,
+            "nivel": "ALTA",
+        },
+        {
+            "equipo": "América",
+            "rival": "Pachuca",
+            "condicion": "Local",
+            "no_perder_pct": 78.0,
+            "prob_victoria_pct": 52.0,
+            "nivel": "MEDIA",
+        },
     ]
 
 
@@ -61,7 +74,7 @@ class TestListaSeguimiento(unittest.TestCase):
     def test_ordena_por_hora(self):
         horarios = {
             seg.canonical_team_key("Cruz Azul"): "2026-07-19T19:00:00",  # domingo
-            seg.canonical_team_key("América"): "2026-07-17T21:00:00",    # viernes
+            seg.canonical_team_key("América"): "2026-07-17T21:00:00",  # viernes
         }
         items = seg.lista_seguimiento(_picks(), horarios=horarios)
         # América (viernes) debe ir primero aunque sea el 2º del ranking
@@ -87,23 +100,36 @@ if __name__ == "__main__":
 class TestRenderDecisivo(unittest.TestCase):
     def test_encabezado_da_el_pick(self):
         import telegram_pronosticos as tp
+
         items = seg.lista_seguimiento(_picks(), n=2)
         msg = tp.construir_mensaje_seguimiento(items, recomendado=_picks()[0])
         self.assertIn("TU PICK DE SURVIVOR", msg)
-        self.assertIn("Cruz Azul", msg)          # el recomendado va en el encabezado
-        self.assertIn("Respaldo", msg)            # los demás son respaldo, no menú
+        self.assertIn("Cruz Azul", msg)  # el recomendado va en el encabezado
+        self.assertIn("Respaldo", msg)  # los demás son respaldo, no menú
 
 
 class TestAlternativaConRespaldo(unittest.TestCase):
     def _items(self):
         picks = [
-            {"equipo": "Monterrey", "rival": "Santos", "condicion": "Local",
-             "no_perder_pct": 84.0, "prob_victoria_pct": 60.0, "nivel": "ALTA"},
-            {"equipo": "Necaxa", "rival": "Atlante", "condicion": "Local",
-             "no_perder_pct": 74.0, "prob_victoria_pct": 50.0, "nivel": "MEDIA"},
+            {
+                "equipo": "Monterrey",
+                "rival": "Santos",
+                "condicion": "Local",
+                "no_perder_pct": 84.0,
+                "prob_victoria_pct": 60.0,
+                "nivel": "ALTA",
+            },
+            {
+                "equipo": "Necaxa",
+                "rival": "Atlante",
+                "condicion": "Local",
+                "no_perder_pct": 74.0,
+                "prob_victoria_pct": 50.0,
+                "nivel": "MEDIA",
+            },
         ]
         horarios = {
-            seg.canonical_team_key("Necaxa"): "2026-07-16T19:00:00",     # juega antes
+            seg.canonical_team_key("Necaxa"): "2026-07-16T19:00:00",  # juega antes
             seg.canonical_team_key("Monterrey"): "2026-07-18T19:00:00",  # juega al final
         }
         return seg.lista_seguimiento(picks, horarios=horarios, n=2)

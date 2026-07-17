@@ -15,6 +15,7 @@ Métricas:
 
 Sin red propia (recibe resultados) ni momios. Informativo.
 """
+
 from __future__ import annotations
 
 from typing import Any, Dict, Sequence
@@ -113,7 +114,7 @@ def main() -> int:
         print(f"⚠️ {r.get('mensaje')}")
         return 1
     print(f"Fuente: {datos['fuente']} | train: {r['n_train']} | test: {r['n_evaluados']}")
-    print(f"Accuracy 1X2: {r['accuracy']*100:.1f}%  (baseline 'siempre local': {r['baseline_local']*100:.1f}%)")
+    print(f"Accuracy 1X2: {r['accuracy'] * 100:.1f}%  (baseline 'siempre local': {r['baseline_local'] * 100:.1f}%)")
     print(f"Brier promedio: {r['brier_promedio']}  (menor = mejor)")
     print(f"¿Mejor que baseline?: {'SÍ' if r['mejor_que_baseline'] else 'NO'}")
     return 0

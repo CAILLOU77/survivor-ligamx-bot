@@ -16,6 +16,7 @@ Este módulo:
 
 Sin scraping, sin bypass, sin credenciales. NO cierra ni envía picks.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -144,13 +145,15 @@ def obtener_resultados(meses: int = 6) -> List[Dict[str, Any]]:
             if clave in vistos:
                 continue
             vistos.add(clave)
-            resultados.append({
-                "home_team": p["home_team"],
-                "away_team": p["away_team"],
-                "home_goals": p["home_goals"],
-                "away_goals": p["away_goals"],
-                "fecha": p["fecha"],
-            })
+            resultados.append(
+                {
+                    "home_team": p["home_team"],
+                    "away_team": p["away_team"],
+                    "home_goals": p["home_goals"],
+                    "away_goals": p["away_goals"],
+                    "fecha": p["fecha"],
+                }
+            )
     return resultados
 
 
@@ -221,19 +224,19 @@ def obtener_fixtures_futuros(dias: int = 160) -> List[Dict[str, Any]]:
             if clave in vistos:
                 continue
             vistos.add(clave)
-            fixtures.append({
-                "home_team": p["home_team"],
-                "away_team": p["away_team"],
-                "fecha": p["fecha"],
-            })
+            fixtures.append(
+                {
+                    "home_team": p["home_team"],
+                    "away_team": p["away_team"],
+                    "fecha": p["fecha"],
+                }
+            )
     return fixtures
 
 
 def guardar_resultados(resultados: List[Dict[str, Any]], path: Path = RESULTADOS_PATH) -> None:
     Path(path).parent.mkdir(parents=True, exist_ok=True)
-    Path(path).write_text(
-        json.dumps(resultados, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-    )
+    Path(path).write_text(json.dumps(resultados, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def main() -> int:

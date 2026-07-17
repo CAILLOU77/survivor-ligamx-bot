@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Tests de calendario_contexto: cruce de partidos con eventos externos reales."""
+
 import os
 import sys
 import unittest

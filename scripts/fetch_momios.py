@@ -18,6 +18,7 @@ Uso:
 Reglas del proyecto: datos reales, nada inventado. Sin ODDS_API_IO_KEY no baja
 nada (no falla, solo avisa). Informativo / revisión humana.
 """
+
 from __future__ import annotations
 
 import sys

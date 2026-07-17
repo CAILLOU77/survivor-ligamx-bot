@@ -11,6 +11,7 @@ Todas son APIs públicas/gratuitas. Sin scraping, sin bypass, sin credenciales
 privadas. Devuelve resultados en el formato del modelo Poisson
 (home_team, away_team, home_goals, away_goals, fecha).
 """
+
 from __future__ import annotations
 
 import json
@@ -49,7 +50,7 @@ MIN_ACEPTABLE = 10
 def parsear_thesportsdb(data: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Parser puro de la respuesta de TheSportsDB (eventos pasados con marcador)."""
     salida: List[Dict[str, Any]] = []
-    for e in (data.get("events") or []):
+    for e in data.get("events") or []:
         if not isinstance(e, dict):
             continue
         home = e.get("strHomeTeam")
@@ -62,13 +63,15 @@ def parsear_thesportsdb(data: Dict[str, Any]) -> List[Dict[str, Any]]:
             hg, ag = int(hs), int(as_)
         except (TypeError, ValueError):
             continue
-        salida.append({
-            "home_team": home,
-            "away_team": away,
-            "home_goals": hg,
-            "away_goals": ag,
-            "fecha": e.get("dateEvent", ""),
-        })
+        salida.append(
+            {
+                "home_team": home,
+                "away_team": away,
+                "home_goals": hg,
+                "away_goals": ag,
+                "fecha": e.get("dateEvent", ""),
+            }
+        )
     return salida
 
 
@@ -97,9 +100,7 @@ def leer_cache(path: Path = CACHE_PATH) -> List[Dict[str, Any]]:
 
 def guardar_cache(resultados: List[Dict[str, Any]], path: Path = CACHE_PATH) -> None:
     Path(path).parent.mkdir(parents=True, exist_ok=True)
-    Path(path).write_text(
-        json.dumps(resultados, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-    )
+    Path(path).write_text(json.dumps(resultados, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def obtener_resultados(meses: int = 6, minimo: int = MIN_ACEPTABLE) -> Dict[str, Any]:
@@ -147,8 +148,7 @@ def obtener_resultados(meses: int = 6, minimo: int = MIN_ACEPTABLE) -> Dict[str,
     return {"fuente": "cache", "resultados": cache, "total": len(cache)}
 
 
-def obtener_historico_largo(min_espn_meses: int = 18,
-                            minimo: int = MIN_ACEPTABLE) -> Dict[str, Any]:
+def obtener_historico_largo(min_espn_meses: int = 18, minimo: int = MIN_ACEPTABLE) -> Dict[str, Any]:
     """
     Historial LARGO (varias temporadas) para backtest y calibración, donde tener
     MUCHOS torneos hace el veredicto confiable.
@@ -232,14 +232,16 @@ def estado_fuentes() -> Dict[str, Any]:
             import analista_ia
         except ImportError:  # pragma: no cover
             from src import analista_ia  # type: ignore
-        groq = {"ok": True, "estado": "habilitado (IA opcional)"} if analista_ia.habilitado() \
+        groq = (
+            {"ok": True, "estado": "habilitado (IA opcional)"}
+            if analista_ia.habilitado()
             else {"ok": None, "estado": "deshabilitado (sin GROQ_API_KEY)"}
+        )
     except Exception:  # pragma: no cover
         groq = {"ok": None, "estado": "no disponible"}
 
     return {
-        "fuentes": {"espn": espn, "thesportsdb": tsdb, "odds_api_io": odds,
-                    "ligamx_api": ligamx, "groq_ia": groq},
+        "fuentes": {"espn": espn, "thesportsdb": tsdb, "odds_api_io": odds, "ligamx_api": ligamx, "groq_ia": groq},
         "ok_global": bool(espn.get("ok") or tsdb.get("ok")),
         "decision": "INFORMATIVO / REVISIÓN HUMANA",
     }

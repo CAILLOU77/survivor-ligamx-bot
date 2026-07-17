@@ -243,9 +243,7 @@ def classify_impact(title: str, summary: str) -> tuple[str, str]:
 
 
 def parse_entry_date(entry: Any) -> datetime:
-    parsed_time = getattr(entry, "published_parsed", None) or getattr(
-        entry, "updated_parsed", None
-    )
+    parsed_time = getattr(entry, "published_parsed", None) or getattr(entry, "updated_parsed", None)
 
     if parsed_time:
         try:
@@ -348,10 +346,7 @@ def process_query(
         for entry in entries:
             raw_title = clean_text(getattr(entry, "title", ""))
             title = clean_google_title(raw_title)
-            summary = clean_text(
-                getattr(entry, "summary", "")
-                or getattr(entry, "description", "")
-            )
+            summary = clean_text(getattr(entry, "summary", "") or getattr(entry, "description", ""))
             link = clean_text(getattr(entry, "link", ""))
 
             if not title or not link:

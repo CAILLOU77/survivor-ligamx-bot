@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Tests para src/calibracion.py (calibración de probabilidades). Sin red."""
+
 from __future__ import annotations
 
 import sys
@@ -85,15 +86,11 @@ def _liga_overconfianza(n_semanas: int = 20):
         d = (d0 + timedelta(days=7 * w)).isoformat()
         # Fuerte gana casi siempre (goleadas) pero cada 4 semanas pierde.
         if w % 4 == 3:
-            out.append({"home_team": "Fuerte", "away_team": "Debil",
-                        "home_goals": 0, "away_goals": 1, "fecha": d})
+            out.append({"home_team": "Fuerte", "away_team": "Debil", "home_goals": 0, "away_goals": 1, "fecha": d})
         else:
-            out.append({"home_team": "Fuerte", "away_team": "Debil",
-                        "home_goals": 4, "away_goals": 0, "fecha": d})
-        out.append({"home_team": "Medio", "away_team": "Otro",
-                    "home_goals": 1, "away_goals": 1, "fecha": d})
-        out.append({"home_team": "Local2", "away_team": "Visita2",
-                    "home_goals": 2, "away_goals": 1, "fecha": d})
+            out.append({"home_team": "Fuerte", "away_team": "Debil", "home_goals": 4, "away_goals": 0, "fecha": d})
+        out.append({"home_team": "Medio", "away_team": "Otro", "home_goals": 1, "away_goals": 1, "fecha": d})
+        out.append({"home_team": "Local2", "away_team": "Visita2", "home_goals": 2, "away_goals": 1, "fecha": d})
     return out
 
 
@@ -102,8 +99,13 @@ class TestEvaluarCalibracion(unittest.TestCase):
         r = cal.evaluar_calibracion(_liga_overconfianza(24), min_train=6)
         # Con suficientes muestras devuelve el reporte completo.
         if r.get("n_muestras", 0) >= 20:
-            for k in ("alpha_sugerido", "brier_sin_calibrar_eval",
-                      "brier_calibrado_eval", "calibracion_ayuda", "tasa_base"):
+            for k in (
+                "alpha_sugerido",
+                "brier_sin_calibrar_eval",
+                "brier_calibrado_eval",
+                "calibracion_ayuda",
+                "tasa_base",
+            ):
                 self.assertIn(k, r)
         else:
             self.assertIn("mensaje", r)
@@ -116,18 +118,18 @@ class TestEvaluarCalibracion(unittest.TestCase):
 class TestCalibrarPronostico(unittest.TestCase):
     def test_recalcula_pick_y_no_perder(self):
         pron = {
-            "prob_local_pct": 80.0, "prob_empate_pct": 12.0, "prob_visitante_pct": 8.0,
+            "prob_local_pct": 80.0,
+            "prob_empate_pct": 12.0,
+            "prob_visitante_pct": 8.0,
             "pick_1x2": "Gana Local",
         }
         out = cal.calibrar_pronostico(pron, 0.5, [1 / 3, 1 / 3, 1 / 3])
         self.assertAlmostEqual(
-            out["prob_local_pct"] + out["prob_empate_pct"] + out["prob_visitante_pct"],
-            100.0, places=1)
+            out["prob_local_pct"] + out["prob_empate_pct"] + out["prob_visitante_pct"], 100.0, places=1
+        )
         self.assertLess(out["prob_local_pct"], 80.0)  # menos confianza
         self.assertIn("calibrado", out)
-        self.assertAlmostEqual(
-            out["no_perder_local_pct"],
-            out["prob_local_pct"] + out["prob_empate_pct"], places=2)
+        self.assertAlmostEqual(out["no_perder_local_pct"], out["prob_local_pct"] + out["prob_empate_pct"], places=2)
 
 
 if __name__ == "__main__":

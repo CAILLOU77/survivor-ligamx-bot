@@ -13,6 +13,7 @@ Uso:
 
 No imprime el token ni el secreto. INFORMATIVO / REVISIÓN HUMANA.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -26,6 +27,7 @@ except ImportError:  # pragma: no cover
 
 try:
     from dotenv import load_dotenv
+
     load_dotenv()
 except Exception:  # pragma: no cover
     pass
@@ -78,8 +80,7 @@ def main() -> int:
     r = requests.post(_api(token, "setWebhook"), json=payload, timeout=20)
     data = r.json()
     if data.get("ok"):
-        print(f"✅ Webhook registrado en {hook}"
-              + (" (con secreto)" if secreto else " (sin secreto)"))
+        print(f"✅ Webhook registrado en {hook}" + (" (con secreto)" if secreto else " (sin secreto)"))
         return 0
     print(f"⚠️ No se pudo registrar: {data.get('description', r.text[:200])}")
     return 1

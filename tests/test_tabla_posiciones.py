@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Tests para src/tabla_posiciones.py (tabla ESPN + motivación). Sin red."""
+
 from __future__ import annotations
 
 import sys
@@ -36,7 +37,7 @@ def _payload(entries, torneo="2026 Torneo Apertura"):
 
 def _tabla_avanzada():
     # Jornada 15 (faltan 2): líder 40 pts, decreciente de 2 en 2.
-    entries = [_entry(f"Equipo{i+1}", i + 1, max(40 - 2 * i, 3), 15) for i in range(18)]
+    entries = [_entry(f"Equipo{i + 1}", i + 1, max(40 - 2 * i, 3), 15) for i in range(18)]
     return _payload(entries)
 
 
@@ -84,9 +85,9 @@ class TestMotivacion(unittest.TestCase):
 
     def test_zonas_directo_playin_fuera(self):
         anot = tp.tabla_con_motivacion(tp.parsear_standings(_tabla_avanzada()))["tabla"]
-        self.assertEqual(anot[0]["zona"], "directo")   # pos 1
-        self.assertEqual(anot[6]["zona"], "play_in")   # pos 7
-        self.assertEqual(anot[10]["zona"], "fuera")    # pos 11
+        self.assertEqual(anot[0]["zona"], "directo")  # pos 1
+        self.assertEqual(anot[6]["zona"], "play_in")  # pos 7
+        self.assertEqual(anot[10]["zona"], "fuera")  # pos 11
 
     def test_motivacion_de_por_nombre(self):
         d = tp.parsear_standings(_tabla_avanzada())
@@ -99,11 +100,24 @@ class TestMotivacion(unittest.TestCase):
 class TestFallbackLigaMX(unittest.TestCase):
     def test_usa_ligamx_si_espn_falla(self):
         from unittest import mock
-        parsed_lmx = {"torneo": "Apertura 2026", "tabla": [
-            {"posicion": 1, "equipo": "América", "puntos": 9, "jugados": 3,
-             "ganados": 3, "empatados": 0, "perdidos": 0,
-             "goles_favor": 8, "goles_contra": 1, "diferencia": 7},
-        ]}
+
+        parsed_lmx = {
+            "torneo": "Apertura 2026",
+            "tabla": [
+                {
+                    "posicion": 1,
+                    "equipo": "América",
+                    "puntos": 9,
+                    "jugados": 3,
+                    "ganados": 3,
+                    "empatados": 0,
+                    "perdidos": 0,
+                    "goles_favor": 8,
+                    "goles_contra": 1,
+                    "diferencia": 7,
+                },
+            ],
+        }
         with mock.patch.object(tp, "_fetch_standings", side_effect=RuntimeError("ESPN caído")):
             with mock.patch.object(tp, "_tabla_desde_ligamx", return_value=parsed_lmx):
                 data = tp.obtener_tabla()
@@ -114,6 +128,7 @@ class TestFallbackLigaMX(unittest.TestCase):
 
     def test_propaga_error_si_ambas_fallan(self):
         from unittest import mock
+
         with mock.patch.object(tp, "_fetch_standings", side_effect=RuntimeError("ESPN caído")):
             with mock.patch.object(tp, "_tabla_desde_ligamx", return_value={"torneo": "", "tabla": []}):
                 with self.assertRaises(RuntimeError):

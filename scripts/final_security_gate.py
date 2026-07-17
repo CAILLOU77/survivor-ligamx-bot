@@ -167,9 +167,7 @@ def validate_report_file(report_path: Path) -> SafetyGateResult:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        description="Valida que el reporte final mantenga ESPERAR / NO ENVIAR."
-    )
+    parser = argparse.ArgumentParser(description="Valida que el reporte final mantenga ESPERAR / NO ENVIAR.")
     parser.add_argument(
         "--report",
         required=True,

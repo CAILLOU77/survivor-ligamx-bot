@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Tests: construir snapshots de momios (comparador) y archivarlos (ligamx_api). Sin red."""
+
 from __future__ import annotations
 
 import sys
@@ -19,8 +20,12 @@ class TestConstruirSnapshots(unittest.TestCase):
     def test_arma_snapshot_con_nombres_y_momios(self):
         pron = [{"local": "América", "visitante": "Toluca", "fecha": "2026-07-20"}]
         clave = cm._clave_partido("América", "Toluca")
-        momios = {clave: {"ml": {"local": 1.8, "empate": 3.4, "visita": 4.2},
-                          "totals": {"linea": 2.5, "over": 1.9, "under": 1.9}}}
+        momios = {
+            clave: {
+                "ml": {"local": 1.8, "empate": 3.4, "visita": 4.2},
+                "totals": {"linea": 2.5, "over": 1.9, "under": 1.9},
+            }
+        }
         snaps = cm.construir_snapshots_momios(pron, momios, source="odds-api.io")
         self.assertEqual(len(snaps), 1)
         s = snaps[0]
@@ -45,10 +50,11 @@ class TestArchivarMomios(unittest.TestCase):
         fake = mock.Mock()
         fake.status_code = 200
         fake.json.return_value = {"guardados": 2}
-        with mock.patch.dict("os.environ", {"LIGAMX_API_SYNC_KEY": "k"}, clear=False), \
-             mock.patch.object(lmx.requests, "post", return_value=fake) as mpost:
-            n = lmx.archivar_momios([{"home_team": "A", "away_team": "B"},
-                                     {"home_team": "C", "away_team": "D"}])
+        with (
+            mock.patch.dict("os.environ", {"LIGAMX_API_SYNC_KEY": "k"}, clear=False),
+            mock.patch.object(lmx.requests, "post", return_value=fake) as mpost,
+        ):
+            n = lmx.archivar_momios([{"home_team": "A", "away_team": "B"}, {"home_team": "C", "away_team": "D"}])
         self.assertEqual(n, 2)
         mpost.assert_called_once()
         # Debe mandar la X-API-Key en el header.
@@ -56,8 +62,10 @@ class TestArchivarMomios(unittest.TestCase):
         self.assertEqual(kwargs["headers"]["X-API-Key"], "k")
 
     def test_error_de_red_no_rompe(self):
-        with mock.patch.dict("os.environ", {"LIGAMX_API_SYNC_KEY": "k"}, clear=False), \
-             mock.patch.object(lmx.requests, "post", side_effect=Exception("caida")):
+        with (
+            mock.patch.dict("os.environ", {"LIGAMX_API_SYNC_KEY": "k"}, clear=False),
+            mock.patch.object(lmx.requests, "post", side_effect=Exception("caida")),
+        ):
             self.assertEqual(lmx.archivar_momios([{"home_team": "A", "away_team": "B"}]), 0)
 
 

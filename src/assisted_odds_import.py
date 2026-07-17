@@ -21,6 +21,7 @@ Reglas duras (este módulo no rompe ninguna):
 Este módulo no hace red, no abre navegador y no toca .env: solo recibe texto
 ya capturado y devuelve estructuras + reportes en texto.
 """
+
 from __future__ import annotations
 
 import json
@@ -56,18 +57,47 @@ _DRAW_LABELS = ("empate", "draw", "x")
 
 # Meses ES/EN (abreviados o completos) -> número de mes.
 _MESES: Dict[str, int] = {
-    "ene": 1, "enero": 1, "jan": 1, "january": 1,
-    "feb": 2, "febrero": 2, "february": 2,
-    "mar": 3, "marzo": 3, "march": 3,
-    "abr": 4, "abril": 4, "apr": 4, "april": 4,
-    "may": 5, "mayo": 5,
-    "jun": 6, "junio": 6, "june": 6,
-    "jul": 7, "julio": 7, "july": 7,
-    "ago": 8, "agosto": 8, "aug": 8, "august": 8,
-    "sep": 9, "set": 9, "sept": 9, "septiembre": 9, "september": 9,
-    "oct": 10, "octubre": 10, "october": 10,
-    "nov": 11, "noviembre": 11, "november": 11,
-    "dic": 12, "diciembre": 12, "dec": 12, "december": 12,
+    "ene": 1,
+    "enero": 1,
+    "jan": 1,
+    "january": 1,
+    "feb": 2,
+    "febrero": 2,
+    "february": 2,
+    "mar": 3,
+    "marzo": 3,
+    "march": 3,
+    "abr": 4,
+    "abril": 4,
+    "apr": 4,
+    "april": 4,
+    "may": 5,
+    "mayo": 5,
+    "jun": 6,
+    "junio": 6,
+    "june": 6,
+    "jul": 7,
+    "julio": 7,
+    "july": 7,
+    "ago": 8,
+    "agosto": 8,
+    "aug": 8,
+    "august": 8,
+    "sep": 9,
+    "set": 9,
+    "sept": 9,
+    "septiembre": 9,
+    "september": 9,
+    "oct": 10,
+    "octubre": 10,
+    "october": 10,
+    "nov": 11,
+    "noviembre": 11,
+    "november": 11,
+    "dic": 12,
+    "diciembre": 12,
+    "dec": 12,
+    "december": 12,
 }
 
 # Un momio americano: signo obligatorio + 2 a 4 dígitos (ej. +120, -125, +275).
@@ -119,7 +149,6 @@ _FUTURO_KEYWORDS = re.compile(
 )
 
 
-
 # ---------------------------------------------------------------------------
 # Helpers de normalización / validación
 # ---------------------------------------------------------------------------
@@ -155,10 +184,8 @@ def _mes_a_numero(mes: str) -> int:
 def evento_momios_validos(evento: Dict[str, Any]) -> bool:
     """True si los tres momios del evento son americanos válidos."""
     return all(
-        es_momio_americano_valido(evento.get(campo))
-        for campo in ("momio_local", "momio_empate", "momio_visitante")
+        es_momio_americano_valido(evento.get(campo)) for campo in ("momio_local", "momio_empate", "momio_visitante")
     )
-
 
 
 # ---------------------------------------------------------------------------
@@ -202,7 +229,6 @@ def extraer_eventos_crudos(texto: str) -> List[Dict[str, Any]]:
     return eventos
 
 
-
 # ---------------------------------------------------------------------------
 # Parseo MULTILINE (v1.39.1 base, v1.39.2 layout-aware)
 #
@@ -232,12 +258,12 @@ def extraer_eventos_crudos(texto: str) -> List[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 # Tokens de la máquina de estados multiline.
-_ML_WAIT_LOCAL = 0       # esperando nombre equipo local
-_ML_WAIT_ML = 1          # esperando momio local
-_ML_WAIT_DRAW_LBL = 2    # esperando etiqueta Empate/Draw/X
-_ML_WAIT_MD = 3          # esperando momio empate
-_ML_WAIT_VISIT = 4       # esperando nombre equipo visitante
-_ML_WAIT_MV = 5          # esperando momio visitante
+_ML_WAIT_LOCAL = 0  # esperando nombre equipo local
+_ML_WAIT_ML = 1  # esperando momio local
+_ML_WAIT_DRAW_LBL = 2  # esperando etiqueta Empate/Draw/X
+_ML_WAIT_MD = 3  # esperando momio empate
+_ML_WAIT_VISIT = 4  # esperando nombre equipo visitante
+_ML_WAIT_MV = 5  # esperando momio visitante
 
 # ---------------------------------------------------------------------------
 # Detectores de tokens de layout (v1.39.2)
@@ -247,29 +273,35 @@ _ML_WAIT_MV = 5          # esperando momio visitante
 _RE_HORA = re.compile(r"^\d{1,2}:\d{2}$")
 
 # Patrón de fecha corta: DD Mon (ej. "16 Jul", "3 Ago", "17 Julio")
-_RE_FECHA_CORTA = re.compile(
-    r"^(\d{1,2})\s+([A-Za-zÁÉÍÓÚÜÑáéíóúüñ]{3,12})\.?$"
-)
+_RE_FECHA_CORTA = re.compile(r"^(\d{1,2})\s+([A-Za-zÁÉÍÓÚÜÑáéíóúüñ]{3,12})\.?$")
 
 # Tokens de layout visual que siempre se ignoran (case-insensitive match).
-_LAYOUT_JUNK = frozenset([
-    "★", "☆", "⭐",
-    "1 >", "1>",
-    "st",
-    "1st",
-    "2nd",
-    "3rd",
-    ">",
-    "ver más", "ver mas",
-    "más mercados", "mas mercados",
-    "próximos eventos", "proximos eventos",
-])
+_LAYOUT_JUNK = frozenset(
+    [
+        "★",
+        "☆",
+        "⭐",
+        "1 >",
+        "1>",
+        "st",
+        "1st",
+        "2nd",
+        "3rd",
+        ">",
+        "ver más",
+        "ver mas",
+        "más mercados",
+        "mas mercados",
+        "próximos eventos",
+        "proximos eventos",
+    ]
+)
 
 # Patrones regex adicionales de layout a ignorar.
 _RE_LAYOUT_PATTERNS = re.compile(
     r"^("
-    r"\d+\s*>"           # "1 >", "2 >", etc.
-    r"|ver\s+m[aá]s.*"   # "Ver más mercados"
+    r"\d+\s*>"  # "1 >", "2 >", etc.
+    r"|ver\s+m[aá]s.*"  # "Ver más mercados"
     r"|m[aá]s\s+mercados"
     r"|pr[oó]ximos?\s+eventos?"
     r"|apuestas?\s+f[uú]tbol.*"  # "Apuestas Fútbol México"
@@ -450,9 +482,7 @@ def extraer_eventos_multiline(texto: str) -> List[Dict[str, Any]]:
             if es_momio_americano_valido(linea):
                 momio_visitante = linea
                 # Evento completo — usar hora/fecha del contexto acumulado.
-                fecha_str = (
-                    f"{ctx_dia:02d} {ctx_mes_texto}" if ctx_dia and ctx_mes_texto else ""
-                )
+                fecha_str = f"{ctx_dia:02d} {ctx_mes_texto}" if ctx_dia and ctx_mes_texto else ""
                 ev: Dict[str, Any] = {
                     "hora": ctx_hora,
                     "dia": ctx_dia,
@@ -476,7 +506,6 @@ def extraer_eventos_multiline(texto: str) -> List[Dict[str, Any]]:
                 _reset()
 
     return eventos
-
 
 
 # ---------------------------------------------------------------------------
@@ -558,26 +587,46 @@ _LIGA_MX_END_MARKERS = re.compile(
 
 # Equipos Liga MX conocidos (normalizados, sin acentos, lower).
 # Usados como filtro secundario cuando el scope por sección no es confiable.
-_EQUIPOS_LIGA_MX_NORM = frozenset([
-    "necaxa", "atlante",
-    "tijuana xolos de caliente", "tijuana", "xolos",
-    "tigres uanl", "tigres",
-    "atletico san luis", "atletico de san luis", "san luis",
-    "cruz azul",
-    "leon", "club leon",
-    "atlas",
-    "fc juarez", "juarez", "bravos",
-    "puebla",
-    "pumas unam", "pumas",
-    "pachuca",
-    "chivas guadalajara", "chivas", "guadalajara",
-    "toluca",
-    "monterrey", "rayados",
-    "santos laguna", "santos",
-    "queretaro fc", "queretaro", "gallos",
-    "america", "club america",
-    "mazatlan", "mazatlan fc",
-])
+_EQUIPOS_LIGA_MX_NORM = frozenset(
+    [
+        "necaxa",
+        "atlante",
+        "tijuana xolos de caliente",
+        "tijuana",
+        "xolos",
+        "tigres uanl",
+        "tigres",
+        "atletico san luis",
+        "atletico de san luis",
+        "san luis",
+        "cruz azul",
+        "leon",
+        "club leon",
+        "atlas",
+        "fc juarez",
+        "juarez",
+        "bravos",
+        "puebla",
+        "pumas unam",
+        "pumas",
+        "pachuca",
+        "chivas guadalajara",
+        "chivas",
+        "guadalajara",
+        "toluca",
+        "monterrey",
+        "rayados",
+        "santos laguna",
+        "santos",
+        "queretaro fc",
+        "queretaro",
+        "gallos",
+        "america",
+        "club america",
+        "mazatlan",
+        "mazatlan fc",
+    ]
+)
 
 
 def _recortar_seccion_liga_mx(texto: str) -> str:
@@ -607,10 +656,10 @@ def _recortar_seccion_liga_mx(texto: str) -> str:
     inicio = None
     for m in _LIGA_MX_START_MARKERS.finditer(texto):
         # Verificar que no sea "Liga MX Femenil" ni dentro de "Ganador Liga MX".
-        context_after = texto[m.start():m.start() + 30]
+        context_after = texto[m.start() : m.start() + 30]
         if "femenil" in context_after.lower():
             continue
-        context_before = texto[max(0, m.start() - 15):m.start()]
+        context_before = texto[max(0, m.start() - 15) : m.start()]
         if re.search(r"(ganador|campe[oó]n|winner)", context_before, re.IGNORECASE):
             continue
         inicio = m.start()
@@ -668,9 +717,9 @@ def _filtrar_eventos_liga_mx(
         return eventos
 
     liga_mx = [
-        ev for ev in eventos
-        if _es_equipo_liga_mx(ev.get("equipo_local", ""))
-        or _es_equipo_liga_mx(ev.get("equipo_visitante", ""))
+        ev
+        for ev in eventos
+        if _es_equipo_liga_mx(ev.get("equipo_local", "")) or _es_equipo_liga_mx(ev.get("equipo_visitante", ""))
     ]
 
     # Si no reconoce ninguno, mejor devolver todos (la lista puede estar
@@ -750,7 +799,6 @@ def analizar_texto(texto: str, esperados: int = 9) -> Dict[str, Any]:
         "coincide_esperados": len(eventos) == esperados,
         "decision": DEC_ESPERAR,
     }
-
 
 
 # ---------------------------------------------------------------------------

@@ -15,33 +15,26 @@ SPEC.loader.exec_module(final_security_gate)
 
 class FinalSecurityGateTests(unittest.TestCase):
     def test_allows_esperar_no_enviar_marker(self):
-        result = final_security_gate.validate_report_text(
-            "Reporte final\nDecisión operativa: ESPERAR / NO ENVIAR\n"
-        )
+        result = final_security_gate.validate_report_text("Reporte final\nDecisión operativa: ESPERAR / NO ENVIAR\n")
 
         self.assertTrue(result.ok)
         self.assertEqual(result.exit_code, 0)
 
     def test_allows_ready_for_full_audit_no_auto_send_marker(self):
-        result = final_security_gate.validate_report_text(
-            "Estado: READY_FOR_FULL_AUDIT / NO ENVIAR AUTOMÁTICO\n"
-        )
+        result = final_security_gate.validate_report_text("Estado: READY_FOR_FULL_AUDIT / NO ENVIAR AUTOMÁTICO\n")
 
         self.assertTrue(result.ok)
         self.assertEqual(result.exit_code, 0)
 
     def test_blocks_report_without_safe_marker(self):
-        result = final_security_gate.validate_report_text(
-            "Reporte final sin etiqueta operativa segura."
-        )
+        result = final_security_gate.validate_report_text("Reporte final sin etiqueta operativa segura.")
 
         self.assertFalse(result.ok)
         self.assertEqual(result.exit_code, 2)
 
     def test_blocks_forbidden_close_signal_even_with_safe_marker(self):
         result = final_security_gate.validate_report_text(
-            "Decisión operativa: ESPERAR / NO ENVIAR\n"
-            "Error peligroso: CERRAR pick."
+            "Decisión operativa: ESPERAR / NO ENVIAR\nError peligroso: CERRAR pick."
         )
 
         self.assertFalse(result.ok)
@@ -49,8 +42,7 @@ class FinalSecurityGateTests(unittest.TestCase):
 
     def test_allows_negated_no_cerrar_context(self):
         result = final_security_gate.validate_report_text(
-            "Decisión operativa: ESPERAR / NO ENVIAR\n"
-            "Control: NO CERRAR pick automáticamente."
+            "Decisión operativa: ESPERAR / NO ENVIAR\nControl: NO CERRAR pick automáticamente."
         )
 
         self.assertTrue(result.ok)
@@ -58,8 +50,7 @@ class FinalSecurityGateTests(unittest.TestCase):
 
     def test_allows_negated_no_enviar_pick_context(self):
         result = final_security_gate.validate_report_text(
-            "Decisión operativa: ESPERAR / NO ENVIAR\n"
-            "Control: NO ENVIAR PICK automáticamente."
+            "Decisión operativa: ESPERAR / NO ENVIAR\nControl: NO ENVIAR PICK automáticamente."
         )
 
         self.assertTrue(result.ok)
@@ -67,8 +58,7 @@ class FinalSecurityGateTests(unittest.TestCase):
 
     def test_blocks_forbidden_enviar_pick_signal(self):
         result = final_security_gate.validate_report_text(
-            "Decisión operativa: ESPERAR / NO ENVIAR\n"
-            "Texto peligroso: ENVIAR PICK."
+            "Decisión operativa: ESPERAR / NO ENVIAR\nTexto peligroso: ENVIAR PICK."
         )
 
         self.assertFalse(result.ok)
@@ -76,8 +66,7 @@ class FinalSecurityGateTests(unittest.TestCase):
 
     def test_blocks_betting_signal_even_with_safe_marker(self):
         result = final_security_gate.validate_report_text(
-            "Decisión operativa: ESPERAR / NO ENVIAR\n"
-            "Texto peligroso: apostar."
+            "Decisión operativa: ESPERAR / NO ENVIAR\nTexto peligroso: apostar."
         )
 
         self.assertFalse(result.ok)

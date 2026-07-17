@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Tests para src/telegram_webhook.py (comandos por Telegram). Sin red/BD real."""
+
 from __future__ import annotations
 
 import sys

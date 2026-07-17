@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Tests para src/simulador_survivor.py (backtest del juego Survivor). Sin red."""
+
 from __future__ import annotations
 
 import sys
@@ -20,10 +21,8 @@ def _liga(n_semanas=8):
     d0 = date(2026, 1, 6)  # lunes
     for w in range(n_semanas):
         d = (d0 + timedelta(days=7 * w)).isoformat()
-        out.append({"home_team": "Fuerte", "away_team": "Debil",
-                    "home_goals": 3, "away_goals": 0, "fecha": d})
-        out.append({"home_team": "Medio", "away_team": "Otro",
-                    "home_goals": 2, "away_goals": 1, "fecha": d})
+        out.append({"home_team": "Fuerte", "away_team": "Debil", "home_goals": 3, "away_goals": 0, "fecha": d})
+        out.append({"home_team": "Medio", "away_team": "Otro", "home_goals": 2, "away_goals": 1, "fecha": d})
     return out
 
 
@@ -50,8 +49,7 @@ class TestHelpers(unittest.TestCase):
 class TestSimulacion(unittest.TestCase):
     def test_estructura_y_juega(self):
         r = ss.simular_temporada(_liga(8), min_train=2)
-        for k in ("jornadas_jugadas", "jornadas_sobrevividas", "eliminado_en",
-                  "detalle", "decision"):
+        for k in ("jornadas_jugadas", "jornadas_sobrevividas", "eliminado_en", "detalle", "decision"):
             self.assertIn(k, r)
         self.assertGreaterEqual(r["jornadas_jugadas"], 1)
         self.assertEqual(r["decision"], "INFORMATIVO / REVISIÓN HUMANA")

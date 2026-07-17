@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Tests para src/analista_ia.py (capa IA Groq). Sin red: requests mockeado."""
+
 from __future__ import annotations
 
 import os
@@ -58,9 +59,11 @@ class TestAnalizar(unittest.TestCase):
         self.assertFalse(r["disponible"])
 
     def test_extrae_riesgos(self):
-        content = ('{"riesgos":[{"equipo":"Toluca","tipo":"lesion","jugador":"X",'
-                   '"resumen":"Duda por lesión","titulo_fuente":"Toluca: duda..."}],'
-                   '"sin_senales":false}')
+        content = (
+            '{"riesgos":[{"equipo":"Toluca","tipo":"lesion","jugador":"X",'
+            '"resumen":"Duda por lesión","titulo_fuente":"Toluca: duda..."}],'
+            '"sin_senales":false}'
+        )
         with mock.patch.dict(os.environ, {"GROQ_API_KEY": "x"}, clear=True):
             with mock.patch.object(ia.requests, "post", return_value=_resp(content=content)):
                 r = ia.analizar_noticias(["América", "Toluca"], _NEWS)

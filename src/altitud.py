@@ -11,6 +11,7 @@ forma ACOTADA. Se activa solo si mejora la calibración (ver tuning/medición).
 Altitudes de estadio en metros (datos públicos, aproximados). Equipo desconocido
 => sin ajuste (factor 0). INFORMATIVO / REVISIÓN HUMANA.
 """
+
 from __future__ import annotations
 
 from typing import Any, Dict, Optional, Tuple
@@ -28,7 +29,7 @@ ALTITUDES_M: Dict[str, int] = {
     "pachuca": 2400,
     "pumas": 2280,
     "america": 2240,
-    "cruz azul": 2240,     # juega en CDMX
+    "cruz azul": 2240,  # juega en CDMX
     "puebla": 2150,
     "necaxa": 1880,
     "atletico de san luis": 1860,
@@ -84,8 +85,7 @@ def ajustar_1x2_por_altitud(
     gv = pron.get("lambda_visitante")
     f = factor_altitud(pron.get("local", ""), pron.get("visitante", ""), k)
     if f <= 0.0 or gl is None or gv is None:
-        return (pron.get("prob_local_pct", 0.0), pron.get("prob_empate_pct", 0.0),
-                pron.get("prob_visitante_pct", 0.0))
+        return (pron.get("prob_local_pct", 0.0), pron.get("prob_empate_pct", 0.0), pron.get("prob_visitante_pct", 0.0))
     gl2 = float(gl) * (1.0 + f)
     gv2 = float(gv) * (1.0 - f * 0.5)
     matriz = pm.matriz_marcadores(gl2, gv2, rho=rho)
@@ -109,11 +109,16 @@ def aplicar_altitud(pron: Dict[str, Any], k: float = K_ALTITUD) -> Dict[str, Any
         pick = "Gana Visitante"
     else:
         pick = "Empate"
-    out.update({
-        "prob_local_pct": pl, "prob_empate_pct": pe, "prob_visitante_pct": pv,
-        "prob_pick_pct": round(max(pl, pe, pv), 2), "pick_1x2": pick,
-        "no_perder_local_pct": round(pl + pe, 2),
-        "no_perder_visitante_pct": round(pv + pe, 2),
-        "ajuste_altitud": {"factor": round(f, 3)},
-    })
+    out.update(
+        {
+            "prob_local_pct": pl,
+            "prob_empate_pct": pe,
+            "prob_visitante_pct": pv,
+            "prob_pick_pct": round(max(pl, pe, pv), 2),
+            "pick_1x2": pick,
+            "no_perder_local_pct": round(pl + pe, 2),
+            "no_perder_visitante_pct": round(pv + pe, 2),
+            "ajuste_altitud": {"factor": round(f, 3)},
+        }
+    )
     return out

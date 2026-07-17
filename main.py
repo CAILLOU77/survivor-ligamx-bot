@@ -10,6 +10,7 @@ Reemplaza la versión vieja (que usaba scraper/momios). Ahora:
 
 Informativo / revisión humana. No cierra ni envía apuestas por sí solo.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -20,6 +21,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src
 
 # Configurar logging estructurado ANTES de importar módulos que loguean
 from src.logging_setup import setup_logging, get_logger
+
 setup_logging()
 
 import motor_pronosticos as motor  # noqa: E402
@@ -66,11 +68,9 @@ def ejecutar(excluir=None, enviar_telegram=False) -> int:
     if enviar_telegram:
         try:
             import telegram_pronosticos as tp
+
             envio = tp.enviar_pronosticos(usados)
-            logger.info(
-                f"📲 Telegram: enviado={envio['enviado']} "
-                f"({envio.get('total_pronosticos', 0)} pronósticos)"
-            )
+            logger.info(f"📲 Telegram: enviado={envio['enviado']} ({envio.get('total_pronosticos', 0)} pronósticos)")
         except Exception as exc:  # pragma: no cover - dependencia/credenciales
             logger.warning(f"⚠️ No se pudo enviar Telegram: {exc}")
 

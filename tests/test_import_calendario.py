@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Tests para scripts/import_calendario.py y espn_data._rangos_dias_adelante. Sin red."""
+
 from __future__ import annotations
 
 import sys
@@ -59,8 +60,7 @@ class TestConstruirCalendario(unittest.TestCase):
 
     def test_cap_max_por_jornada(self):
         # 10 partidos seguidos sin repetir equipo ni hueco => se parte a los 9.
-        fixtures = [{"home_team": f"H{i}", "away_team": f"A{i}", "fecha": "2026-07-18"}
-                    for i in range(10)]
+        fixtures = [{"home_team": f"H{i}", "away_team": f"A{i}", "fecha": "2026-07-18"} for i in range(10)]
         cal = ic.construir_calendario(fixtures, max_por_jornada=9)
         self.assertEqual(len(cal[0]["partidos"]), 9)
         self.assertEqual(len(cal[1]["partidos"]), 1)

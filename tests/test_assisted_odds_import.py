@@ -9,6 +9,7 @@ Ejecutar:
 o:
     python3 tests/test_assisted_odds_import.py
 """
+
 from __future__ import annotations
 
 import sys
@@ -177,9 +178,7 @@ class TestParser9Partidos(unittest.TestCase):
 
     def test_campos_extraidos(self):
         res = aoi.analizar_texto(TEXTO_CALIENTE_9, esperados=9)
-        necaxa = next(
-            e for e in res["eventos"] if e["equipo_local"] == "Necaxa"
-        )
+        necaxa = next(e for e in res["eventos"] if e["equipo_local"] == "Necaxa")
         self.assertEqual(necaxa["hora"], "19:00")
         self.assertEqual(necaxa["fecha"], "16 Jul")
         self.assertEqual(necaxa["equipo_visitante"], "Atlante")
@@ -201,9 +200,7 @@ class TestNoMezclaBloqueGigante(unittest.TestCase):
     def test_no_mezcla_pares(self):
         res = aoi.analizar_texto(TEXTO_BLOQUE_GIGANTE, esperados=2)
         self.assertEqual(res["total_validos"], 2)
-        pares = {
-            (e["equipo_local"], e["equipo_visitante"]) for e in res["eventos"]
-        }
+        pares = {(e["equipo_local"], e["equipo_visitante"]) for e in res["eventos"]}
         self.assertIn(("Necaxa", "Atlante"), pares)
         self.assertIn(("América", "Atlas"), pares)
         self.assertNotIn(("Necaxa", "Atlas"), pares)
@@ -256,9 +253,7 @@ class TestParserMultiline9Partidos(unittest.TestCase):
 
     def test_partidos_correctos(self):
         res = aoi.analizar_texto(TEXTO_MULTILINE_9, esperados=9)
-        pares = [
-            (e["equipo_local"], e["equipo_visitante"]) for e in res["eventos"]
-        ]
+        pares = [(e["equipo_local"], e["equipo_visitante"]) for e in res["eventos"]]
         esperados = [
             ("Necaxa", "Atlante"),
             ("Tijuana Xolos de Caliente", "Tigres UANL"),
@@ -307,9 +302,7 @@ class TestNoMezclaFuturos(unittest.TestCase):
         res = aoi.analizar_texto(TEXTO_MULTILINE_CON_FUTURO, esperados=2)
         # Solo debe detectar Necaxa vs Atlante y Chivas vs Toluca.
         self.assertEqual(res["total_validos"], 2)
-        pares = {
-            (e["equipo_local"], e["equipo_visitante"]) for e in res["eventos"]
-        }
+        pares = {(e["equipo_local"], e["equipo_visitante"]) for e in res["eventos"]}
         self.assertIn(("Necaxa", "Atlante"), pares)
         self.assertIn(("Chivas Guadalajara", "Toluca"), pares)
         # No debe incluir equipos del mercado de campeón como partido 1X2.
@@ -349,10 +342,7 @@ class TestMomioInvalido(unittest.TestCase):
         self.assertEqual(len(res["invalidos"]), 1)
 
     def test_evento_valido_convive_con_invalido(self):
-        texto = (
-            "19:00 16 Jul Necaxa +50 Empate +260 Atlante +275\n"
-            "21:05 16 Jul América -160 Empate +320 Atlas +420\n"
-        )
+        texto = "19:00 16 Jul Necaxa +50 Empate +260 Atlante +275\n21:05 16 Jul América -160 Empate +320 Atlas +420\n"
         res = aoi.analizar_texto(texto, esperados=1)
         self.assertEqual(res["total_validos"], 1)
         self.assertEqual(len(res["invalidos"]), 1)
@@ -361,29 +351,20 @@ class TestMomioInvalido(unittest.TestCase):
 
 class TestDuplicados(unittest.TestCase):
     def test_partido_duplicado_se_deduplica(self):
-        texto = (
-            "19:00 16 Jul Necaxa -125 Empate +260 Atlante +275\n"
-            "19:00 16 Jul Necaxa -125 Empate +260 Atlante +275\n"
-        )
+        texto = "19:00 16 Jul Necaxa -125 Empate +260 Atlante +275\n19:00 16 Jul Necaxa -125 Empate +260 Atlante +275\n"
         res = aoi.analizar_texto(texto, esperados=1)
         self.assertEqual(res["total_validos"], 1)
         self.assertEqual(res["duplicados_removidos"], 1)
 
     def test_dedup_ignora_acentos_y_mayusculas(self):
-        texto = (
-            "21:05 16 Jul América -160 Empate +320 Atlas +420\n"
-            "21:05 16 Jul America -160 Empate +320 ATLAS +420\n"
-        )
+        texto = "21:05 16 Jul América -160 Empate +320 Atlas +420\n21:05 16 Jul America -160 Empate +320 ATLAS +420\n"
         res = aoi.analizar_texto(texto, esperados=1)
         self.assertEqual(res["total_validos"], 1)
         self.assertEqual(res["duplicados_removidos"], 1)
 
     def test_dedup_multiline(self):
         """Duplicados multiline también se remueven."""
-        texto = (
-            "Necaxa\n-125\nEmpate\n+260\nAtlante\n+275\n"
-            "Necaxa\n-125\nEmpate\n+260\nAtlante\n+275\n"
-        )
+        texto = "Necaxa\n-125\nEmpate\n+260\nAtlante\n+275\nNecaxa\n-125\nEmpate\n+260\nAtlante\n+275\n"
         res = aoi.analizar_texto(texto, esperados=1)
         self.assertEqual(res["total_validos"], 1)
         self.assertEqual(res["duplicados_removidos"], 1)
@@ -424,8 +405,7 @@ class TestReporte(unittest.TestCase):
     def test_reporte_sin_secretos(self):
         res = aoi.analizar_texto(TEXTO_CALIENTE_9, esperados=9)
         url_con_secreto = (
-            "https://sports.caliente.mx/es_MX/Apuestas-Futbol-Mexico"
-            "?apikey=SUPERSECRETO123&token=BEARER_XYZ"
+            "https://sports.caliente.mx/es_MX/Apuestas-Futbol-Mexico?apikey=SUPERSECRETO123&token=BEARER_XYZ"
         )
         reporte = aoi.render_report(res, url=url_con_secreto)
         self.assertIn("sports.caliente.mx", reporte)
@@ -457,19 +437,26 @@ class TestExportJSON(unittest.TestCase):
             self.assertEqual(
                 set(ev.keys()),
                 {
-                    "fecha", "hora", "equipo_local", "equipo_visitante",
-                    "momio_local", "momio_empate", "momio_visitante",
+                    "fecha",
+                    "hora",
+                    "equipo_local",
+                    "equipo_visitante",
+                    "momio_local",
+                    "momio_empate",
+                    "momio_visitante",
                 },
             )
 
     def test_json_serializable(self):
         import json
+
         res = aoi.analizar_texto(TEXTO_CALIENTE_9, esperados=9)
         data = json.loads(aoi.exportar_json(res))
         self.assertEqual(len(data["eventos"]), 9)
 
     def test_json_multiline(self):
         import json
+
         res = aoi.analizar_texto(TEXTO_MULTILINE_9, esperados=9)
         data = json.loads(aoi.exportar_json(res))
         self.assertEqual(len(data["eventos"]), 9)
@@ -740,8 +727,7 @@ class TestMixedLeaguesScope(unittest.TestCase):
         locales = {e["equipo_local"] for e in res["eventos"]}
         visitantes = {e["equipo_visitante"] for e in res["eventos"]}
         todos = locales | visitantes
-        for equipo in ("Thitsar Arman FC U20", "Sagaing United FC U20",
-                       "Yangon City FC U20", "Yangon United FC U20"):
+        for equipo in ("Thitsar Arman FC U20", "Sagaing United FC U20", "Yangon City FC U20", "Yangon United FC U20"):
             self.assertNotIn(equipo, todos)
 
     def test_no_incluye_femenil(self):
@@ -787,9 +773,11 @@ class TestMixedLeaguesScope(unittest.TestCase):
         # Verificar que extraer_eventos_multiline sobre el texto completo
         # produce mas de 9 eventos (incluye otras ligas).
         crudos = aoi.extraer_eventos_multiline(self.texto)
-        self.assertGreater(len(crudos), 9,
-                           "El parser multiline debe detectar >9 eventos en "
-                           "texto con ligas mixtas antes del filtro Liga MX")
+        self.assertGreater(
+            len(crudos),
+            9,
+            "El parser multiline debe detectar >9 eventos en texto con ligas mixtas antes del filtro Liga MX",
+        )
 
     def test_excluded_teams_not_in_pipeline_output(self):
         """Equipos de otras ligas no deben aparecer en la salida del pipeline."""
@@ -798,13 +786,17 @@ class TestMixedLeaguesScope(unittest.TestCase):
         visitantes = {e["equipo_visitante"] for e in res["eventos"]}
         todos = locales | visitantes
         excluidos = [
-            "Austria Lustenau", "FC Wil", "Randers FC", "Sonderjyske",
-            "Thitsar Arman FC U20", "Sagaing United FC U20",
-            "Yangon City FC U20", "Yangon United FC U20",
+            "Austria Lustenau",
+            "FC Wil",
+            "Randers FC",
+            "Sonderjyske",
+            "Thitsar Arman FC U20",
+            "Sagaing United FC U20",
+            "Yangon City FC U20",
+            "Yangon United FC U20",
         ]
         for equipo in excluidos:
-            self.assertNotIn(equipo, todos,
-                             f"{equipo} no debe estar en resultados Liga MX")
+            self.assertNotIn(equipo, todos, f"{equipo} no debe estar en resultados Liga MX")
 
 
 class TestMixedLeaguesInline(unittest.TestCase):
@@ -910,9 +902,7 @@ class TestRestriccionesCodigoFuente(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.src_modulo = (SRC_DIR / "assisted_odds_import.py").read_text(encoding="utf-8")
-        cls.src_script = (
-            BASE_DIR / "scripts" / "assisted_caliente_odds.py"
-        ).read_text(encoding="utf-8")
+        cls.src_script = (BASE_DIR / "scripts" / "assisted_caliente_odds.py").read_text(encoding="utf-8")
         cls.fuentes = (cls.src_modulo, cls.src_script)
 
     def test_no_usa_stealth(self):

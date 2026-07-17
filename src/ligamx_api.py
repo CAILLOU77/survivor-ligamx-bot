@@ -34,6 +34,7 @@ Config (entorno, opcional):
     LIGAMX_API_AS_SOURCE si es truthy, fuentes_datos usa esta API como fuente
                          PRIMARIA de resultados para el modelo (default off).
 """
+
 from __future__ import annotations
 
 import os
@@ -48,7 +49,11 @@ try:
     from team_normalizer import display_team_name, canonical_team_key, team_aliases, clean_team_name, teams_match
 except ImportError:  # pragma: no cover - ruta alterna de import
     from src.team_normalizer import (  # type: ignore
-        display_team_name, canonical_team_key, team_aliases, clean_team_name, teams_match,
+        display_team_name,
+        canonical_team_key,
+        team_aliases,
+        clean_team_name,
+        teams_match,
     )
 
 DEFAULT_BASE_URL = "https://ligamx-api.onrender.com"
@@ -67,8 +72,7 @@ def _timeout() -> float:
         return 12.0
 
 
-def _get(path: str, params: Optional[Dict[str, Any]] = None,
-         timeout: Optional[float] = None) -> Any:
+def _get(path: str, params: Optional[Dict[str, Any]] = None, timeout: Optional[float] = None) -> Any:
     """
     GET a la API y devuelve el JSON parseado. Lanza RuntimeError con un mensaje
     claro si falta `requests`, hay error de red o la API responde != 200.
@@ -78,8 +82,7 @@ def _get(path: str, params: Optional[Dict[str, Any]] = None,
         raise RuntimeError("La dependencia 'requests' no está instalada.")
     url = f"{base_url()}/{path.lstrip('/')}"
     try:
-        resp = requests.get(url, params=params or {},
-                            timeout=timeout if timeout is not None else _timeout())
+        resp = requests.get(url, params=params or {}, timeout=timeout if timeout is not None else _timeout())
     except requests.RequestException as exc:  # pragma: no cover - error de red
         raise RuntimeError(f"No se pudo conectar a la Liga MX API: {exc}") from exc
     if resp.status_code != 200:
@@ -175,12 +178,14 @@ def calendario_para_planificador(season: Optional[str] = None) -> List[Dict[str,
             away = (m.get("away_team") or {}).get("name", "")
             if not home or not away:
                 continue
-            partidos.append({
-                "home_team": display_team_name(home),
-                "away_team": display_team_name(away),
-                "date": m.get("date"),
-                "venue": m.get("venue"),
-            })
+            partidos.append(
+                {
+                    "home_team": display_team_name(home),
+                    "away_team": display_team_name(away),
+                    "date": m.get("date"),
+                    "venue": m.get("venue"),
+                }
+            )
         if partidos:
             jornadas.append({"jornada": int(j.get("jornada", 0)), "partidos": partidos})
     return jornadas
@@ -207,20 +212,23 @@ def fixtures_planos(season: Optional[str] = None) -> List[Dict[str, Any]]:
             fecha = m.get("date")
             if not home or not away or not fecha:
                 continue
-            fixtures.append({
-                "fecha": fecha,
-                "home_team": display_team_name(home),
-                "away_team": display_team_name(away),
-                "venue": m.get("venue"),
-            })
+            fixtures.append(
+                {
+                    "fecha": fecha,
+                    "home_team": display_team_name(home),
+                    "away_team": display_team_name(away),
+                    "venue": m.get("venue"),
+                }
+            )
     return fixtures
 
 
 # ---------------------------------------------------------------------------
 # Partidos / resultados (para el modelo cuando haya datos jugados)
 # ---------------------------------------------------------------------------
-def obtener_partidos(status: Optional[str] = None, season: Optional[str] = None,
-                     limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
+def obtener_partidos(
+    status: Optional[str] = None, season: Optional[str] = None, limit: int = 100, offset: int = 0
+) -> List[Dict[str, Any]]:
     """/matches — partidos crudos (MatchResponse), con paginación y filtros."""
     params: Dict[str, Any] = {"limit": limit, "offset": offset}
     if status:
@@ -235,8 +243,7 @@ def partidos_proximos(limit: int = 10) -> List[Dict[str, Any]]:
     return _get("/matches/upcoming", {"limit": limit})
 
 
-def resultados_historicos(season: Optional[str] = None,
-                          max_partidos: int = 1000) -> List[Dict[str, Any]]:
+def resultados_historicos(season: Optional[str] = None, max_partidos: int = 1000) -> List[Dict[str, Any]]:
     """
     Resultados FINALIZADOS en el formato que espera el modelo Poisson
     (`home_team, away_team, home_goals, away_goals, fecha`).
@@ -249,8 +256,7 @@ def resultados_historicos(season: Optional[str] = None,
     offset = 0
     page = 100
     while len(salida) < max_partidos:
-        lote = obtener_partidos(status="finished", season=season,
-                                limit=page, offset=offset)
+        lote = obtener_partidos(status="finished", season=season, limit=page, offset=offset)
         if not lote:
             break
         for m in lote:
@@ -263,13 +269,15 @@ def resultados_historicos(season: Optional[str] = None,
                 hg, ag = int(hg), int(ag)
             except (TypeError, ValueError):
                 continue
-            salida.append({
-                "home_team": display_team_name(home),
-                "away_team": display_team_name(away),
-                "home_goals": hg,
-                "away_goals": ag,
-                "fecha": str(m.get("match_date") or "")[:10],
-            })
+            salida.append(
+                {
+                    "home_team": display_team_name(home),
+                    "away_team": display_team_name(away),
+                    "home_goals": hg,
+                    "away_goals": ag,
+                    "fecha": str(m.get("match_date") or "")[:10],
+                }
+            )
         if len(lote) < page:
             break
         offset += page
@@ -322,18 +330,20 @@ def tabla_normalizada(season: Optional[str] = None) -> Dict[str, Any]:
         equipo = (r.get("team") or {}).get("name", "")
         if not equipo:
             continue
-        filas.append({
-            "posicion": int(r.get("position", 0)),
-            "equipo": display_team_name(equipo),
-            "puntos": int(r.get("points", 0)),
-            "jugados": int(r.get("played", 0)),
-            "ganados": int(r.get("won", 0)),
-            "empatados": int(r.get("drawn", 0)),
-            "perdidos": int(r.get("lost", 0)),
-            "goles_favor": int(r.get("goals_for", 0)),
-            "goles_contra": int(r.get("goals_against", 0)),
-            "diferencia": int(r.get("goal_difference", 0)),
-        })
+        filas.append(
+            {
+                "posicion": int(r.get("position", 0)),
+                "equipo": display_team_name(equipo),
+                "puntos": int(r.get("points", 0)),
+                "jugados": int(r.get("played", 0)),
+                "ganados": int(r.get("won", 0)),
+                "empatados": int(r.get("drawn", 0)),
+                "perdidos": int(r.get("lost", 0)),
+                "goles_favor": int(r.get("goals_for", 0)),
+                "goles_contra": int(r.get("goals_against", 0)),
+                "diferencia": int(r.get("goal_difference", 0)),
+            }
+        )
     filas.sort(key=lambda x: x["posicion"] if x["posicion"] > 0 else 999)
     torneo = ""
     try:
@@ -428,8 +438,9 @@ def _campo(d: Dict[str, Any], *claves: str) -> Any:
     return None
 
 
-def goleadores_por_equipo(limit: int = 50, por_equipo: int = 2,
-                          season: Optional[str] = None) -> Dict[str, List[Dict[str, Any]]]:
+def goleadores_por_equipo(
+    limit: int = 50, por_equipo: int = 2, season: Optional[str] = None
+) -> Dict[str, List[Dict[str, Any]]]:
     """
     Mapa {equipo_display: [ {nombre, goles} ]} con los máximos goleadores de cada
     equipo (para 'jugadores a seguir' por partido, sin llamadas por partido).
@@ -539,10 +550,8 @@ def porteros_por_equipo() -> Dict[str, Dict[str, Any]]:
         equipo = _campo(row, "team", "team_name", "club")
         if isinstance(equipo, dict):
             equipo = equipo.get("name") or equipo.get("team_name")
-        vallas = _campo(row, "clean_sheets", "cleanSheets", "vallas_invictas",
-                        "clean_sheet", "shutouts")
-        recibidos = _campo(row, "goals_conceded", "goalsConceded", "goals_against",
-                           "goles_recibidos", "conceded")
+        vallas = _campo(row, "clean_sheets", "cleanSheets", "vallas_invictas", "clean_sheet", "shutouts")
+        recibidos = _campo(row, "goals_conceded", "goalsConceded", "goals_against", "goles_recibidos", "conceded")
         if not nombre or not equipo:
             continue
         clave = display_team_name(str(equipo))
@@ -565,14 +574,15 @@ def match_id_de_partido(home: str, away: str) -> Optional[int]:
     Resuelve el match_id de la Liga MX API para un partido (por nombres, match
     flexible). Busca en próximos y luego en /matches. None si no lo encuentra.
     """
+
     def _buscar(lista: Any) -> Optional[int]:
         if not isinstance(lista, list):
             return None
         for m in lista:
             if not isinstance(m, dict):
                 continue
-            h = (m.get("home_team") or {})
-            a = (m.get("away_team") or {})
+            h = m.get("home_team") or {}
+            a = m.get("away_team") or {}
             hn = h.get("name") if isinstance(h, dict) else h
             an = a.get("name") if isinstance(a, dict) else a
             if not hn or not an:
@@ -651,14 +661,16 @@ def noticias_365() -> List[Dict[str, Any]]:
     for n in _get("/365scores/news"):
         if not isinstance(n, dict):
             continue
-        out.append({
-            "title": n.get("title", ""),
-            "link": n.get("url", ""),
-            "description": n.get("description", ""),
-            "source": "365Scores",
-            "image_url": n.get("image", ""),
-            "published_at": n.get("published_at", ""),
-        })
+        out.append(
+            {
+                "title": n.get("title", ""),
+                "link": n.get("url", ""),
+                "description": n.get("description", ""),
+                "source": "365Scores",
+                "image_url": n.get("image", ""),
+                "published_at": n.get("published_at", ""),
+            }
+        )
     return out
 
 
@@ -680,7 +692,7 @@ def noticias() -> List[Dict[str, Any]]:
     """
     items: List[Dict[str, Any]] = list(_safe(noticias_365, []) or [])
     vistos = {_clave_titulo(i) for i in items if i.get("title")}
-    for g in (_safe(noticias_google, []) or []):
+    for g in _safe(noticias_google, []) or []:
         if not isinstance(g, dict):
             continue
         clave = _clave_titulo(g)
@@ -701,12 +713,14 @@ def noticias_recientes(limit: int = 10) -> List[Dict[str, Any]]:
     for n in crudas:
         if not isinstance(n, dict):
             continue
-        items.append({
-            "titulo": n.get("title", ""),
-            "fuente": n.get("source", ""),
-            "publicado": n.get("published_at", ""),
-            "link": n.get("link", ""),
-        })
+        items.append(
+            {
+                "titulo": n.get("title", ""),
+                "fuente": n.get("source", ""),
+                "publicado": n.get("published_at", ""),
+                "link": n.get("link", ""),
+            }
+        )
     items.sort(key=lambda x: str(x.get("publicado") or ""), reverse=True)
     return items[: max(0, limit)]
 
@@ -731,12 +745,14 @@ def noticias_de_equipos(nombres: List[str], limit: int = 5) -> List[Dict[str, An
             continue
         texto = clean_team_name(f"{n.get('title', '')} {n.get('description', '')}")
         if any(a in texto for a in aliases):
-            out.append({
-                "titulo": n.get("title", ""),
-                "fuente": n.get("source", ""),
-                "publicado": n.get("published_at", ""),
-                "link": n.get("link", ""),
-            })
+            out.append(
+                {
+                    "titulo": n.get("title", ""),
+                    "fuente": n.get("source", ""),
+                    "publicado": n.get("published_at", ""),
+                    "link": n.get("link", ""),
+                }
+            )
     out.sort(key=lambda x: str(x.get("publicado") or ""), reverse=True)
     return out[: max(0, limit)]
 
@@ -840,16 +856,18 @@ def alineacion_365(event_id: int) -> Dict[str, Any]:
     d = _get(f"/365scores/matches/{event_id}/lineups")
     equipos: List[Dict[str, Any]] = []
     disponible = False
-    for t in (d.get("teams", []) if isinstance(d, dict) else []):
+    for t in d.get("teams", []) if isinstance(d, dict) else []:
         players = t.get("players") or []
         if players:
             disponible = True
-        equipos.append({
-            "equipo": t.get("team_name", ""),
-            "condicion": t.get("home_away", ""),
-            "formacion": t.get("formation"),
-            "titulares": [n for n in (_nombre_jugador(p) for p in players) if n][:11],
-        })
+        equipos.append(
+            {
+                "equipo": t.get("team_name", ""),
+                "condicion": t.get("home_away", ""),
+                "formacion": t.get("formation"),
+                "titulares": [n for n in (_nombre_jugador(p) for p in players) if n][:11],
+            }
+        )
     return {"disponible": disponible, "equipos": equipos}
 
 
@@ -892,12 +910,19 @@ def alineacion_de_partido(home: str, away: str) -> Dict[str, Any]:
     """
     eid = _safe(lambda: evento_365_id(home, away))
     if not eid:
-        return {"disponible": False, "equipos": [],
-                "nota": "No se encontró el partido en 365Scores (¿nombres o temporada?)."}
+        return {
+            "disponible": False,
+            "equipos": [],
+            "nota": "No se encontró el partido en 365Scores (¿nombres o temporada?).",
+        }
     r = _safe(lambda: alineacion_365(eid), None)
     if r is None:
-        return {"disponible": False, "equipos": [], "event_id": eid,
-                "nota": "No se pudo leer la alineación (aún no publicada)."}
+        return {
+            "disponible": False,
+            "equipos": [],
+            "event_id": eid,
+            "nota": "No se pudo leer la alineación (aún no publicada).",
+        }
     r["event_id"] = eid
     return r
 

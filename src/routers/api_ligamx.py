@@ -29,6 +29,7 @@ Endpoints:
   GET /api/v1/predicciones                 -> predicciones de la jornada próxima
   GET /api/v1/h2h?local=&visitante=        -> head-to-head histórico + modelo
 """
+
 from __future__ import annotations
 
 import unicodedata
@@ -212,7 +213,7 @@ def equipos() -> Dict[str, Any]:
         "total": len(out),
         "equipos": out,
         "nota": "tiene_modelo=false => sin histórico aún (p.ej. Atlante, recién ascendido); "
-                "el modelo lo omite hasta acumular partidos reales.",
+        "el modelo lo omite hasta acumular partidos reales.",
         "calendario_disponible": bool(calendario),
         "decision": DEC,
     }
@@ -282,13 +283,25 @@ def _calcular_jornada_actual(calendario: List[Dict[str, Any]], hoy: date) -> Dic
         if not ini or not fin:
             continue
         try:
-            js.append({"jornada": int(j.get("jornada", 0)),
-                       "ini": date.fromisoformat(ini), "fin": date.fromisoformat(fin), "raw": j})
+            js.append(
+                {
+                    "jornada": int(j.get("jornada", 0)),
+                    "ini": date.fromisoformat(ini),
+                    "fin": date.fromisoformat(fin),
+                    "raw": j,
+                }
+            )
         except ValueError:
             continue
     if not js:
-        return {"estado": "sin_fechas", "jornada_actual": None, "jornada_proxima": None,
-                "jornada_objetivo": None, "ultima_jugada": None, "dias_para_proxima": None}
+        return {
+            "estado": "sin_fechas",
+            "jornada_actual": None,
+            "jornada_proxima": None,
+            "jornada_objetivo": None,
+            "ultima_jugada": None,
+            "dias_para_proxima": None,
+        }
 
     actual = next((x for x in js if x["ini"] <= hoy <= x["fin"]), None)
     proxima = next((x for x in js if x["ini"] > hoy), None)
@@ -336,8 +349,12 @@ def equipo_calendario(equipo: str) -> Dict[str, Any]:
 def calendario_completo() -> Dict[str, Any]:
     calendario = _calendario()
     if not calendario:
-        return {"jornadas": [], "calendario_disponible": False,
-                "mensaje": "Falta data/calendario.json.", "decision": DEC}
+        return {
+            "jornadas": [],
+            "calendario_disponible": False,
+            "mensaje": "Falta data/calendario.json.",
+            "decision": DEC,
+        }
     return {
         "torneo": "Apertura 2026",
         "jornadas_total": len(calendario),
@@ -361,8 +378,7 @@ def calendario_jornada(jornada: int, predicciones: bool = Query(False)) -> Dict[
             pred = _prediccion_partido(home, away, fuerzas)
             item["prediccion"] = pred  # None si algún equipo no tiene modelo
         partidos.append(item)
-    return {"jornada": jornada, "partidos": partidos,
-            "predicciones_incluidas": predicciones, "decision": DEC}
+    return {"jornada": jornada, "partidos": partidos, "predicciones_incluidas": predicciones, "decision": DEC}
 
 
 @router.get("/resultados", summary="Resultados reales recientes (ESPN)")
@@ -382,6 +398,7 @@ def resultados(meses: int = Query(2, ge=1, le=24)) -> Dict[str, Any]:
 def tabla() -> Dict[str, Any]:
     try:
         from src.routers.predicciones import _obtener_tabla
+
         data = _obtener_tabla()
     except Exception as exc:  # pragma: no cover - fallback defensivo de red
         return {"tabla": [], "error": str(exc), "decision": DEC}
@@ -392,6 +409,7 @@ def tabla() -> Dict[str, Any]:
 def predicciones_jornada() -> Dict[str, Any]:
     try:
         from src.routers.predicciones import _obtener
+
         return _obtener()
     except Exception as exc:  # pragma: no cover - fallback defensivo de red
         return {"pronosticos": [], "error": str(exc), "decision": DEC}
@@ -423,11 +441,14 @@ def head_to_head(
             hg, ag = int(r.get("home_goals")), int(r.get("away_goals"))
         except (TypeError, ValueError):
             continue
-        enfrentamientos.append({
-            "fecha": r.get("fecha"),
-            "home_team": r.get("home_team"), "away_team": r.get("away_team"),
-            "marcador": f"{hg}-{ag}",
-        })
+        enfrentamientos.append(
+            {
+                "fecha": r.get("fecha"),
+                "home_team": r.get("home_team"),
+                "away_team": r.get("away_team"),
+                "marcador": f"{hg}-{ag}",
+            }
+        )
         # ganador real -> perspectiva de `local` (nl)
         if hg == ag:
             empates += 1
@@ -453,7 +474,6 @@ def head_to_head(
         "fuente_datos": datos.get("fuente"),
         "decision": DEC,
     }
-
 
 
 @router.get("/jornada-actual", summary="Jornada actual/próxima según la fecha")

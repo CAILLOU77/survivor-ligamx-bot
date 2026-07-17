@@ -19,6 +19,7 @@ Fuentes de las fechas (2026):
   J10 cae dentro) y 9–17 nov. [FIFA Council / PDF oficial]
 - Copa Intercontinental: diciembre (ya en Liguilla; fuera de fase regular). [PDF]
 """
+
 from __future__ import annotations
 
 import json
@@ -43,8 +44,10 @@ EVENTOS_EXTERNOS: List[Dict[str, Any]] = [
         "equipos": ["Toluca", "Cruz Azul"],
         "tipo": "partido_extra",
         "emoji": "🏆",
-        "nota": ("Toluca y Cruz Azul disputan el Campeón de Campeones (25 jul, "
-                 "Carson). Posible desgaste/viaje/rotación en la jornada cercana."),
+        "nota": (
+            "Toluca y Cruz Azul disputan el Campeón de Campeones (25 jul, "
+            "Carson). Posible desgaste/viaje/rotación en la jornada cercana."
+        ),
     },
     {
         "nombre": "Leagues Cup",
@@ -53,8 +56,10 @@ EVENTOS_EXTERNOS: List[Dict[str, Any]] = [
         "equipos": [],  # los 18 equipos de Liga MX participan
         "tipo": "torneo_paralelo",
         "emoji": "🌎",
-        "nota": ("Leagues Cup (4 ago–6 sep): TODOS los equipos de Liga MX juegan "
-                 "en paralelo. Alta carga de partidos → rotaciones y desgaste probables."),
+        "nota": (
+            "Leagues Cup (4 ago–6 sep): TODOS los equipos de Liga MX juegan "
+            "en paralelo. Alta carga de partidos → rotaciones y desgaste probables."
+        ),
     },
     {
         "nombre": "Campeones Cup",
@@ -63,8 +68,10 @@ EVENTOS_EXTERNOS: List[Dict[str, Any]] = [
         "equipos": ["Toluca", "Cruz Azul"],  # el campeón de Liga MX que gane el C de C
         "tipo": "partido_extra",
         "emoji": "🏆",
-        "nota": ("Campeones Cup (16 sep, Miami): el campeón de Liga MX (Toluca o "
-                 "Cruz Azul) viaja a jugar vs Inter Miami. Desgaste/viaje en jornada cercana."),
+        "nota": (
+            "Campeones Cup (16 sep, Miami): el campeón de Liga MX (Toluca o "
+            "Cruz Azul) viaja a jugar vs Inter Miami. Desgaste/viaje en jornada cercana."
+        ),
     },
     {
         "nombre": "Fecha FIFA (sep–oct)",
@@ -73,9 +80,11 @@ EVENTOS_EXTERNOS: List[Dict[str, Any]] = [
         "equipos": [],
         "tipo": "fecha_fifa",
         "emoji": "🌐",
-        "nota": ("Ventana FIFA de 16 días (21 sep–6 oct, nueva a partir de 2026). La "
-                 "J10 cae DENTRO de esta ventana: varios equipos con seleccionados "
-                 "ausentes o recién llegados con desgaste/viaje. Ojo con rotaciones."),
+        "nota": (
+            "Ventana FIFA de 16 días (21 sep–6 oct, nueva a partir de 2026). La "
+            "J10 cae DENTRO de esta ventana: varios equipos con seleccionados "
+            "ausentes o recién llegados con desgaste/viaje. Ojo con rotaciones."
+        ),
     },
     {
         "nombre": "Fecha FIFA (noviembre)",
@@ -84,8 +93,10 @@ EVENTOS_EXTERNOS: List[Dict[str, Any]] = [
         "equipos": [],
         "tipo": "fecha_fifa",
         "emoji": "🌐",
-        "nota": ("Fecha FIFA (9–17 nov): jugadores de selección ausentes con sus "
-                 "países; ojo con desgaste/viaje de cara a la jornada siguiente."),
+        "nota": (
+            "Fecha FIFA (9–17 nov): jugadores de selección ausentes con sus "
+            "países; ojo con desgaste/viaje de cara a la jornada siguiente."
+        ),
     },
     {
         "nombre": "Copa Intercontinental",
@@ -94,8 +105,9 @@ EVENTOS_EXTERNOS: List[Dict[str, Any]] = [
         "equipos": [],
         "tipo": "torneo_paralelo",
         "emoji": "🌍",
-        "nota": ("Copa Intercontinental (dic): ocurre en fase de Liguilla, fuera de "
-                 "las 17 jornadas regulares. Informativo."),
+        "nota": (
+            "Copa Intercontinental (dic): ocurre en fase de Liguilla, fuera de las 17 jornadas regulares. Informativo."
+        ),
     },
 ]
 

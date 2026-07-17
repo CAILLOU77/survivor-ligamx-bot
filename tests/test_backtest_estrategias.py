@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Tests para src/backtest_estrategias.py (comparación de estrategias). Sin red."""
+
 from __future__ import annotations
 
 import sys
@@ -22,12 +23,9 @@ def _torneo(d0: date, n_semanas: int) -> list:
     out = []
     for w in range(n_semanas):
         d = (d0 + timedelta(days=7 * w)).isoformat()
-        out.append({"home_team": "Fuerte", "away_team": "Debil",
-                    "home_goals": 3, "away_goals": 0, "fecha": d})
-        out.append({"home_team": "Local2", "away_team": "Visita2",
-                    "home_goals": 2, "away_goals": 1, "fecha": d})
-        out.append({"home_team": "Medio", "away_team": "Colista",
-                    "home_goals": 2, "away_goals": 0, "fecha": d})
+        out.append({"home_team": "Fuerte", "away_team": "Debil", "home_goals": 3, "away_goals": 0, "fecha": d})
+        out.append({"home_team": "Local2", "away_team": "Visita2", "home_goals": 2, "away_goals": 1, "fecha": d})
+        out.append({"home_team": "Medio", "away_team": "Colista", "home_goals": 2, "away_goals": 0, "fecha": d})
     return out
 
 
@@ -37,9 +35,9 @@ def _tres_torneos() -> list:
     El más viejo (2025C) es PARCIAL (no hay histórico previo para entrenarlo),
     así que quedan 2 torneos COMPLETOS evaluables.
     """
-    t1 = _torneo(date(2025, 1, 6), 12)   # 2025C (parcial: sin datos previos)
-    t2 = _torneo(date(2025, 8, 4), 12)   # 2025A (completo)
-    t3 = _torneo(date(2026, 1, 5), 12)   # 2026C (completo)
+    t1 = _torneo(date(2025, 1, 6), 12)  # 2025C (parcial: sin datos previos)
+    t2 = _torneo(date(2025, 8, 4), 12)  # 2025A (completo)
+    t3 = _torneo(date(2026, 1, 5), 12)  # 2026C (completo)
     return t1 + t2 + t3
 
 
@@ -60,39 +58,40 @@ class TestHelpers(unittest.TestCase):
 
 class TestDivisionTorneos(unittest.TestCase):
     def test_detecta_dos_torneos(self):
-        r = be.simular_estrategia(_tres_torneos(), estrategia=be.estrategia_ingenua,
-                                  min_train=6)
+        r = be.simular_estrategia(_tres_torneos(), estrategia=be.estrategia_ingenua, min_train=6)
         self.assertGreaterEqual(r["torneos_evaluados"], 2)
 
 
 class TestSimulacion(unittest.TestCase):
     def test_estructura_agregados(self):
-        r = be.simular_estrategia(_tres_torneos(), estrategia=be.estrategia_real,
-                                  min_train=6)
-        for k in ("estrategia", "torneos_evaluados", "tasa_supervivencia_torneo_pct",
-                  "jornadas_sobrevividas_prom", "victorias_prom_por_torneo",
-                  "por_torneo", "decision"):
+        r = be.simular_estrategia(_tres_torneos(), estrategia=be.estrategia_real, min_train=6)
+        for k in (
+            "estrategia",
+            "torneos_evaluados",
+            "tasa_supervivencia_torneo_pct",
+            "jornadas_sobrevividas_prom",
+            "victorias_prom_por_torneo",
+            "por_torneo",
+            "decision",
+        ):
             self.assertIn(k, r)
         self.assertEqual(r["decision"], "INFORMATIVO / REVISIÓN HUMANA")
 
     def test_no_repite_equipos_dentro_de_torneo(self):
         # En cada torneo, los picks no deben repetir equipo.
         # (reconstruimos por torneo desde el detalle interno de simular)
-        r = be.simular_estrategia(_tres_torneos(), estrategia=be.estrategia_ingenua,
-                                  min_train=6)
+        r = be.simular_estrategia(_tres_torneos(), estrategia=be.estrategia_ingenua, min_train=6)
         # Si sobrevivió y jugó varias jornadas, hubo variedad de equipos.
         self.assertGreaterEqual(r["jornadas_jugadas_total"], 1)
 
     def test_reinicio_por_torneo_permite_reusar_entre_torneos(self):
         # Con reinicio por torneo, la suma de jornadas jugadas debe poder superar
         # el número de equipos distintos (imposible sin reinicio).
-        r = be.simular_estrategia(_tres_torneos(), estrategia=be.estrategia_ingenua,
-                                  min_train=6)
+        r = be.simular_estrategia(_tres_torneos(), estrategia=be.estrategia_ingenua, min_train=6)
         self.assertGreaterEqual(r["torneos_evaluados"], 2)
 
     def test_datos_insuficientes(self):
-        r = be.simular_estrategia(_torneo(date(2025, 1, 6), 1),
-                                  estrategia=be.estrategia_real, min_train=500)
+        r = be.simular_estrategia(_torneo(date(2025, 1, 6), 1), estrategia=be.estrategia_real, min_train=500)
         self.assertEqual(r["torneos_evaluados"], 0)
         self.assertIn("mensaje", r)
 
@@ -106,8 +105,7 @@ class TestAnalizarDerrotas(unittest.TestCase):
             for k in ("patrones", "lecciones"):
                 self.assertIn(k, rep)
             d = rep["derrotas"][0]
-            for k in ("torneo", "jornada", "pick", "condicion", "resultado",
-                      "tenia_alerta", "fue_visitante"):
+            for k in ("torneo", "jornada", "pick", "condicion", "resultado", "tenia_alerta", "fue_visitante"):
                 self.assertIn(k, d)
             self.assertIsInstance(rep["lecciones"], list)
             self.assertGreaterEqual(len(rep["lecciones"]), 1)
@@ -121,12 +119,20 @@ class TestAnalizarDerrotas(unittest.TestCase):
 class TestOracle(unittest.TestCase):
     def test_oracle_run_perfecto(self):
         jornadas = [
-            {"jornada": "2025-W01", "partidos": [
-                {"home_team": "A", "away_team": "B", "home_goals": 1, "away_goals": 0},
-                {"home_team": "C", "away_team": "D", "home_goals": 1, "away_goals": 0}]},
-            {"jornada": "2025-W02", "partidos": [
-                {"home_team": "A", "away_team": "B", "home_goals": 0, "away_goals": 1},
-                {"home_team": "C", "away_team": "D", "home_goals": 0, "away_goals": 1}]},
+            {
+                "jornada": "2025-W01",
+                "partidos": [
+                    {"home_team": "A", "away_team": "B", "home_goals": 1, "away_goals": 0},
+                    {"home_team": "C", "away_team": "D", "home_goals": 1, "away_goals": 0},
+                ],
+            },
+            {
+                "jornada": "2025-W02",
+                "partidos": [
+                    {"home_team": "A", "away_team": "B", "home_goals": 0, "away_goals": 1},
+                    {"home_team": "C", "away_team": "D", "home_goals": 0, "away_goals": 1},
+                ],
+            },
         ]
         r = be._oracle_torneo(jornadas)
         self.assertTrue(r["completo"])
@@ -142,8 +148,7 @@ class TestGanadores(unittest.TestCase):
         if r["torneos"] > 0:
             self.assertIn("lecciones", r)
             c = r["comparacion"][0]
-            for k in ("torneo", "bot_sobrevividas", "oracle_completo",
-                      "oracle_max_supervivencia"):
+            for k in ("torneo", "bot_sobrevividas", "oracle_completo", "oracle_max_supervivencia"):
                 self.assertIn(k, c)
 
 

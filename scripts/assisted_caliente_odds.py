@@ -30,6 +30,7 @@ Reglas duras respetadas:
 NOTA: Playwright es opcional. Solo se importa si realmente abres el navegador;
 así este script compila y corre `--help`/`--debug-file` aunque no esté instalado.
 """
+
 from __future__ import annotations
 
 import argparse

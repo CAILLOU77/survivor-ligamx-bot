@@ -18,6 +18,7 @@ Diferencias clave vs el simulador clásico:
 Todo se deriva del modelo (poisson_model) + resultados reales. Sin inventar nada.
 INFORMATIVO / REVISIÓN HUMANA.
 """
+
 from __future__ import annotations
 
 from collections import Counter
@@ -52,9 +53,7 @@ JORNADAS_REGULARES = 17  # Liga MX: 17 jornadas de fase regular (objetivo del Su
 # Una estrategia recibe (partidos, fuerzas, usados, partidos_jugados_torneo) y
 # devuelve el candidato elegido {equipo, rival, es_local, partido, no_perder_pct}
 # o None si no hay pick posible esa jornada.
-Estrategia = Callable[
-    [Sequence[Dict[str, Any]], Dict[str, Any], set, int], Optional[Dict[str, Any]]
-]
+Estrategia = Callable[[Sequence[Dict[str, Any]], Dict[str, Any], set, int], Optional[Dict[str, Any]]]
 
 
 # ---------------------------------------------------------------------------
@@ -88,10 +87,7 @@ def estrategia_ingenua(
     partidos_jugados_torneo: int = 0,
 ) -> Optional[Dict[str, Any]]:
     """Baseline: el mayor 'no-perder' disponible (lo que hace simulador_survivor)."""
-    cands = [
-        c for c in _no_perder_candidatos(partidos, fuerzas)
-        if pm._norm(c["equipo"]) not in usados
-    ]
+    cands = [c for c in _no_perder_candidatos(partidos, fuerzas) if pm._norm(c["equipo"]) not in usados]
     if not cands:
         return None
     return max(cands, key=lambda c: c["no_perder_pct"])
@@ -144,9 +140,12 @@ def estrategia_real(
         return None
     # Adjunta lo que el MODELO veía del partido (para el análisis de derrotas).
     prono = next(
-        (pr for pr in pronos
-         if pm._norm(pr.get("local", "")) == pm._norm(partido.get("home_team", ""))
-         and pm._norm(pr.get("visitante", "")) == pm._norm(partido.get("away_team", ""))),
+        (
+            pr
+            for pr in pronos
+            if pm._norm(pr.get("local", "")) == pm._norm(partido.get("home_team", ""))
+            and pm._norm(pr.get("visitante", "")) == pm._norm(partido.get("away_team", ""))
+        ),
         None,
     )
     goles_esp = None
@@ -180,8 +179,15 @@ ESTRATEGIAS: Dict[str, Estrategia] = {
 # Simulación walk-forward por torneo
 # ---------------------------------------------------------------------------
 def _nuevo_torneo(torneo_id: Optional[str] = None) -> Dict[str, Any]:
-    return {"torneo_id": torneo_id, "jugadas": 0, "sobrevividas": 0, "victorias": 0,
-            "eliminado_en": None, "parcial": False, "detalle": []}
+    return {
+        "torneo_id": torneo_id,
+        "jugadas": 0,
+        "sobrevividas": 0,
+        "victorias": 0,
+        "eliminado_en": None,
+        "parcial": False,
+        "detalle": [],
+    }
 
 
 def _torneo_id(f: Optional[date]) -> Optional[str]:
@@ -287,23 +293,25 @@ def _correr(
         usados.add(pm._norm(cand["equipo"]))
         p_ = cand["partido"]
         gano = _gano(p_, cand["es_local"]) if vivo else False
-        cur["detalle"].append({
-            "torneo": cur_id,
-            "jornada": j["jornada"],
-            "pick": cand["equipo"],
-            "condicion": "Local" if cand["es_local"] else "Visitante",
-            "rival": cand.get("rival"),
-            "no_perder_pct": cand.get("no_perder_pct"),
-            "prob_victoria_pct": cand.get("prob_victoria_pct"),
-            "prob_empate_pct": cand.get("prob_empate_pct"),
-            "nivel_alerta": cand.get("nivel_alerta"),
-            "motivos_alerta": cand.get("motivos_alerta") or [],
-            "goles_esperados": cand.get("goles_esperados"),
-            "resultado": f"{p_.get('home_team')} {p_.get('home_goals')}-"
-                         f"{p_.get('away_goals')} {p_.get('away_team')}",
-            "sobrevivio": vivo,
-            "gano": gano,
-        })
+        cur["detalle"].append(
+            {
+                "torneo": cur_id,
+                "jornada": j["jornada"],
+                "pick": cand["equipo"],
+                "condicion": "Local" if cand["es_local"] else "Visitante",
+                "rival": cand.get("rival"),
+                "no_perder_pct": cand.get("no_perder_pct"),
+                "prob_victoria_pct": cand.get("prob_victoria_pct"),
+                "prob_empate_pct": cand.get("prob_empate_pct"),
+                "nivel_alerta": cand.get("nivel_alerta"),
+                "motivos_alerta": cand.get("motivos_alerta") or [],
+                "goles_esperados": cand.get("goles_esperados"),
+                "resultado": f"{p_.get('home_team')} {p_.get('home_goals')}-"
+                f"{p_.get('away_goals')} {p_.get('away_team')}",
+                "sobrevivio": vivo,
+                "gano": gano,
+            }
+        )
         if vivo:
             cur["sobrevividas"] += 1
             if gano:
@@ -317,18 +325,22 @@ def _correr(
             # significa que fuera predecible). `usados` ya incluye el pick actual.
             todos = _no_perder_candidatos(j["partidos"], fuerzas)
             seguros_disp = sorted(
-                [c for c in todos
-                 if pm._norm(c["equipo"]) not in usados and _sobrevive(c["partido"], c["es_local"])],
-                key=lambda c: c["no_perder_pct"], reverse=True,
+                [c for c in todos if pm._norm(c["equipo"]) not in usados and _sobrevive(c["partido"], c["es_local"])],
+                key=lambda c: c["no_perder_pct"],
+                reverse=True,
             )
             pick_np = cand.get("no_perder_pct") or 0.0
             mejor = seguros_disp[0] if seguros_disp else None
             d_ult = cur["detalle"][-1]
             d_ult["habia_seguro_disponible"] = bool(seguros_disp)
             d_ult["mejor_alternativa"] = (
-                {"equipo": mejor["equipo"],
-                 "condicion": "Local" if mejor["es_local"] else "Visitante",
-                 "no_perder_pct": mejor["no_perder_pct"]} if mejor else None
+                {
+                    "equipo": mejor["equipo"],
+                    "condicion": "Local" if mejor["es_local"] else "Visitante",
+                    "no_perder_pct": mejor["no_perder_pct"],
+                }
+                if mejor
+                else None
             )
             # "Evitable de verdad": la opción segura era IGUAL o MÁS confiable que
             # el pick (el modelo pudo haberla preferido). Si era menos confiable,
@@ -355,8 +367,8 @@ def _agregar(torneos: List[Dict[str, Any]], estrategia: Estrategia) -> Dict[str,
             "torneos_evaluados": 0,
             "torneos_parciales": len(parciales),
             "mensaje": "Sin torneos COMPLETOS evaluables (histórico corto para "
-                       "empezar desde el inicio del torneo). Se necesita más "
-                       "temporadas para un veredicto confiable.",
+            "empezar desde el inicio del torneo). Se necesita más "
+            "temporadas para un veredicto confiable.",
             "decision": DEC_INFORMATIVA,
         }
     sobrevividos = sum(1 for t in completos if t["eliminado_en"] is None)
@@ -375,9 +387,13 @@ def _agregar(torneos: List[Dict[str, Any]], estrategia: Estrategia) -> Dict[str,
         "jornadas_sobrevividas_total": total_sobre,
         "victorias_total": total_vict,
         "por_torneo": [
-            {"torneo": t.get("torneo_id"), "jornadas": t["jugadas"],
-             "sobrevividas": t["sobrevividas"], "victorias": t["victorias"],
-             "eliminado_en": t["eliminado_en"]}
+            {
+                "torneo": t.get("torneo_id"),
+                "jornadas": t["jugadas"],
+                "sobrevividas": t["sobrevividas"],
+                "victorias": t["victorias"],
+                "eliminado_en": t["eliminado_en"],
+            }
             for t in completos
         ],
         "decision": DEC_INFORMATIVA,
@@ -396,9 +412,7 @@ def comparar_estrategias(
     estr = estrategias or ESTRATEGIAS
     salida: Dict[str, Any] = {"por_estrategia": {}, "decision": DEC_INFORMATIVA}
     for nombre, fn in estr.items():
-        salida["por_estrategia"][nombre] = simular_estrategia(
-            resultados, estrategia=fn, min_train=min_train
-        )
+        salida["por_estrategia"][nombre] = simular_estrategia(resultados, estrategia=fn, min_train=min_train)
     # Veredicto simple: quién sobrevive más torneos completos (desempate: victorias).
     ranking = sorted(
         salida["por_estrategia"].items(),
@@ -422,29 +436,40 @@ def _lecciones_derrotas(pat: Dict[str, Any], n: int) -> List[str]:
     mala = pat.get("mala_suerte")
     if evi is not None:
         if evi > 0:
-            L.append(f"{evi} de {n} derrotas eran EVITABLES de verdad: había una opción "
-                     "IGUAL o MÁS segura que sí sobrevivió. Ahí sí se puede mejorar la elección.")
+            L.append(
+                f"{evi} de {n} derrotas eran EVITABLES de verdad: había una opción "
+                "IGUAL o MÁS segura que sí sobrevivió. Ahí sí se puede mejorar la elección."
+            )
         if mala:
-            L.append(f"{mala} de {n} fueron MALA SUERTE: el bot eligió su opción más confiable "
-                     "y aun así perdió. Otro equipo sobrevivió, pero el modelo lo veía MENOS "
-                     "seguro: no era predecible. Así es el Survivor.")
+            L.append(
+                f"{mala} de {n} fueron MALA SUERTE: el bot eligió su opción más confiable "
+                "y aun así perdió. Otro equipo sobrevivió, pero el modelo lo veía MENOS "
+                "seguro: no era predecible. Así es el Survivor."
+            )
     if pat.get("fueron_visitante_pct") is not None and pat["fueron_visitante_pct"] >= 40:
-        L.append(f"El {pat['fueron_visitante_pct']}% de las eliminaciones fueron con pick "
-                 "VISITANTE: de visita hay más sorpresas, prioriza locales.")
+        L.append(
+            f"El {pat['fueron_visitante_pct']}% de las eliminaciones fueron con pick "
+            "VISITANTE: de visita hay más sorpresas, prioriza locales."
+        )
     tva = pat.get("tenian_alerta_pct")
     if tva is not None and tva >= 50:
-        L.append(f"El {tva}% de las derrotas YA traían señal de alerta del modelo: "
-                 "cuando hay alerta, conviene buscar otro equipo.")
+        L.append(
+            f"El {tva}% de las derrotas YA traían señal de alerta del modelo: "
+            "cuando hay alerta, conviene buscar otro equipo."
+        )
     elif tva is not None and tva <= 25:
-        L.append("La mayoría de las derrotas fueron SORPRESAS sin alerta previa: el fútbol "
-                 "es así; por eso una sola derrota elimina y hay que ir seguro.")
+        L.append(
+            "La mayoría de las derrotas fueron SORPRESAS sin alerta previa: el fútbol "
+            "es así; por eso una sola derrota elimina y hay que ir seguro."
+        )
     if pat.get("no_perder_promedio_al_perder") is not None:
-        L.append(f"El bot perdió aun con picks de ~{pat['no_perder_promedio_al_perder']}% "
-                 "de no-perder: ningún pick es 100% seguro.")
+        L.append(
+            f"El bot perdió aun con picks de ~{pat['no_perder_promedio_al_perder']}% "
+            "de no-perder: ningún pick es 100% seguro."
+        )
     rivales = pat.get("rivales_que_mas_eliminaron") or []
     if rivales and rivales[0][1] >= 2:
-        L.append(f"Ojo con {rivales[0][0]} como rival: eliminó {rivales[0][1]} veces "
-                 "en el histórico.")
+        L.append(f"Ojo con {rivales[0][0]} como rival: eliminó {rivales[0][1]} veces en el histórico.")
     if not L:
         L.append("No hay un patrón claro en las derrotas; fueron variadas.")
     return L
@@ -470,28 +495,33 @@ def analizar_derrotas(
         if not perdidos:
             continue
         d = perdidos[-1]
-        derrotas.append({
-            "torneo": t.get("torneo_id"),
-            "jornada": d.get("jornada"),
-            "pick": d.get("pick"),
-            "condicion": d.get("condicion"),
-            "rival": d.get("rival"),
-            "no_perder_pct": d.get("no_perder_pct"),
-            "prob_victoria_pct": d.get("prob_victoria_pct"),
-            "nivel_alerta": d.get("nivel_alerta"),
-            "motivos_alerta": d.get("motivos_alerta") or [],
-            "resultado": d.get("resultado"),
-            "tenia_alerta": bool(d.get("motivos_alerta")),
-            "fue_visitante": d.get("condicion") == "Visitante",
-            "evitable": bool(d.get("evitable")),
-            "habia_seguro_disponible": bool(d.get("habia_seguro_disponible")),
-            "mejor_alternativa": d.get("mejor_alternativa"),
-        })
+        derrotas.append(
+            {
+                "torneo": t.get("torneo_id"),
+                "jornada": d.get("jornada"),
+                "pick": d.get("pick"),
+                "condicion": d.get("condicion"),
+                "rival": d.get("rival"),
+                "no_perder_pct": d.get("no_perder_pct"),
+                "prob_victoria_pct": d.get("prob_victoria_pct"),
+                "nivel_alerta": d.get("nivel_alerta"),
+                "motivos_alerta": d.get("motivos_alerta") or [],
+                "resultado": d.get("resultado"),
+                "tenia_alerta": bool(d.get("motivos_alerta")),
+                "fue_visitante": d.get("condicion") == "Visitante",
+                "evitable": bool(d.get("evitable")),
+                "habia_seguro_disponible": bool(d.get("habia_seguro_disponible")),
+                "mejor_alternativa": d.get("mejor_alternativa"),
+            }
+        )
     n = len(derrotas)
     if n == 0:
-        return {"total_derrotas": 0, "derrotas": [],
-                "mensaje": "No hubo eliminaciones evaluables (¿historial corto?).",
-                "decision": DEC_INFORMATIVA}
+        return {
+            "total_derrotas": 0,
+            "derrotas": [],
+            "mensaje": "No hubo eliminaciones evaluables (¿historial corto?).",
+            "decision": DEC_INFORMATIVA,
+        }
 
     vis = sum(1 for d in derrotas if d["fue_visitante"])
     con_alerta = sum(1 for d in derrotas if d["tenia_alerta"])
@@ -533,19 +563,22 @@ def _oracle_torneo(jornadas: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     import numpy as np
     from scipy.optimize import linear_sum_assignment
 
-    equipos = sorted({
-        pm._norm(e)
-        for j in jornadas for m in j.get("partidos", [])
-        for e in (m.get("home_team", ""), m.get("away_team", ""))
-        if e
-    })
+    equipos = sorted(
+        {
+            pm._norm(e)
+            for j in jornadas
+            for m in j.get("partidos", [])
+            for e in (m.get("home_team", ""), m.get("away_team", ""))
+            if e
+        }
+    )
     n_j, n_t = len(jornadas), len(equipos)
     if n_j == 0 or n_t == 0:
         return {"jornadas": n_j, "completo": False, "max_supervivencia": 0, "oracle_wins": None}
     tidx = {t: i for i, t in enumerate(equipos)}
 
     NEG = -1e9
-    surv = np.zeros((n_j, n_t), dtype=float)   # 1 si el equipo NO perdió esa jornada
+    surv = np.zeros((n_j, n_t), dtype=float)  # 1 si el equipo NO perdió esa jornada
     win = np.full((n_j, n_t), NEG, dtype=float)  # 1 gana, 0 empata, NEG pierde/no juega
     for i, j in enumerate(jornadas):
         for m in j.get("partidos", []):
@@ -572,8 +605,7 @@ def _oracle_torneo(jornadas: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
         vals = win[r2, c2]
         if (vals > NEG / 2).all():
             oracle_wins = int((vals == 1.0).sum())
-    return {"jornadas": n_j, "completo": completo,
-            "max_supervivencia": max_surv, "oracle_wins": oracle_wins}
+    return {"jornadas": n_j, "completo": completo, "max_supervivencia": max_surv, "oracle_wins": oracle_wins}
 
 
 def _sobrevivientes_jornada(partidos: Sequence[Dict[str, Any]]) -> List[str]:
@@ -593,13 +625,16 @@ def _sobrevivientes_jornada(partidos: Sequence[Dict[str, Any]]) -> List[str]:
 
 
 def _muestrear_corridas_ganadoras(
-    surv_por_jornada: Sequence[Sequence[str]], objetivo: int, n_muestras: int = 300,
+    surv_por_jornada: Sequence[Sequence[str]],
+    objetivo: int,
+    n_muestras: int = 300,
 ) -> List[List[str]]:
     """
     Muestrea corridas ganadoras DISTINTAS (una por jornada, sin repetir equipo,
     todas sobrevivientes) de longitud `objetivo`, por greedy aleatorio con reintentos.
     """
     import random
+
     rng = random.Random(13)
     encontradas: set = set()
     for _ in range(n_muestras * 8):
@@ -623,10 +658,16 @@ def _oracle_asignacion(jornadas: Sequence[Dict[str, Any]]) -> Dict[Any, str]:
     """{jornada_label: equipo_norm} de una corrida ÓPTIMA de supervivencia (oráculo)."""
     import numpy as np
     from scipy.optimize import linear_sum_assignment
-    equipos = sorted({
-        pm._norm(e) for j in jornadas for m in j.get("partidos", [])
-        for e in (m.get("home_team", ""), m.get("away_team", "")) if e
-    })
+
+    equipos = sorted(
+        {
+            pm._norm(e)
+            for j in jornadas
+            for m in j.get("partidos", [])
+            for e in (m.get("home_team", ""), m.get("away_team", ""))
+            if e
+        }
+    )
     n_j, n_t = len(jornadas), len(equipos)
     if n_j == 0 or n_t == 0:
         return {}
@@ -684,18 +725,25 @@ def analizar_patron_ganador(
                 fuerzas = pm.calcular_fuerzas(historico)
             except ValueError:
                 continue
-            cands = sorted(_no_perder_candidatos(j["partidos"], fuerzas),
-                           key=lambda c: c["no_perder_pct"], reverse=True)
+            cands = sorted(
+                _no_perder_candidatos(j["partidos"], fuerzas), key=lambda c: c["no_perder_pct"], reverse=True
+            )
             match = next((c for c in cands if pm._norm(c["equipo"]) == eq), None)
             if match is None:
                 continue
             rank = cands.index(match) + 1
-            picks.append({"no_perder": match["no_perder_pct"], "es_local": match["es_local"],
-                          "rank": rank, "top1": rank == 1, "top3": rank <= 3})
+            picks.append(
+                {
+                    "no_perder": match["no_perder_pct"],
+                    "es_local": match["es_local"],
+                    "rank": rank,
+                    "top1": rank == 1,
+                    "top3": rank <= 3,
+                }
+            )
     n = len(picks)
     if n == 0:
-        return {"picks_analizados": 0, "mensaje": "Sin corridas ganadoras evaluables.",
-                "decision": DEC_INFORMATIVA}
+        return {"picks_analizados": 0, "mensaje": "Sin corridas ganadoras evaluables.", "decision": DEC_INFORMATIVA}
     return {
         "picks_analizados": n,
         "no_perder_promedio_de_los_ganadores": round(sum(p["no_perder"] for p in picks) / n, 1),
@@ -745,8 +793,9 @@ def analizar_variedad_ganadora(
                 fuerzas = pm.calcular_fuerzas(historico)
             except ValueError:
                 continue
-            cands = sorted(_no_perder_candidatos(j["partidos"], fuerzas),
-                           key=lambda c: c["no_perder_pct"], reverse=True)
+            cands = sorted(
+                _no_perder_candidatos(j["partidos"], fuerzas), key=lambda c: c["no_perder_pct"], reverse=True
+            )
             if not cands:
                 continue
             tot_jorn += 1
@@ -761,15 +810,17 @@ def analizar_variedad_ganadora(
         runs = _muestrear_corridas_ganadoras(surv_lists, objetivo=objetivo, n_muestras=500)
         if not runs:
             continue
-        por_torneo.append({
-            "torneo": tid,
-            "corridas_distintas_muestreadas": len(runs),
-            "muestreo_saturado": len(runs) >= 500,  # hay MUCHAS más de las contadas
-            "sobrevivientes_prom": round(sum(surv_counts) / len(surv_counts), 1) if surv_counts else None,
-            "sobrevivientes_min": min(surv_counts) if surv_counts else None,  # cuello de botella
-            "cuello_de_botella": bool(surv_counts and min(surv_counts) <= 2),
-            "ejemplo_camino_ganador": runs[0][:objetivo],
-        })
+        por_torneo.append(
+            {
+                "torneo": tid,
+                "corridas_distintas_muestreadas": len(runs),
+                "muestreo_saturado": len(runs) >= 500,  # hay MUCHAS más de las contadas
+                "sobrevivientes_prom": round(sum(surv_counts) / len(surv_counts), 1) if surv_counts else None,
+                "sobrevivientes_min": min(surv_counts) if surv_counts else None,  # cuello de botella
+                "cuello_de_botella": bool(surv_counts and min(surv_counts) <= 2),
+                "ejemplo_camino_ganador": runs[0][:objetivo],
+            }
+        )
     if tot_jorn == 0:
         return {"mensaje": "Sin jornadas evaluables.", "decision": DEC_INFORMATIVA}
     return {
@@ -809,20 +860,25 @@ def analizar_ganadores(
         # (No exigimos cubrir cada semana ISO: los partidos entre semana y la
         # liguilla generan semanas extra que no son parte del objetivo.)
         camino = orac["max_supervivencia"] >= JORNADAS_REGULARES
-        comparacion.append({
-            "torneo": tid,
-            "bot_sobrevividas": t["sobrevividas"],
-            "bot_victorias": t["victorias"],
-            "bot_completo": t["eliminado_en"] is None,
-            "oracle_jornadas": orac["jornadas"],
-            "oracle_completo": camino,
-            "oracle_max_supervivencia": orac["max_supervivencia"],
-        })
+        comparacion.append(
+            {
+                "torneo": tid,
+                "bot_sobrevividas": t["sobrevividas"],
+                "bot_victorias": t["victorias"],
+                "bot_completo": t["eliminado_en"] is None,
+                "oracle_jornadas": orac["jornadas"],
+                "oracle_completo": camino,
+                "oracle_max_supervivencia": orac["max_supervivencia"],
+            }
+        )
     n = len(comparacion)
     if n == 0:
-        return {"torneos": 0, "comparacion": [],
-                "mensaje": "Sin torneos completos para comparar.",
-                "decision": DEC_INFORMATIVA}
+        return {
+            "torneos": 0,
+            "comparacion": [],
+            "mensaje": "Sin torneos completos para comparar.",
+            "decision": DEC_INFORMATIVA,
+        }
 
     con_camino = sum(1 for c in comparacion if c["oracle_completo"])
     bot_completos = sum(1 for c in comparacion if c["bot_completo"])
@@ -875,15 +931,13 @@ def analizar_causas_derrotas(
     def _pct(cond) -> float:
         return round(100.0 * sum(1 for d in derrotas if cond(d)) / n, 1)
 
-    cerrado = _pct(lambda d: d.get("goles_esperados") is not None
-                   and d["goles_esperados"] < umbral_cerrado)
+    cerrado = _pct(lambda d: d.get("goles_esperados") is not None and d["goles_esperados"] < umbral_cerrado)
     favorito = _pct(lambda d: (d.get("prob_victoria_pct") or 0) >= umbral_favorito)
     visitante = _pct(lambda d: d.get("condicion") == "Visitante")
     con_alerta = _pct(lambda d: bool(d.get("motivos_alerta")))
 
     causa_dominante = max(
-        [("partido cerrado/under", cerrado), ("favorito que perdió", favorito),
-         ("de visitante", visitante)],
+        [("partido cerrado/under", cerrado), ("favorito que perdió", favorito), ("de visitante", visitante)],
         key=lambda kv: kv[1],
     )[0]
     return {
@@ -894,11 +948,15 @@ def analizar_causas_derrotas(
         "con_alerta_previa_pct": con_alerta,
         "causa_dominante": causa_dominante,
         "detalle": [
-            {"torneo": d.get("torneo"), "pick": d.get("pick"),
-             "condicion": d.get("condicion"), "rival": d.get("rival"),
-             "goles_esperados": d.get("goles_esperados"),
-             "prob_victoria_pct": d.get("prob_victoria_pct"),
-             "resultado": d.get("resultado")}
+            {
+                "torneo": d.get("torneo"),
+                "pick": d.get("pick"),
+                "condicion": d.get("condicion"),
+                "rival": d.get("rival"),
+                "goles_esperados": d.get("goles_esperados"),
+                "prob_victoria_pct": d.get("prob_victoria_pct"),
+                "resultado": d.get("resultado"),
+            }
             for d in derrotas
         ],
         "decision": DEC_INFORMATIVA,
@@ -929,8 +987,10 @@ def estrategia_supervivencia(
 
     elegido = max(disp, key=_score)
     return {
-        "equipo": elegido["equipo"], "rival": elegido["rival"],
-        "es_local": elegido["es_local"], "partido": elegido["partido"],
+        "equipo": elegido["equipo"],
+        "rival": elegido["rival"],
+        "es_local": elegido["es_local"],
+        "partido": elegido["partido"],
         "no_perder_pct": elegido["no_perder_pct"],
     }
 
@@ -949,11 +1009,13 @@ def main() -> int:
         if res.get("torneos_evaluados", 0) == 0:
             print(f"  {nombre}: {res.get('mensaje')}")
             continue
-        print(f"  [{nombre}] torneos={res['torneos_evaluados']} | "
-              f"sobrevividos completos={res['torneos_sobrevividos_completos']} "
-              f"({res['tasa_supervivencia_torneo_pct']}%) | "
-              f"jornadas sobrev. prom={res['jornadas_sobrevividas_prom']} | "
-              f"victorias prom={res['victorias_prom_por_torneo']}")
+        print(
+            f"  [{nombre}] torneos={res['torneos_evaluados']} | "
+            f"sobrevividos completos={res['torneos_sobrevividos_completos']} "
+            f"({res['tasa_supervivencia_torneo_pct']}%) | "
+            f"jornadas sobrev. prom={res['jornadas_sobrevividas_prom']} | "
+            f"victorias prom={res['victorias_prom_por_torneo']}"
+        )
     if r.get("mejor"):
         print(f"🏆 Mejor estrategia (por supervivencia): {r['mejor']}")
     return 0

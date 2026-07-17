@@ -9,6 +9,7 @@ AHORA: corre la validación real del modelo Poisson contra resultados REALES de
 ESPN (accuracy / Brier / baseline), vía validacion_modelo. No simula apuestas,
 no fabrica nada. Informativo / revisión humana.
 """
+
 from __future__ import annotations
 
 from typing import Any, Dict
@@ -35,4 +36,5 @@ def run_backtest(meses: int = 18) -> Dict[str, Any]:
 
 if __name__ == "__main__":
     import json
+
     print(json.dumps(run_backtest(), ensure_ascii=False, indent=2))

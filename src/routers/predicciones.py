@@ -9,6 +9,7 @@ memoria (TTL) para no golpear ESPN en cada request.
 - GET /predicciones  -> 1X2 / Over-Under / BTTS / marcador por partido próximo.
 - GET /survivor      -> mejor equipo "no perder" de la jornada (excluye usados).
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
@@ -91,8 +92,8 @@ CROWD_DISTRIBUTION: Dict[str, float] = {
 # Fecha de captura del snapshot de la distribución de la comunidad.
 CROWD_CAPTURED_AT = "2026-07-11"  # J1 Apertura 2026
 
-CROWD_HIGH_THRESHOLD = 15.0   # >15% = pick muy popular (riesgo crowd)
-CROWD_MED_THRESHOLD = 5.0     # 5-15% = riesgo medio
+CROWD_HIGH_THRESHOLD = 15.0  # >15% = pick muy popular (riesgo crowd)
+CROWD_MED_THRESHOLD = 5.0  # 5-15% = riesgo medio
 
 # Top 10 crowd picks pre-computado para respuesta rápida
 top_crowd = dict(sorted(CROWD_DISTRIBUTION.items(), key=lambda x: x[1], reverse=True)[:10])
@@ -106,8 +107,10 @@ _TTL_RIESGO_MIN = 360  # el histórico cambia lento; análisis pesado => caché 
 
 
 def _fresco() -> bool:
-    return bool(_CACHE["data"]) and bool(_CACHE["ts"]) and (
-        datetime.now(timezone.utc) - _CACHE["ts"] < timedelta(minutes=_TTL_MIN)
+    return (
+        bool(_CACHE["data"])
+        and bool(_CACHE["ts"])
+        and (datetime.now(timezone.utc) - _CACHE["ts"] < timedelta(minutes=_TTL_MIN))
     )
 
 
@@ -119,8 +122,10 @@ def _obtener() -> Dict[str, Any]:
 
 
 def _obtener_tabla() -> Dict[str, Any]:
-    fresco = bool(_CACHE_TABLA["data"]) and bool(_CACHE_TABLA["ts"]) and (
-        datetime.now(timezone.utc) - _CACHE_TABLA["ts"] < timedelta(minutes=_TTL_MIN)
+    fresco = (
+        bool(_CACHE_TABLA["data"])
+        and bool(_CACHE_TABLA["ts"])
+        and (datetime.now(timezone.utc) - _CACHE_TABLA["ts"] < timedelta(minutes=_TTL_MIN))
     )
     if not fresco:
         _CACHE_TABLA["data"] = tabla_mod.obtener_tabla()
@@ -170,6 +175,7 @@ def _usados_combinados(excluir: str) -> list:
     persistidos: list = []
     try:
         from src.database import get_equipos_usados
+
         persistidos = get_equipos_usados()
     except Exception:  # pragma: no cover - BD no disponible
         persistidos = []
@@ -216,8 +222,15 @@ def _enriquecer_lista_con_crowd(picks: list) -> list:
 def _totales_jornada(pronosticos: list) -> Dict[str, Any]:
     """Calcula totales de la jornada: partidos, goles esperados, O/U, BTTS."""
     if not pronosticos:
-        return {"partidos": 0, "goles_esperados_total": 0.0, "promedio_goles_partido": 0.0,
-                "over_25_count": 0, "under_25_count": 0, "btts_si_count": 0, "btts_no_count": 0}
+        return {
+            "partidos": 0,
+            "goles_esperados_total": 0.0,
+            "promedio_goles_partido": 0.0,
+            "over_25_count": 0,
+            "under_25_count": 0,
+            "btts_si_count": 0,
+            "btts_no_count": 0,
+        }
     total_goles = sum(p.get("goles_esperados_local", 0) + p.get("goles_esperados_visitante", 0) for p in pronosticos)
     over_25 = sum(1 for p in pronosticos if p.get("pick_ou") == "Over")
     under_25 = sum(1 for p in pronosticos if p.get("pick_ou") == "Under")
@@ -251,14 +264,15 @@ def survivor(request: Request, excluir: str = "") -> Dict[str, Any]:
     data = _obtener()
     usados = _usados_combinados(excluir)
     est = motor.mejores_picks_estrategico(
-        data.get("pronosticos", []), usados,
-        partidos_jugados_torneo=_partidos_jugados_torneo(), n=1,
+        data.get("pronosticos", []),
+        usados,
+        partidos_jugados_torneo=_partidos_jugados_torneo(),
+        n=1,
     )
     pick = _enriquecer_con_crowd(est["picks"][0]) if est.get("picks") else None
     # Top 3 picks crowd para contexto
     top_crowd = sorted(
-        [{"equipo": k, "crowd_pct": v} for k, v in CROWD_DISTRIBUTION.items()],
-        key=lambda x: -x["crowd_pct"]
+        [{"equipo": k, "crowd_pct": v} for k, v in CROWD_DISTRIBUTION.items()], key=lambda x: -x["crowd_pct"]
     )[:3]
     return {
         "generado_utc": data.get("generado_utc"),
@@ -271,7 +285,7 @@ def survivor(request: Request, excluir: str = "") -> Dict[str, Any]:
         "crowd_intelligence": {
             "top_picks_crowd": top_crowd,
             "captured_at": CROWD_CAPTURED_AT,
-            "recommendation": "EVITAR picks >15% crowd salvo confianza >85%"
+            "recommendation": "EVITAR picks >15% crowd salvo confianza >85%",
         },
         "decision": data.get("decision"),
     }
@@ -298,8 +312,11 @@ def jornada(request: Request, excluir: str = "", contexto: bool = False) -> Dict
         motivacion = {}
     usados = _usados_combinados(excluir)
     est = motor.mejores_picks_estrategico(
-        pronos, usados, motivacion,
-        partidos_jugados_torneo=_partidos_jugados_torneo(), n=3,
+        pronos,
+        usados,
+        motivacion,
+        partidos_jugados_torneo=_partidos_jugados_torneo(),
+        n=3,
     )
     top = est.get("picks", [])
     pick = _enriquecer_con_crowd(top[0]) if top else None
@@ -321,7 +338,7 @@ def jornada(request: Request, excluir: str = "", contexto: bool = False) -> Dict
         "crowd_intelligence": {
             "top_picks_crowd": top_crowd,
             "captured_at": CROWD_CAPTURED_AT,
-            "recommendation": "EVITAR picks >15% crowd salvo confianza >85%"
+            "recommendation": "EVITAR picks >15% crowd salvo confianza >85%",
         },
         "decision": data.get("decision"),
     }
@@ -334,8 +351,7 @@ def tabla(request: Request) -> Dict[str, Any]:
     try:
         data = _obtener_tabla()
     except Exception as exc:  # pragma: no cover - fallback defensivo de red
-        return {"torneo": "", "tabla": [], "error": str(exc),
-                "decision": "INFORMATIVO / REVISIÓN HUMANA"}
+        return {"torneo": "", "tabla": [], "error": str(exc), "decision": "INFORMATIVO / REVISIÓN HUMANA"}
     return {**data, "decision": "INFORMATIVO / REVISIÓN HUMANA"}
 
 
@@ -380,8 +396,10 @@ def analisis_riesgo(request: Request) -> Dict[str, Any]:
     y partidos cerrados ('under'). Útil para no quemar el Survivor con un
     favorito engañoso. Análisis pesado => caché de 6 horas.
     """
-    fresco = bool(_CACHE_RIESGO["data"]) and bool(_CACHE_RIESGO["ts"]) and (
-        datetime.now(timezone.utc) - _CACHE_RIESGO["ts"] < timedelta(minutes=_TTL_RIESGO_MIN)
+    fresco = (
+        bool(_CACHE_RIESGO["data"])
+        and bool(_CACHE_RIESGO["ts"])
+        and (datetime.now(timezone.utc) - _CACHE_RIESGO["ts"] < timedelta(minutes=_TTL_RIESGO_MIN))
     )
     if not fresco:
         try:
@@ -389,15 +407,16 @@ def analisis_riesgo(request: Request) -> Dict[str, Any]:
             _CACHE_RIESGO["data"] = riesgo_mod.analizar_riesgo_favoritos(datos["resultados"])
             _CACHE_RIESGO["data"]["fuente_datos"] = datos.get("fuente")
         except Exception as exc:  # pragma: no cover - fallback defensivo de red
-            return {"partidos_evaluados": 0, "error": str(exc),
-                    "decision": "INFORMATIVO / REVISIÓN HUMANA"}
+            return {"partidos_evaluados": 0, "error": str(exc), "decision": "INFORMATIVO / REVISIÓN HUMANA"}
         _CACHE_RIESGO["ts"] = datetime.now(timezone.utc)
     return _CACHE_RIESGO["data"]
 
 
 @router.get("/plan-survivor", summary="Estrategia de temporada: qué equipo usar en cada jornada")
 @limiter.limit("10/minute")
-def plan_survivor(request: Request, excluir: str = "", peso_victoria: float = 0.5, usar_momios: bool = True) -> Dict[str, Any]:
+def plan_survivor(
+    request: Request, excluir: str = "", peso_victoria: float = 0.5, usar_momios: bool = True
+) -> Dict[str, Any]:
     """
     Plan ÓPTIMO de Survivor para toda la temporada (PlayDoit): asigna 1 equipo por
     jornada, sin repetir, maximizando supervivencia (no perder) y victorias.
@@ -411,8 +430,10 @@ def plan_survivor(request: Request, excluir: str = "", peso_victoria: float = 0.
     usados = _usados_combinados(excluir)
     usar_cache = not usados and abs(peso_victoria - 0.5) < 1e-9 and usar_momios
     if usar_cache:
-        fresco = bool(_CACHE_PLAN["data"]) and bool(_CACHE_PLAN["ts"]) and (
-            datetime.now(timezone.utc) - _CACHE_PLAN["ts"] < timedelta(minutes=_TTL_RIESGO_MIN)
+        fresco = (
+            bool(_CACHE_PLAN["data"])
+            and bool(_CACHE_PLAN["ts"])
+            and (datetime.now(timezone.utc) - _CACHE_PLAN["ts"] < timedelta(minutes=_TTL_RIESGO_MIN))
         )
         if fresco:
             return _CACHE_PLAN["data"]
@@ -420,22 +441,23 @@ def plan_survivor(request: Request, excluir: str = "", peso_victoria: float = 0.
     calendario = plan_mod.cargar_calendario()
     if not calendario:
         return {
-            "plan": [], "calendario_incompleto": True,
+            "plan": [],
+            "calendario_incompleto": True,
             "mensaje": "Falta data/calendario.json con las 17 jornadas. El calendario "
-                       "del Apertura 2026 se publica cerca del 17-jul; guárdalo y reintenta.",
+            "del Apertura 2026 se publica cerca del 17-jul; guárdalo y reintenta.",
             "decision": "INFORMATIVO / REVISIÓN HUMANA",
         }
     try:
         datos = fuentes_mod.obtener_resultados(meses=18)
         fuerzas = pm.calcular_fuerzas(datos["resultados"])
         odds = plan_mod.construir_odds_por_partido(calendario) if usar_momios else None
-        resultado = plan_mod.planificar(calendario, fuerzas, equipos_usados=usados,
-                                        peso_victoria=peso_victoria, odds_por_partido=odds)
+        resultado = plan_mod.planificar(
+            calendario, fuerzas, equipos_usados=usados, peso_victoria=peso_victoria, odds_por_partido=odds
+        )
         resultado["fuente_datos"] = datos.get("fuente")
         resultado["momios_integrados"] = len(odds) if odds else 0
     except Exception as exc:  # pragma: no cover - fallback defensivo
-        return {"plan": [], "error": str(exc),
-                "decision": "INFORMATIVO / REVISIÓN HUMANA"}
+        return {"plan": [], "error": str(exc), "decision": "INFORMATIVO / REVISIÓN HUMANA"}
     if usar_cache:
         _CACHE_PLAN["data"] = resultado
         _CACHE_PLAN["ts"] = datetime.now(timezone.utc)
@@ -456,13 +478,11 @@ def analisis_partido(request: Request, home: str, away: str, prediccion: bool = 
     del pick.
     """
     if not home or not away:
-        return {"error": "Faltan parámetros 'home' y 'away'.",
-                "decision": "INFORMATIVO / REVISIÓN HUMANA"}
+        return {"error": "Faltan parámetros 'home' y 'away'.", "decision": "INFORMATIVO / REVISIÓN HUMANA"}
     try:
         return lmx.analisis_partido(home, away, incluir_prediccion=prediccion)
     except Exception as exc:  # pragma: no cover - fallback defensivo de red
-        return {"home": home, "away": away, "error": str(exc),
-                "decision": "INFORMATIVO / REVISIÓN HUMANA"}
+        return {"home": home, "away": away, "error": str(exc), "decision": "INFORMATIVO / REVISIÓN HUMANA"}
 
 
 @router.get("/jugadores-riesgo", summary="Jugadores en riesgo de suspensión (Liga MX API)")
@@ -474,11 +494,9 @@ def jugadores_riesgo(request: Request, limit: int = 20) -> Dict[str, Any]:
     En pretemporada viene vacío. Informativo.
     """
     try:
-        return {**lmx.jugadores_en_riesgo_liga(limit=limit),
-                "decision": "INFORMATIVO / REVISIÓN HUMANA"}
+        return {**lmx.jugadores_en_riesgo_liga(limit=limit), "decision": "INFORMATIVO / REVISIÓN HUMANA"}
     except Exception as exc:  # pragma: no cover - fallback defensivo de red
-        return {"count": 0, "jugadores": [], "error": str(exc),
-                "decision": "INFORMATIVO / REVISIÓN HUMANA"}
+        return {"count": 0, "jugadores": [], "error": str(exc), "decision": "INFORMATIVO / REVISIÓN HUMANA"}
 
 
 @router.get("/noticias", summary="Noticias Liga MX (fichajes/lesiones/bajas) vía Liga MX API")
@@ -491,11 +509,9 @@ def noticias(request: Request, limit: int = 10) -> Dict[str, Any]:
     """
     try:
         items = lmx.noticias_recientes(limit=limit)
-        return {"total": len(items), "noticias": items,
-                "decision": "INFORMATIVO / REVISIÓN HUMANA"}
+        return {"total": len(items), "noticias": items, "decision": "INFORMATIVO / REVISIÓN HUMANA"}
     except Exception as exc:  # pragma: no cover - fallback defensivo de red
-        return {"total": 0, "noticias": [], "error": str(exc),
-                "decision": "INFORMATIVO / REVISIÓN HUMANA"}
+        return {"total": 0, "noticias": [], "error": str(exc), "decision": "INFORMATIVO / REVISIÓN HUMANA"}
 
 
 @router.get("/alineacion", summary="Alineación confirmada de un partido (365Scores, ~1h antes)")
@@ -508,14 +524,11 @@ def alineacion(request: Request, home: str, away: str) -> Dict[str, Any]:
     Informativo.
     """
     if not home or not away:
-        return {"disponible": False, "error": "Faltan 'home' y 'away'.",
-                "decision": "INFORMATIVO / REVISIÓN HUMANA"}
+        return {"disponible": False, "error": "Faltan 'home' y 'away'.", "decision": "INFORMATIVO / REVISIÓN HUMANA"}
     try:
-        return {**lmx.alineacion_de_partido(home, away),
-                "decision": "INFORMATIVO / REVISIÓN HUMANA"}
+        return {**lmx.alineacion_de_partido(home, away), "decision": "INFORMATIVO / REVISIÓN HUMANA"}
     except Exception as exc:  # pragma: no cover - fallback defensivo de red
-        return {"disponible": False, "equipos": [], "error": str(exc),
-                "decision": "INFORMATIVO / REVISIÓN HUMANA"}
+        return {"disponible": False, "equipos": [], "error": str(exc), "decision": "INFORMATIVO / REVISIÓN HUMANA"}
 
 
 @router.get("/historial/pronosticos", summary="Track-record de pronósticos (marcador + aciertos)")
@@ -531,11 +544,9 @@ def historial_pronosticos(request: Request, limit: int = 50, solo_resueltos: boo
         except ImportError:  # pragma: no cover
             from src.database import historial_pronosticos as _hist  # type: ignore
         filas = _hist(limit=limit, solo_resueltos=solo_resueltos)
-        return {"total": len(filas), "pronosticos": filas,
-                "decision": "INFORMATIVO / REVISIÓN HUMANA"}
+        return {"total": len(filas), "pronosticos": filas, "decision": "INFORMATIVO / REVISIÓN HUMANA"}
     except Exception as exc:  # pragma: no cover - fallback defensivo
-        return {"total": 0, "pronosticos": [], "error": str(exc),
-                "decision": "INFORMATIVO / REVISIÓN HUMANA"}
+        return {"total": 0, "pronosticos": [], "error": str(exc), "decision": "INFORMATIVO / REVISIÓN HUMANA"}
 
 
 @router.get("/historial/rentabilidad", summary="Rentabilidad/precisión del modelo (aciertos)")
@@ -549,8 +560,7 @@ def historial_rentabilidad(request: Request) -> Dict[str, Any]:
             from src.database import rentabilidad_pronosticos as _rent  # type: ignore
         return {**_rent(), "decision": "INFORMATIVO / REVISIÓN HUMANA"}
     except Exception as exc:  # pragma: no cover - fallback defensivo
-        return {"resueltos": 0, "error": str(exc),
-                "decision": "INFORMATIVO / REVISIÓN HUMANA"}
+        return {"resueltos": 0, "error": str(exc), "decision": "INFORMATIVO / REVISIÓN HUMANA"}
 
 
 @router.get("/analisis-ia", summary="Análisis de riesgo por IA (Groq) sobre noticias reales")
@@ -562,15 +572,12 @@ def analisis_ia(request: Request, home: str, away: str) -> Dict[str, Any]:
     requiere GROQ_API_KEY; sin ella responde `disponible: false`. No inventa datos.
     """
     if not home or not away:
-        return {"disponible": False, "error": "Faltan 'home' y 'away'.",
-                "decision": "INFORMATIVO / REVISIÓN HUMANA"}
+        return {"disponible": False, "error": "Faltan 'home' y 'away'.", "decision": "INFORMATIVO / REVISIÓN HUMANA"}
     try:
         try:
             import analista_ia as ia
         except ImportError:  # pragma: no cover
             from src import analista_ia as ia  # type: ignore
-        return {**ia.analizar_partido(home, away),
-                "decision": "INFORMATIVO / REVISIÓN HUMANA"}
+        return {**ia.analizar_partido(home, away), "decision": "INFORMATIVO / REVISIÓN HUMANA"}
     except Exception as exc:  # pragma: no cover - fallback defensivo
-        return {"disponible": False, "error": str(exc),
-                "decision": "INFORMATIVO / REVISIÓN HUMANA"}
+        return {"disponible": False, "error": str(exc), "decision": "INFORMATIVO / REVISIÓN HUMANA"}

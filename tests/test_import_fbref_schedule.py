@@ -6,6 +6,7 @@ No usan el HTML real descargado: emplean un fixture HTML mínimo embebido.
 Ejecutar:
     python3 -m unittest tests.test_import_fbref_schedule
 """
+
 from __future__ import annotations
 
 import sys
@@ -129,10 +130,20 @@ class TestComparacion(unittest.TestCase):
 
     def test_matched_completo(self):
         partidos = [
-            {"home_team": "América", "away_team": "FC Juarez", "fecha": "2026-07-04", "hora": "19:00",
-             "estadio": "Estadio Azteca"},
-            {"home_team": "Querétaro", "away_team": "Tigres", "fecha": "2026-07-05", "hora": "17:00",
-             "estadio": "Estadio Corregidora"},
+            {
+                "home_team": "América",
+                "away_team": "FC Juarez",
+                "fecha": "2026-07-04",
+                "hora": "19:00",
+                "estadio": "Estadio Azteca",
+            },
+            {
+                "home_team": "Querétaro",
+                "away_team": "Tigres",
+                "fecha": "2026-07-05",
+                "hora": "17:00",
+                "estadio": "Estadio Corregidora",
+            },
         ]
         res = fb.comparar(self._filas_j1(), partidos)
         self.assertEqual(len(res["matched"]), 2)
@@ -141,10 +152,20 @@ class TestComparacion(unittest.TestCase):
 
     def test_diferencia_de_hora_detectada(self):
         partidos = [
-            {"home_team": "América", "away_team": "FC Juarez", "fecha": "2026-07-04", "hora": "20:00",
-             "estadio": "Estadio Azteca"},
-            {"home_team": "Querétaro", "away_team": "Tigres", "fecha": "2026-07-05", "hora": "17:00",
-             "estadio": "Estadio La Corregidora"},
+            {
+                "home_team": "América",
+                "away_team": "FC Juarez",
+                "fecha": "2026-07-04",
+                "hora": "20:00",
+                "estadio": "Estadio Azteca",
+            },
+            {
+                "home_team": "Querétaro",
+                "away_team": "Tigres",
+                "fecha": "2026-07-05",
+                "hora": "17:00",
+                "estadio": "Estadio La Corregidora",
+            },
         ]
         res = fb.comparar(self._filas_j1(), partidos)
         self.assertEqual(len(res["con_diferencias"]), 1)
@@ -156,8 +177,13 @@ class TestComparacion(unittest.TestCase):
         # "Estadio La Corregidora" (jornadas) vs "Estadio La Corregidora" (FBref) -> sin diff;
         # probamos artículo/acento: jornadas usa "Estadio Corregidora".
         partidos = [
-            {"home_team": "Querétaro", "away_team": "Tigres", "fecha": "2026-07-05", "hora": "17:00",
-             "estadio": "Estadio Corregidora"},
+            {
+                "home_team": "Querétaro",
+                "away_team": "Tigres",
+                "fecha": "2026-07-05",
+                "hora": "17:00",
+                "estadio": "Estadio Corregidora",
+            },
         ]
         res = fb.comparar(self._filas_j1(), partidos)
         # El único matched no debe tener diferencia de estadio.
@@ -168,8 +194,13 @@ class TestComparacion(unittest.TestCase):
 
     def test_estadio_realmente_distinto_si_reporta(self):
         partidos = [
-            {"home_team": "América", "away_team": "FC Juarez", "fecha": "2026-07-04", "hora": "19:00",
-             "estadio": "Estadio Akron"},
+            {
+                "home_team": "América",
+                "away_team": "FC Juarez",
+                "fecha": "2026-07-04",
+                "hora": "19:00",
+                "estadio": "Estadio Akron",
+            },
         ]
         res = fb.comparar(self._filas_j1(), partidos)
         match_ame = [m for m in res["matched"] if m["partido"]["home_team"] == "América"]

@@ -9,6 +9,7 @@ mismo constructor de mensaje que src/telegram_pronosticos.py (DRY).
 
 Informativo / revisión humana. No es consejo de apuesta.
 """
+
 import asyncio
 import os
 

@@ -16,6 +16,7 @@ Esto da contexto para Survivor (un equipo que pelea liguilla suele venir más
 motivado que uno ya eliminado o ya clasificado holgado). Informativo; no cierra
 ni envía picks.
 """
+
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
@@ -70,26 +71,26 @@ def parsear_standings(data: Dict[str, Any]) -> Dict[str, Any]:
         equipo = (e.get("team") or {}).get("displayName", "")
         if not equipo:
             continue
-        tabla.append({
-            "posicion": int(_stat(e, "rank")),
-            "equipo": equipo,
-            "puntos": int(_stat(e, "points")),
-            "jugados": int(_stat(e, "gamesPlayed")),
-            "ganados": int(_stat(e, "wins")),
-            "empatados": int(_stat(e, "ties")),
-            "perdidos": int(_stat(e, "losses")),
-            "goles_favor": int(_stat(e, "pointsFor")),
-            "goles_contra": int(_stat(e, "pointsAgainst")),
-            "diferencia": int(_stat(e, "pointDifferential")),
-        })
+        tabla.append(
+            {
+                "posicion": int(_stat(e, "rank")),
+                "equipo": equipo,
+                "puntos": int(_stat(e, "points")),
+                "jugados": int(_stat(e, "gamesPlayed")),
+                "ganados": int(_stat(e, "wins")),
+                "empatados": int(_stat(e, "ties")),
+                "perdidos": int(_stat(e, "losses")),
+                "goles_favor": int(_stat(e, "pointsFor")),
+                "goles_contra": int(_stat(e, "pointsAgainst")),
+                "diferencia": int(_stat(e, "pointDifferential")),
+            }
+        )
 
     tabla.sort(key=lambda r: r["posicion"] if r["posicion"] > 0 else 999)
     return {"torneo": torneo, "tabla": tabla}
 
 
-def _motivacion_fila(
-    fila: Dict[str, Any], tabla: List[Dict[str, Any]], torneo: str
-) -> Dict[str, Any]:
+def _motivacion_fila(fila: Dict[str, Any], tabla: List[Dict[str, Any]], torneo: str) -> Dict[str, Any]:
     """Calcula la situación/motivación de un equipo dentro de la tabla (pura)."""
     pos = int(fila["posicion"])
     pts = int(fila["puntos"])
@@ -210,8 +211,10 @@ def main() -> int:
         return 1
     print(f"Torneo: {data['torneo']} | equipos: {len(data['tabla'])}")
     for f in data["tabla"]:
-        print(f"  {f['posicion']:>2}. {f['equipo']:<18} {f['puntos']:>2} pts "
-              f"({f['jugados']}J) — {f['zona']} · {f['motivacion_nivel']}")
+        print(
+            f"  {f['posicion']:>2}. {f['equipo']:<18} {f['puntos']:>2} pts "
+            f"({f['jugados']}J) — {f['zona']} · {f['motivacion_nivel']}"
+        )
     return 0
 
 

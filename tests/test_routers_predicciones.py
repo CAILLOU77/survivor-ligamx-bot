@@ -4,6 +4,7 @@
 Llaman a las funciones de endpoint directamente (sin servidor ni httpx),
 con el motor mockeado. No tocan red.
 """
+
 from __future__ import annotations
 
 import sys
@@ -16,6 +17,7 @@ if SRC not in sys.path:
     sys.path.insert(0, SRC)
 
 import importlib
+
 pred = importlib.import_module("routers.predicciones")
 
 
@@ -25,8 +27,13 @@ def _fake_data():
         "fuente_datos": "ESPN",
         "total_pronosticos": 1,
         "pronosticos": [
-            {"local": "América", "visitante": "Toluca", "pick_1x2": "Gana Local",
-             "no_perder_local_pct": 80.0, "no_perder_visitante_pct": 40.0},
+            {
+                "local": "América",
+                "visitante": "Toluca",
+                "pick_1x2": "Gana Local",
+                "no_perder_local_pct": 80.0,
+                "no_perder_visitante_pct": 40.0,
+            },
         ],
         "decision": "INFORMATIVO / REVISIÓN HUMANA",
     }
@@ -65,8 +72,10 @@ class TestEndpoints(unittest.TestCase):
     def test_tabla_devuelve_datos_y_decision(self):
         pred._CACHE_TABLA["data"] = None
         pred._CACHE_TABLA["ts"] = None
-        fake = {"torneo": "2026 Torneo Apertura",
-                "tabla": [{"posicion": 1, "equipo": "América", "motivacion_nivel": "alta"}]}
+        fake = {
+            "torneo": "2026 Torneo Apertura",
+            "tabla": [{"posicion": 1, "equipo": "América", "motivacion_nivel": "alta"}],
+        }
         with mock.patch.object(pred.tabla_mod, "obtener_tabla", return_value=fake):
             r = pred.tabla()
         self.assertEqual(r["torneo"], "2026 Torneo Apertura")

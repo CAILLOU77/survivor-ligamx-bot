@@ -21,6 +21,7 @@ Uso:
     python3 scripts/build_calendario_apertura2026.py            # escribe
     python3 scripts/build_calendario_apertura2026.py --dry-run  # solo valida
 """
+
 from __future__ import annotations
 
 import argparse
@@ -34,82 +35,232 @@ CALENDARIO_PATH = BASE_DIR / "data" / "calendario.json"
 
 # Los 18 equipos del Apertura 2026 con el nombre EXACTO del histórico ESPN.
 EQUIPOS = {
-    "América", "Atlante", "Atlas", "Atlético de San Luis", "Cruz Azul",
-    "FC Juarez", "Guadalajara", "León", "Monterrey", "Necaxa", "Pachuca",
-    "Puebla", "Pumas UNAM", "Querétaro", "Santos", "Tigres UANL", "Tijuana",
+    "América",
+    "Atlante",
+    "Atlas",
+    "Atlético de San Luis",
+    "Cruz Azul",
+    "FC Juarez",
+    "Guadalajara",
+    "León",
+    "Monterrey",
+    "Necaxa",
+    "Pachuca",
+    "Puebla",
+    "Pumas UNAM",
+    "Querétaro",
+    "Santos",
+    "Tigres UANL",
+    "Tijuana",
     "Toluca",
 }
 
 # (local, visitante) por jornada — transcrito del PDF oficial (orden = orden del PDF).
 JORNADAS: List[List[Tuple[str, str]]] = [
     # J1
-    [("Necaxa", "Atlante"), ("Tijuana", "Tigres UANL"), ("Atlético de San Luis", "Cruz Azul"),
-     ("León", "Atlas"), ("FC Juarez", "Puebla"), ("Pumas UNAM", "Pachuca"),
-     ("Guadalajara", "Toluca"), ("Monterrey", "Santos"), ("Querétaro", "América")],
+    [
+        ("Necaxa", "Atlante"),
+        ("Tijuana", "Tigres UANL"),
+        ("Atlético de San Luis", "Cruz Azul"),
+        ("León", "Atlas"),
+        ("FC Juarez", "Puebla"),
+        ("Pumas UNAM", "Pachuca"),
+        ("Guadalajara", "Toluca"),
+        ("Monterrey", "Santos"),
+        ("Querétaro", "América"),
+    ],
     # J2
-    [("Cruz Azul", "Puebla"), ("Toluca", "Pumas UNAM"), ("Tigres UANL", "Atlético de San Luis"),
-     ("Atlante", "América"), ("Tijuana", "León"), ("Guadalajara", "FC Juarez"),
-     ("Santos", "Atlas"), ("Necaxa", "Monterrey"), ("Pachuca", "Querétaro")],
+    [
+        ("Cruz Azul", "Puebla"),
+        ("Toluca", "Pumas UNAM"),
+        ("Tigres UANL", "Atlético de San Luis"),
+        ("Atlante", "América"),
+        ("Tijuana", "León"),
+        ("Guadalajara", "FC Juarez"),
+        ("Santos", "Atlas"),
+        ("Necaxa", "Monterrey"),
+        ("Pachuca", "Querétaro"),
+    ],
     # J3
-    [("Puebla", "Guadalajara"), ("Atlético de San Luis", "Tijuana"), ("FC Juarez", "Pumas UNAM"),
-     ("Querétaro", "Tigres UANL"), ("León", "Pachuca"), ("Atlas", "Monterrey"),
-     ("Cruz Azul", "Atlante"), ("América", "Santos"), ("Toluca", "Necaxa")],
+    [
+        ("Puebla", "Guadalajara"),
+        ("Atlético de San Luis", "Tijuana"),
+        ("FC Juarez", "Pumas UNAM"),
+        ("Querétaro", "Tigres UANL"),
+        ("León", "Pachuca"),
+        ("Atlas", "Monterrey"),
+        ("Cruz Azul", "Atlante"),
+        ("América", "Santos"),
+        ("Toluca", "Necaxa"),
+    ],
     # J4
-    [("Atlante", "Toluca"), ("Monterrey", "FC Juarez"), ("Atlas", "Tigres UANL"),
-     ("Pumas UNAM", "Querétaro"), ("América", "Atlético de San Luis"), ("Santos", "Guadalajara"),
-     ("Tijuana", "Cruz Azul"), ("Necaxa", "León"), ("Pachuca", "Puebla")],
+    [
+        ("Atlante", "Toluca"),
+        ("Monterrey", "FC Juarez"),
+        ("Atlas", "Tigres UANL"),
+        ("Pumas UNAM", "Querétaro"),
+        ("América", "Atlético de San Luis"),
+        ("Santos", "Guadalajara"),
+        ("Tijuana", "Cruz Azul"),
+        ("Necaxa", "León"),
+        ("Pachuca", "Puebla"),
+    ],
     # J5
-    [("Puebla", "Santos"), ("FC Juarez", "América"), ("Querétaro", "Toluca"),
-     ("Guadalajara", "Tijuana"), ("León", "Monterrey"), ("Tigres UANL", "Atlante"),
-     ("Cruz Azul", "Atlas"), ("Atlético de San Luis", "Pachuca"), ("Pumas UNAM", "Necaxa")],
+    [
+        ("Puebla", "Santos"),
+        ("FC Juarez", "América"),
+        ("Querétaro", "Toluca"),
+        ("Guadalajara", "Tijuana"),
+        ("León", "Monterrey"),
+        ("Tigres UANL", "Atlante"),
+        ("Cruz Azul", "Atlas"),
+        ("Atlético de San Luis", "Pachuca"),
+        ("Pumas UNAM", "Necaxa"),
+    ],
     # J6
-    [("Necaxa", "Cruz Azul"), ("Atlante", "León"), ("Tijuana", "Pumas UNAM"),
-     ("Atlas", "Querétaro"), ("Pachuca", "Guadalajara"), ("América", "Puebla"),
-     ("Santos", "Tigres UANL"), ("Toluca", "FC Juarez"), ("Monterrey", "Atlético de San Luis")],
+    [
+        ("Necaxa", "Cruz Azul"),
+        ("Atlante", "León"),
+        ("Tijuana", "Pumas UNAM"),
+        ("Atlas", "Querétaro"),
+        ("Pachuca", "Guadalajara"),
+        ("América", "Puebla"),
+        ("Santos", "Tigres UANL"),
+        ("Toluca", "FC Juarez"),
+        ("Monterrey", "Atlético de San Luis"),
+    ],
     # J7
-    [("Puebla", "Toluca"), ("FC Juarez", "Pachuca"), ("Atlético de San Luis", "Guadalajara"),
-     ("Querétaro", "Monterrey"), ("Tigres UANL", "Necaxa"), ("América", "Tijuana"),
-     ("Atlas", "Atlante"), ("Pumas UNAM", "León"), ("Cruz Azul", "Santos")],
+    [
+        ("Puebla", "Toluca"),
+        ("FC Juarez", "Pachuca"),
+        ("Atlético de San Luis", "Guadalajara"),
+        ("Querétaro", "Monterrey"),
+        ("Tigres UANL", "Necaxa"),
+        ("América", "Tijuana"),
+        ("Atlas", "Atlante"),
+        ("Pumas UNAM", "León"),
+        ("Cruz Azul", "Santos"),
+    ],
     # J8
-    [("Necaxa", "Puebla"), ("Atlante", "Pachuca"), ("Tijuana", "Querétaro"),
-     ("León", "Atlético de San Luis"), ("Toluca", "Atlas"), ("Cruz Azul", "América"),
-     ("Santos", "FC Juarez"), ("Guadalajara", "Pumas UNAM"), ("Monterrey", "Tigres UANL")],
+    [
+        ("Necaxa", "Puebla"),
+        ("Atlante", "Pachuca"),
+        ("Tijuana", "Querétaro"),
+        ("León", "Atlético de San Luis"),
+        ("Toluca", "Atlas"),
+        ("Cruz Azul", "América"),
+        ("Santos", "FC Juarez"),
+        ("Guadalajara", "Pumas UNAM"),
+        ("Monterrey", "Tigres UANL"),
+    ],
     # J9
-    [("Puebla", "Atlante"), ("FC Juarez", "Tigres UANL"), ("Atlas", "Pumas UNAM"),
-     ("Atlético de San Luis", "Necaxa"), ("Monterrey", "Cruz Azul"), ("América", "Guadalajara"),
-     ("Pachuca", "Tijuana"), ("Toluca", "Santos"), ("Querétaro", "León")],
+    [
+        ("Puebla", "Atlante"),
+        ("FC Juarez", "Tigres UANL"),
+        ("Atlas", "Pumas UNAM"),
+        ("Atlético de San Luis", "Necaxa"),
+        ("Monterrey", "Cruz Azul"),
+        ("América", "Guadalajara"),
+        ("Pachuca", "Tijuana"),
+        ("Toluca", "Santos"),
+        ("Querétaro", "León"),
+    ],
     # J10
-    [("Atlante", "Monterrey"), ("Tijuana", "Atlas"), ("Guadalajara", "Querétaro"),
-     ("Santos", "Pachuca"), ("Tigres UANL", "Puebla"), ("Cruz Azul", "Toluca"),
-     ("Pumas UNAM", "Atlético de San Luis"), ("León", "FC Juarez"), ("Necaxa", "América")],
+    [
+        ("Atlante", "Monterrey"),
+        ("Tijuana", "Atlas"),
+        ("Guadalajara", "Querétaro"),
+        ("Santos", "Pachuca"),
+        ("Tigres UANL", "Puebla"),
+        ("Cruz Azul", "Toluca"),
+        ("Pumas UNAM", "Atlético de San Luis"),
+        ("León", "FC Juarez"),
+        ("Necaxa", "América"),
+    ],
     # J11
-    [("Querétaro", "Atlante"), ("Puebla", "León"), ("Tigres UANL", "Toluca"),
-     ("FC Juarez", "Tijuana"), ("Atlas", "Guadalajara"), ("América", "Monterrey"),
-     ("Pachuca", "Necaxa"), ("Atlético de San Luis", "Santos"), ("Pumas UNAM", "Cruz Azul")],
+    [
+        ("Querétaro", "Atlante"),
+        ("Puebla", "León"),
+        ("Tigres UANL", "Toluca"),
+        ("FC Juarez", "Tijuana"),
+        ("Atlas", "Guadalajara"),
+        ("América", "Monterrey"),
+        ("Pachuca", "Necaxa"),
+        ("Atlético de San Luis", "Santos"),
+        ("Pumas UNAM", "Cruz Azul"),
+    ],
     # J12
-    [("Necaxa", "Atlas"), ("Atlante", "Pumas UNAM"), ("Tijuana", "Puebla"),
-     ("Guadalajara", "Tigres UANL"), ("Santos", "Querétaro"), ("León", "América"),
-     ("Toluca", "Atlético de San Luis"), ("Cruz Azul", "FC Juarez"), ("Monterrey", "Pachuca")],
+    [
+        ("Necaxa", "Atlas"),
+        ("Atlante", "Pumas UNAM"),
+        ("Tijuana", "Puebla"),
+        ("Guadalajara", "Tigres UANL"),
+        ("Santos", "Querétaro"),
+        ("León", "América"),
+        ("Toluca", "Atlético de San Luis"),
+        ("Cruz Azul", "FC Juarez"),
+        ("Monterrey", "Pachuca"),
+    ],
     # J13
-    [("Atlético de San Luis", "Querétaro"), ("FC Juarez", "Atlante"), ("Tigres UANL", "León"),
-     ("Guadalajara", "Necaxa"), ("Puebla", "Monterrey"), ("Atlas", "América"),
-     ("Toluca", "Tijuana"), ("Pachuca", "Cruz Azul"), ("Santos", "Pumas UNAM")],
+    [
+        ("Atlético de San Luis", "Querétaro"),
+        ("FC Juarez", "Atlante"),
+        ("Tigres UANL", "León"),
+        ("Guadalajara", "Necaxa"),
+        ("Puebla", "Monterrey"),
+        ("Atlas", "América"),
+        ("Toluca", "Tijuana"),
+        ("Pachuca", "Cruz Azul"),
+        ("Santos", "Pumas UNAM"),
+    ],
     # J14
-    [("Necaxa", "FC Juarez"), ("Atlante", "Atlético de San Luis"), ("León", "Toluca"),
-     ("Monterrey", "Guadalajara"), ("Pumas UNAM", "Tigres UANL"), ("Atlas", "Puebla"),
-     ("América", "Pachuca"), ("Querétaro", "Cruz Azul"), ("Tijuana", "Santos")],
+    [
+        ("Necaxa", "FC Juarez"),
+        ("Atlante", "Atlético de San Luis"),
+        ("León", "Toluca"),
+        ("Monterrey", "Guadalajara"),
+        ("Pumas UNAM", "Tigres UANL"),
+        ("Atlas", "Puebla"),
+        ("América", "Pachuca"),
+        ("Querétaro", "Cruz Azul"),
+        ("Tijuana", "Santos"),
+    ],
     # J15
-    [("Atlético de San Luis", "Atlas"), ("FC Juarez", "Querétaro"), ("Puebla", "Pumas UNAM"),
-     ("Pachuca", "Tigres UANL"), ("Guadalajara", "Atlante"), ("Monterrey", "Tijuana"),
-     ("América", "Toluca"), ("Santos", "Necaxa"), ("Cruz Azul", "León")],
+    [
+        ("Atlético de San Luis", "Atlas"),
+        ("FC Juarez", "Querétaro"),
+        ("Puebla", "Pumas UNAM"),
+        ("Pachuca", "Tigres UANL"),
+        ("Guadalajara", "Atlante"),
+        ("Monterrey", "Tijuana"),
+        ("América", "Toluca"),
+        ("Santos", "Necaxa"),
+        ("Cruz Azul", "León"),
+    ],
     # J16
-    [("Atlético de San Luis", "FC Juarez"), ("Necaxa", "Tijuana"), ("Atlante", "Santos"),
-     ("Atlas", "Pachuca"), ("Tigres UANL", "Cruz Azul"), ("Toluca", "Monterrey"),
-     ("Pumas UNAM", "América"), ("Querétaro", "Puebla"), ("León", "Guadalajara")],
+    [
+        ("Atlético de San Luis", "FC Juarez"),
+        ("Necaxa", "Tijuana"),
+        ("Atlante", "Santos"),
+        ("Atlas", "Pachuca"),
+        ("Tigres UANL", "Cruz Azul"),
+        ("Toluca", "Monterrey"),
+        ("Pumas UNAM", "América"),
+        ("Querétaro", "Puebla"),
+        ("León", "Guadalajara"),
+    ],
     # J17
-    [("Puebla", "Atlético de San Luis"), ("FC Juarez", "Atlas"), ("Tijuana", "Atlante"),
-     ("Santos", "León"), ("Pachuca", "Toluca"), ("Pumas UNAM", "Monterrey"),
-     ("Tigres UANL", "América"), ("Guadalajara", "Cruz Azul"), ("Querétaro", "Necaxa")],
+    [
+        ("Puebla", "Atlético de San Luis"),
+        ("FC Juarez", "Atlas"),
+        ("Tijuana", "Atlante"),
+        ("Santos", "León"),
+        ("Pachuca", "Toluca"),
+        ("Pumas UNAM", "Monterrey"),
+        ("Tigres UANL", "América"),
+        ("Guadalajara", "Cruz Azul"),
+        ("Querétaro", "Necaxa"),
+    ],
 ]
 
 # Rango de fechas (inicio, fin) por jornada, transcrito del PDF oficial.
@@ -165,8 +316,9 @@ def validar(jornadas: List[List[Tuple[str, str]]]) -> List[str]:
         if sorted(equipos_jornada) != sorted(EQUIPOS):
             faltan = EQUIPOS - set(equipos_jornada)
             repes = [t for t in set(equipos_jornada) if equipos_jornada.count(t) > 1]
-            errores.append(f"J{i}: no usa a los 18 exactamente una vez "
-                           f"(faltan={sorted(faltan)}, repetidos={sorted(repes)}).")
+            errores.append(
+                f"J{i}: no usa a los 18 exactamente una vez (faltan={sorted(faltan)}, repetidos={sorted(repes)})."
+            )
 
     # round-robin a una vuelta: cada par exactamente una vez
     repetidos = {tuple(sorted(p)): c for p, c in pares_vistos.items() if c > 1}
@@ -175,8 +327,10 @@ def validar(jornadas: List[List[Tuple[str, str]]]) -> List[str]:
     total_pares_posibles = len(EQUIPOS) * (len(EQUIPOS) - 1) // 2  # 153
     if len(pares_vistos) != total_pares_posibles:
         faltantes = total_pares_posibles - len(pares_vistos)
-        errores.append(f"Faltan {faltantes} enfrentamientos para round-robin completo "
-                       f"({len(pares_vistos)}/{total_pares_posibles}).")
+        errores.append(
+            f"Faltan {faltantes} enfrentamientos para round-robin completo "
+            f"({len(pares_vistos)}/{total_pares_posibles})."
+        )
 
     for e, n in partidos_por_equipo.items():
         if n != 17:
@@ -187,6 +341,7 @@ def validar(jornadas: List[List[Tuple[str, str]]]) -> List[str]:
         errores.append(f"Se esperaban 17 rangos de fechas, hay {len(FECHAS)}.")
     else:
         from datetime import date
+
         prev_fin = None
         for i, (ini, fin) in enumerate(FECHAS, start=1):
             try:
@@ -228,8 +383,10 @@ def main() -> int:
         for e in errores:
             print(f"   - {e}")
         return 1
-    print("✅ Calendario válido: 17 jornadas, 9 partidos c/u, round-robin completo "
-          "(153 enfrentamientos únicos), cada equipo juega 17 veces.")
+    print(
+        "✅ Calendario válido: 17 jornadas, 9 partidos c/u, round-robin completo "
+        "(153 enfrentamientos únicos), cada equipo juega 17 veces."
+    )
 
     calendario = construir()
     if args.dry_run:

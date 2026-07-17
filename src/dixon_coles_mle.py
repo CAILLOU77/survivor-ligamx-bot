@@ -20,6 +20,7 @@ reutilizan de poisson_model (DRY). numpy/scipy se importan de forma perezosa.
 
 Informativo: no cierra ni envía picks.
 """
+
 from __future__ import annotations
 
 import math
@@ -66,10 +67,12 @@ def ajustar_dixon_coles(
     filas = []
     for p in partidos:
         try:
-            hg = int(p["home_goals"]); ag = int(p["away_goals"])
+            hg = int(p["home_goals"])
+            ag = int(p["away_goals"])
         except (KeyError, TypeError, ValueError):
             continue
-        h = pm._norm(p.get("home_team")); a = pm._norm(p.get("away_team"))
+        h = pm._norm(p.get("home_team"))
+        a = pm._norm(p.get("away_team"))
         if not h or not a:
             continue
         filas.append((h, a, hg, ag, _ordinal(p.get("fecha"))))
@@ -97,12 +100,16 @@ def ajustar_dixon_coles(
     else:
         W = np.ones(len(filas))
 
-    m00 = (X == 0) & (Y == 0); m01 = (X == 0) & (Y == 1)
-    m10 = (X == 1) & (Y == 0); m11 = (X == 1) & (Y == 1)
+    m00 = (X == 0) & (Y == 0)
+    m01 = (X == 0) & (Y == 1)
+    m10 = (X == 1) & (Y == 0)
+    m11 = (X == 1) & (Y == 1)
 
     def nll(theta):
-        atk = theta[:nt]; dfn = theta[nt:2 * nt]
-        gamma = theta[2 * nt]; rho = theta[2 * nt + 1]
+        atk = theta[:nt]
+        dfn = theta[nt : 2 * nt]
+        gamma = theta[2 * nt]
+        rho = theta[2 * nt + 1]
         atk = atk - atk.mean()  # identificabilidad: sum(ataque)=0
         lam = np.clip(np.exp(gamma + atk[H] - dfn[A]), 1e-6, 30.0)
         mu = np.clip(np.exp(atk[A] - dfn[H]), 1e-6, 30.0)
@@ -113,7 +120,7 @@ def ajustar_dixon_coles(
         tau[m11] = 1.0 - rho
         tau = np.clip(tau, 1e-6, None)
         ll = np.log(tau) + (X * np.log(lam) - lam) + (Y * np.log(mu) - mu)
-        pen = ridge * (np.sum(atk ** 2) + np.sum(dfn ** 2))
+        pen = ridge * (np.sum(atk**2) + np.sum(dfn**2))
         return -np.sum(W * ll) + pen
 
     x0 = np.concatenate([np.zeros(nt), np.zeros(nt), [0.25], [-0.1]])
@@ -121,11 +128,11 @@ def ajustar_dixon_coles(
     sol = minimize(nll, x0, method="L-BFGS-B", bounds=bounds, options={"maxiter": max_iter})
 
     theta = sol.x
-    atk = theta[:nt]; atk = atk - atk.mean()
-    dfn = theta[nt:2 * nt]
+    atk = theta[:nt]
+    atk = atk - atk.mean()
+    dfn = theta[nt : 2 * nt]
     return {
-        "equipos": {t: {"ataque": float(atk[idx[t]]), "defensa": float(dfn[idx[t]])}
-                    for t in equipos},
+        "equipos": {t: {"ataque": float(atk[idx[t]]), "defensa": float(dfn[idx[t]])} for t in equipos},
         "gamma": float(theta[2 * nt]),
         "rho": float(theta[2 * nt + 1]),
         "n_partidos": len(filas),

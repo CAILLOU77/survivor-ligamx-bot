@@ -10,6 +10,7 @@ Convención 1X2: resultado/pick en {1: local, 2: empate, 3: visitante}.
 
 Sin red, sin I/O. NO cierra ni envía picks. Decisión operativa: ESPERAR / NO ENVIAR.
 """
+
 from __future__ import annotations
 
 from typing import Any, Dict, List, Sequence
@@ -106,14 +107,16 @@ def evaluar_dataset(
         pick = estrategia(fila)
         odds = _odds_de(fila, pick)
         apuestas.append({"odds": odds, "gano": pick == resultado})
-        brier_items.append({
-            "prob": [
-                float(fila.get("true_prob_1", 0)),
-                float(fila.get("true_prob_2", 0)),
-                float(fila.get("true_prob_3", 0)),
-            ],
-            "resultado": resultado,
-        })
+        brier_items.append(
+            {
+                "prob": [
+                    float(fila.get("true_prob_1", 0)),
+                    float(fila.get("true_prob_2", 0)),
+                    float(fila.get("true_prob_3", 0)),
+                ],
+                "resultado": resultado,
+            }
+        )
 
     ganancia = sum(ganancia_apuesta(a["odds"], a["gano"], stake) for a in apuestas)
     return {
@@ -148,10 +151,7 @@ def distribucion_vig(
             if (lo <= x < hi) or (ultimo and x == hi):
                 conteos[i] += 1
                 break
-    return [
-        {"rango": f"{limites[i]}-{limites[i + 1]}%", "conteo": conteos[i]}
-        for i in range(len(conteos))
-    ]
+    return [{"rango": f"{limites[i]}-{limites[i + 1]}%", "conteo": conteos[i]} for i in range(len(conteos))]
 
 
 def resumen_trend(filas: Sequence[Dict[str, Any]]) -> Dict[str, Dict[str, int]]:

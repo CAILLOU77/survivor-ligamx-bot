@@ -14,6 +14,7 @@ Base: goles esperados y probabilidades 1X2 del modelo Poisson.
 - H2H: pequeño empujón por dominio histórico, SOLO si played ≥ 6; tope ±5 puntos
   sobre la probabilidad de victoria del favorito (luego se renormaliza).
 """
+
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
@@ -30,9 +31,9 @@ except ImportError:  # pragma: no cover
 
 # Parámetros del ajuste (transparentes y acotados).
 K_LINEUP = 0.6
-CAP_LINEUP = 0.15          # recorte máximo de goles esperados por equipo (15%)
+CAP_LINEUP = 0.15  # recorte máximo de goles esperados por equipo (15%)
 H2H_MIN_PARTIDOS = 6
-H2H_TOPE_PTS = 5.0         # empujón máximo (puntos porcentuales) al favorito
+H2H_TOPE_PTS = 5.0  # empujón máximo (puntos porcentuales) al favorito
 
 # Umbrales de confianza 1X2 (coherentes con el motor).
 _CONF_ALTA = 55.0
@@ -102,9 +103,9 @@ def ajustar_pronostico(
         fl = factor_lineup(info_l.get("fuerza_xi_pct"))
         fv = factor_lineup(info_v.get("fuerza_xi_pct"))
         if fl > 0:
-            notas.append(f"{pron.get('local')}: -{round(fl*100)}% ataque (XI incompleto)")
+            notas.append(f"{pron.get('local')}: -{round(fl * 100)}% ataque (XI incompleto)")
         if fv > 0:
-            notas.append(f"{pron.get('visitante')}: -{round(fv*100)}% ataque (XI incompleto)")
+            notas.append(f"{pron.get('visitante')}: -{round(fv * 100)}% ataque (XI incompleto)")
 
     gl_adj = float(gl) * (1.0 - fl)
     gv_adj = float(gv) * (1.0 - fv)
@@ -134,7 +135,7 @@ def ajustar_pronostico(
                 if total > 0:
                     pl, pe, pv = pl / total * 100.0, pe / total * 100.0, pv / total * 100.0
                 signo = "+" if empuje > 0 else ""
-                notas.append(f"H2H ({played} duelos): {signo}{round(empuje,1)}pts al local")
+                notas.append(f"H2H ({played} duelos): {signo}{round(empuje, 1)}pts al local")
 
     aplicado = bool(notas)
     if not aplicado:
@@ -143,18 +144,20 @@ def ajustar_pronostico(
 
     pl, pe, pv = round(pl, 2), round(pe, 2), round(pv, 2)
     prob_pick = max(pl, pe, pv)
-    out.update({
-        "prob_local_pct": pl,
-        "prob_empate_pct": pe,
-        "prob_visitante_pct": pv,
-        "prob_pick_pct": round(prob_pick, 2),
-        "pick_1x2": _pick_1x2(pl, pe, pv),
-        "nivel_confianza": _nivel_conf(prob_pick),
-        "no_perder_local_pct": round(pl + pe, 2),
-        "no_perder_visitante_pct": round(pv + pe, 2),
-        "goles_esperados_local": round(gl_adj, 3),
-        "goles_esperados_visitante": round(gv_adj, 3),
-    })
+    out.update(
+        {
+            "prob_local_pct": pl,
+            "prob_empate_pct": pe,
+            "prob_visitante_pct": pv,
+            "prob_pick_pct": round(prob_pick, 2),
+            "pick_1x2": _pick_1x2(pl, pe, pv),
+            "nivel_confianza": _nivel_conf(prob_pick),
+            "no_perder_local_pct": round(pl + pe, 2),
+            "no_perder_visitante_pct": round(pv + pe, 2),
+            "goles_esperados_local": round(gl_adj, 3),
+            "goles_esperados_visitante": round(gv_adj, 3),
+        }
+    )
     out["ajuste"] = {
         "aplicado": True,
         "notas": notas,

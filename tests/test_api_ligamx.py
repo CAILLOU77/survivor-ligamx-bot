@@ -4,6 +4,7 @@
 Llaman a las funciones de endpoint directamente, con el histórico y el
 calendario inyectados (sin red, sin servidor).
 """
+
 from __future__ import annotations
 
 import sys
@@ -18,6 +19,7 @@ if SRC not in sys.path:
     sys.path.insert(0, SRC)
 
 import importlib
+
 api = importlib.import_module("routers.api_ligamx")
 
 
@@ -26,30 +28,59 @@ def _fake_resultados():
     return {
         "fuente": "ESPN (test)",
         "resultados": [
-            {"fecha": "2025-08-01", "home_team": "América", "away_team": "Guadalajara",
-             "home_goals": 2, "away_goals": 1},
-            {"fecha": "2025-03-10", "home_team": "Guadalajara", "away_team": "América",
-             "home_goals": 0, "away_goals": 0},
-            {"fecha": "2024-11-05", "home_team": "América", "away_team": "Toluca",
-             "home_goals": 3, "away_goals": 0},
-            {"fecha": "2024-10-01", "home_team": "Toluca", "away_team": "Guadalajara",
-             "home_goals": 1, "away_goals": 1},
-            {"fecha": "2024-09-01", "home_team": "Guadalajara", "away_team": "Toluca",
-             "home_goals": 2, "away_goals": 0},
+            {
+                "fecha": "2025-08-01",
+                "home_team": "América",
+                "away_team": "Guadalajara",
+                "home_goals": 2,
+                "away_goals": 1,
+            },
+            {
+                "fecha": "2025-03-10",
+                "home_team": "Guadalajara",
+                "away_team": "América",
+                "home_goals": 0,
+                "away_goals": 0,
+            },
+            {"fecha": "2024-11-05", "home_team": "América", "away_team": "Toluca", "home_goals": 3, "away_goals": 0},
+            {
+                "fecha": "2024-10-01",
+                "home_team": "Toluca",
+                "away_team": "Guadalajara",
+                "home_goals": 1,
+                "away_goals": 1,
+            },
+            {
+                "fecha": "2024-09-01",
+                "home_team": "Guadalajara",
+                "away_team": "Toluca",
+                "home_goals": 2,
+                "away_goals": 0,
+            },
         ],
     }
 
 
 def _fake_calendario():
     return [
-        {"jornada": 1, "fecha_inicio": "2026-07-16", "fecha_fin": "2026-07-18", "partidos": [
-            {"home_team": "América", "away_team": "Guadalajara"},
-            {"home_team": "Toluca", "away_team": "Atlante"},
-        ]},
-        {"jornada": 2, "fecha_inicio": "2026-07-21", "fecha_fin": "2026-07-26", "partidos": [
-            {"home_team": "Guadalajara", "away_team": "Toluca"},
-            {"home_team": "Atlante", "away_team": "América"},
-        ]},
+        {
+            "jornada": 1,
+            "fecha_inicio": "2026-07-16",
+            "fecha_fin": "2026-07-18",
+            "partidos": [
+                {"home_team": "América", "away_team": "Guadalajara"},
+                {"home_team": "Toluca", "away_team": "Atlante"},
+            ],
+        },
+        {
+            "jornada": 2,
+            "fecha_inicio": "2026-07-21",
+            "fecha_fin": "2026-07-26",
+            "partidos": [
+                {"home_team": "Guadalajara", "away_team": "Toluca"},
+                {"home_team": "Atlante", "away_team": "América"},
+            ],
+        },
     ]
 
 
@@ -58,10 +89,8 @@ class TestApiLigaMX(unittest.TestCase):
         api._CACHE["datos"] = None
         api._CACHE["fuerzas"] = None
         api._CACHE["ts"] = None
-        self.p_res = mock.patch.object(api.fuentes_mod, "obtener_resultados",
-                                       return_value=_fake_resultados())
-        self.p_cal = mock.patch.object(api.plan_mod, "cargar_calendario",
-                                       return_value=_fake_calendario())
+        self.p_res = mock.patch.object(api.fuentes_mod, "obtener_resultados", return_value=_fake_resultados())
+        self.p_cal = mock.patch.object(api.plan_mod, "cargar_calendario", return_value=_fake_calendario())
         self.p_res.start()
         self.p_cal.start()
 
@@ -186,8 +215,7 @@ class TestApiLigaMX(unittest.TestCase):
         self.assertEqual(ctx.exception.status_code, 400)
 
     def test_cache_evita_recalcular(self):
-        with mock.patch.object(api.fuentes_mod, "obtener_resultados",
-                               return_value=_fake_resultados()) as m:
+        with mock.patch.object(api.fuentes_mod, "obtener_resultados", return_value=_fake_resultados()) as m:
             api._CACHE["fuerzas"] = None
             api._CACHE["ts"] = None
             api.equipos()

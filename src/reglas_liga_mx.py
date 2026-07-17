@@ -15,6 +15,7 @@ Hechos (fuentes: Wikipedia "Liga MX" / squawka, junio 2026; reformulado):
   directo a cuartos, por la compresión de calendario del Mundial 2026.
 - Descenso: SUSPENDIDO desde 2020.
 """
+
 from __future__ import annotations
 
 import unicodedata
@@ -34,10 +35,7 @@ EXCEPCIONES_FORMATO: Dict[str, Dict[str, Any]] = {
     "clausura 2026": {
         "play_in": False,
         "clasificados_directo": 8,
-        "nota": (
-            "Clausura 2026: sin Play-In; top 8 directo a cuartos por compresión "
-            "de calendario del Mundial 2026."
-        ),
+        "nota": ("Clausura 2026: sin Play-In; top 8 directo a cuartos por compresión de calendario del Mundial 2026."),
     },
 }
 

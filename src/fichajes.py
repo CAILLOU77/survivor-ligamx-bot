@@ -10,6 +10,7 @@ humano). Este módulo solo LEE ese archivo y lo expone al pick/dossier.
 
 Regla del proyecto: no inventar. Si no hay datos para un equipo, devuelve vacío.
 """
+
 from __future__ import annotations
 
 import json

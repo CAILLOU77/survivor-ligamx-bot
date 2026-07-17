@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Tests para src/poisson_model.py (modelo Poisson / Dixon-Coles)."""
+
 from __future__ import annotations
 
 import sys
@@ -115,9 +116,18 @@ class TestPronostico(unittest.TestCase):
     def test_pronostico_completo(self):
         f = pm.calcular_fuerzas(_liga_sintetica())
         r = pm.pronostico("Fuerte", "Debil", f)
-        for k in ("prob_local_pct", "prob_empate_pct", "prob_visitante_pct",
-                  "prob_over_pct", "prob_under_pct", "prob_btts_si_pct",
-                  "marcador_mas_probable", "pick_1x2", "pick_ou", "pick_btts"):
+        for k in (
+            "prob_local_pct",
+            "prob_empate_pct",
+            "prob_visitante_pct",
+            "prob_over_pct",
+            "prob_under_pct",
+            "prob_btts_si_pct",
+            "marcador_mas_probable",
+            "pick_1x2",
+            "pick_ou",
+            "pick_btts",
+        ):
             self.assertIn(k, r)
 
     def test_fuerte_favorito(self):

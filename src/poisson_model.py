@@ -18,6 +18,7 @@ Método (estándar en analítica de fútbol):
 
 Matemática pura: sin red, sin I/O, sin scipy. NO cierra ni envía picks.
 """
+
 from __future__ import annotations
 
 import math
@@ -45,7 +46,7 @@ def _pois_pmf(k: int, lam: float) -> float:
         raise ValueError("lambda no puede ser negativo.")
     if lam == 0:
         return 1.0 if k == 0 else 0.0
-    return math.exp(-lam) * (lam ** k) / math.factorial(k)
+    return math.exp(-lam) * (lam**k) / math.factorial(k)
 
 
 def _tau_dixon_coles(x: int, y: int, lam: float, mu: float, rho: float) -> float:
@@ -174,7 +175,6 @@ def marcador_mas_probable_para(matriz: List[List[float]], resultado: str) -> Tup
     return mejor if mejor is not None else marcador_mas_probable(matriz)
 
 
-
 # ---------------------------------------------------------------------------
 # Estimación de fuerzas de equipo desde resultados históricos
 # ---------------------------------------------------------------------------
@@ -189,6 +189,7 @@ def _fecha_ordinal(fecha: Any) -> Optional[int]:
         return None
     try:
         from datetime import date
+
         y, m, d = s.split("-")
         return date(int(y), int(m), int(d)).toordinal()
     except (ValueError, TypeError):
@@ -258,9 +259,15 @@ def calcular_fuerzas(
             continue
         w = _peso_recencia(_fecha_ordinal(p.get("fecha")), ref_ord, half_life_dias)
         th, ta = _team(h), _team(a)
-        th["gf_h"] += w * hg; th["gc_h"] += w * ag; th["w_h"] += w
-        ta["gf_a"] += w * ag; ta["gc_a"] += w * hg; ta["w_a"] += w
-        tot_home_goals += w * hg; tot_away_goals += w * ag; peso_total += w
+        th["gf_h"] += w * hg
+        th["gc_h"] += w * ag
+        th["w_h"] += w
+        ta["gf_a"] += w * ag
+        ta["gc_a"] += w * hg
+        ta["w_a"] += w
+        tot_home_goals += w * hg
+        tot_away_goals += w * ag
+        peso_total += w
 
     if peso_total == 0:
         raise ValueError("No hay partidos históricos válidos para estimar fuerzas.")
@@ -369,15 +376,11 @@ def combinar_con_mercado(
     if not 0.0 <= peso_modelo <= 1.0:
         raise ValueError("peso_modelo debe estar entre 0 y 1.")
     peso_mercado = 1.0 - peso_modelo
-    mezcla = [
-        peso_modelo * m + peso_mercado * k
-        for m, k in zip(prob_modelo, prob_mercado)
-    ]
+    mezcla = [peso_modelo * m + peso_mercado * k for m, k in zip(prob_modelo, prob_mercado)]
     total = sum(mezcla)
     if total <= 0:
         raise ValueError("La mezcla resultó en suma no positiva.")
     return [x / total for x in mezcla]
-
 
 
 # ---------------------------------------------------------------------------

@@ -1,6 +1,5 @@
 from fastapi import FastAPI, Request
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from fastapi import HTTPException, Header, Depends, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,6 +11,7 @@ from typing import Optional
 # Cargar .env en local (en Render/prod las vars vienen del entorno; esto es no-op).
 try:
     from dotenv import load_dotenv
+
     load_dotenv()
 except Exception:  # pragma: no cover - dotenv es opcional
     pass
@@ -23,6 +23,7 @@ from src.rate_limit import limiter
 # Si no está configurada, los endpoints protegidos fallan en cerrado (503).
 API_KEY = os.getenv("API_KEY", "").strip()
 
+
 def verify_api_key(x_api_key: Optional[str] = Header(None)):
     if not API_KEY:
         raise HTTPException(
@@ -33,6 +34,7 @@ def verify_api_key(x_api_key: Optional[str] = Header(None)):
         raise HTTPException(status_code=403, detail="Clave API inválida o faltante")
     return x_api_key
 
+
 app = FastAPI(title="Survivor LigaMX API Premium", version="2.1.0", docs_url="/docs")
 # CORS configurable: en producción usa CORS_ORIGINS="https://tudominio.com,https://otro.com"
 # En desarrollo deja vacío (solo localhost) o define CORS_ORIGINS=* explícitamente.
@@ -41,9 +43,11 @@ if _cors_raw:
     allow_origins = [o.strip() for o in _cors_raw.split(",") if o.strip()]
 else:
     # Fallback seguro: no abrir CORS a "*" por defecto en prod.
-    allow_origins = ["*"] if os.getenv("CORS_ALLOW_ALL", "false").lower() == "true" else [
-        "http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:8000", "null"
-    ]
+    allow_origins = (
+        ["*"]
+        if os.getenv("CORS_ALLOW_ALL", "false").lower() == "true"
+        else ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:8000", "null"]
+    )
 
 app.add_middleware(
     CORSMiddleware,
@@ -55,10 +59,13 @@ app.add_middleware(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 from src.routers.cron_router import router as cron_router
+
 app.include_router(cron_router)
 from src.routers.predicciones import router as predicciones_router
+
 app.include_router(predicciones_router)
 from src.routers.api_ligamx import router as api_ligamx_router
+
 app.include_router(api_ligamx_router)
 init_db()
 
@@ -73,14 +80,22 @@ def _predicciones_reales() -> dict:
     """Obtiene las predicciones reales (ESPN + Poisson) usando la cache del router."""
     try:
         from src.routers.predicciones import _obtener as _obtener_predicciones
+
         return _obtener_predicciones()
     except Exception as exc:  # pragma: no cover - fallback defensivo
-        return {"pronosticos": [], "fuente_datos": None, "generado_utc": None,
-                "decision": "INFORMATIVO / REVISIÓN HUMANA", "error": str(exc)}
+        return {
+            "pronosticos": [],
+            "fuente_datos": None,
+            "generado_utc": None,
+            "decision": "INFORMATIVO / REVISIÓN HUMANA",
+            "error": str(exc),
+        }
+
 
 @app.get("/health", summary="Estado del sistema", tags=["Status"])
 def health():
     return {"status": "ok", "version": "2.1.0-premium", "timestamp": datetime.now(timezone.utc).isoformat()}
+
 
 @app.get("/picks/latest", summary="(Deprecado) Predicciones reales ESPN+Poisson", tags=["Picks"])
 @limiter.limit("10/minute")
@@ -106,6 +121,7 @@ def get_picks(request: Request, api_key: str = Depends(verify_api_key)):
 def alerts_pronosticos(request: Request, api_key: str = Depends(verify_api_key)):
     """Genera predicciones reales (ESPN + Poisson) y las envía por Telegram."""
     from src import telegram_pronosticos
+
     return telegram_pronosticos.enviar_pronosticos()
 
 
@@ -117,6 +133,7 @@ def alerts_high_ev(request: Request, api_key: str = Depends(verify_api_key)):
     momios inventados; ahora envía PRONÓSTICOS REALES (ESPN + Poisson).
     """
     from src import telegram_pronosticos
+
     res = telegram_pronosticos.enviar_pronosticos()
     res["nota"] = "Endpoint deprecado: usa /alerts/pronosticos. Envía predicciones reales."
     return res
@@ -130,6 +147,7 @@ def alerts_plan(request: Request, api_key: str = Depends(verify_api_key)):
     cada jornada) y lo envía por Telegram. Requiere data/calendario.json.
     """
     from src import telegram_pronosticos
+
     return telegram_pronosticos.enviar_plan()
 
 
@@ -138,6 +156,7 @@ def alerts_plan(request: Request, api_key: str = Depends(verify_api_key)):
 def alerts_resumen(request: Request, api_key: str = Depends(verify_api_key)):
     """Envía por Telegram el track-record del modelo (aciertos 1X2 y marcador)."""
     from src import telegram_pronosticos
+
     return telegram_pronosticos.enviar_resumen_rentabilidad()
 
 
@@ -152,31 +171,34 @@ def alerts_momios(request: Request, solo_si_hay: bool = False, api_key: str = De
     Telegram si YA hay líneas (evita spam en pretemporada).
     """
     from src import telegram_pronosticos
+
     return telegram_pronosticos.enviar_momios_estado(solo_si_hay=solo_si_hay)
 
 
 @app.post("/alerts/recordatorio", summary="Recordar por Telegram que se acerca la jornada", tags=["Alerts"])
 @limiter.limit("6/minute")
-def alerts_recordatorio(request: Request, dias_antes: int = 1,
-                        api_key: str = Depends(verify_api_key)):
+def alerts_recordatorio(request: Request, dias_antes: int = 1, api_key: str = Depends(verify_api_key)):
     """
     Envía un recordatorio SOLO si la próxima jornada arranca dentro de `dias_antes`
     días. Pensado para un cron diario (no spamea: solo dispara al acercarse).
     """
     from src import telegram_pronosticos
+
     return telegram_pronosticos.enviar_recordatorio_si_aplica(dias_antes=dias_antes)
 
 
 @app.post("/fichajes", summary="Importar altas/bajas de un equipo (asistido, sin scraping)", tags=["Datos"])
 @limiter.limit("30/minute")
-def set_fichajes(request: Request, equipo: str, altas: str = "", bajas: str = "",
-                 api_key: str = Depends(verify_api_key)):
+def set_fichajes(
+    request: Request, equipo: str, altas: str = "", bajas: str = "", api_key: str = Depends(verify_api_key)
+):
     """
     Guarda altas/bajas de un equipo (datos de Transfermarkt que TÚ validas; no se
     scrapea). `altas`/`bajas` separadas por coma. Ej:
     POST /fichajes?equipo=America&altas=Jugador A,Jugador B&bajas=Jugador C
     """
     from src import fichajes
+
     a = [x for x in altas.split(",") if x.strip()]
     b = [x for x in bajas.split(",") if x.strip()]
     guardado = fichajes.guardar_equipo(equipo, a, b)
@@ -188,6 +210,7 @@ def set_fichajes(request: Request, equipo: str, altas: str = "", bajas: str = ""
 def get_fichajes(request: Request, equipo: str):
     """Devuelve las altas/bajas guardadas de un equipo (informativo, público)."""
     from src import fichajes
+
     return {"equipo": equipo, **fichajes.resumen_equipo(equipo)}
 
 
@@ -200,11 +223,11 @@ def survivor_usados_listar(request: Request):
     """Equipos que ya gastaste (se excluyen automáticamente del pick y del plan)."""
     try:
         from src.database import get_equipos_usados
+
         usados = get_equipos_usados()
     except Exception as exc:
         return {"usados": [], "total": 0, "error": str(exc)}
-    return {"usados": usados, "total": len(usados),
-            "decision": "INFORMATIVO / REVISIÓN HUMANA"}
+    return {"usados": usados, "total": len(usados), "decision": "INFORMATIVO / REVISIÓN HUMANA"}
 
 
 @app.post("/survivor/usados", summary="Marcar un equipo como usado", tags=["Survivor"])
@@ -212,11 +235,11 @@ def survivor_usados_listar(request: Request):
 def survivor_usados_agregar(request: Request, equipo: str, api_key: str = Depends(verify_api_key)):
     """Registra el equipo que escogiste esta jornada para que ya no se sugiera."""
     from src.database import add_equipo_usado, get_equipos_usados
+
     if not equipo or not equipo.strip():
         raise HTTPException(status_code=400, detail="Falta el parámetro 'equipo'.")
     agregado = add_equipo_usado(equipo)
-    return {"equipo": equipo.strip(), "agregado": agregado,
-            "ya_estaba": not agregado, "usados": get_equipos_usados()}
+    return {"equipo": equipo.strip(), "agregado": agregado, "ya_estaba": not agregado, "usados": get_equipos_usados()}
 
 
 @app.delete("/survivor/usados", summary="Quitar un equipo usado", tags=["Survivor"])
@@ -224,6 +247,7 @@ def survivor_usados_agregar(request: Request, equipo: str, api_key: str = Depend
 def survivor_usados_quitar(request: Request, equipo: str, api_key: str = Depends(verify_api_key)):
     """Quita un equipo de la lista de usados (por si te equivocaste al registrarlo)."""
     from src.database import remove_equipo_usado, get_equipos_usados
+
     filas = remove_equipo_usado(equipo)
     return {"equipo": equipo.strip(), "quitado": bool(filas), "usados": get_equipos_usados()}
 
@@ -233,6 +257,7 @@ def survivor_usados_quitar(request: Request, equipo: str, api_key: str = Depends
 def survivor_usados_reset(request: Request, api_key: str = Depends(verify_api_key)):
     """Vacía la lista de usados (úsalo al empezar una temporada nueva)."""
     from src.database import clear_equipos_usados
+
     borrados = clear_equipos_usados()
     return {"borrados": borrados, "usados": []}
 
@@ -308,10 +333,12 @@ async def telegram_webhook(
         tp.enviar_mensaje(tw.responder(cmd, arg))
     return {"ok": True}
 
+
 @app.get("/stats", summary="Métricas de rendimiento", tags=["Analytics"])
 @limiter.limit("20/minute")
 def premium_stats(request: Request, api_key: str = Depends(verify_api_key)):
     return get_metrics()
+
 
 @app.get("/history", summary="Historial paginado", tags=["Analytics"])
 @limiter.limit("20/minute")
@@ -322,14 +349,16 @@ def get_history_endpoint(request: Request, limit: int = 20, offset: int = 0, api
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.post("/backtest/settle/{pick_id}", summary="Validar resultado de pick", tags=["Analytics"])
-def settle_pick_endpoint(pick_id: int, result: float = 0.0, profit_loss: float = 0.0, api_key: str = Depends(verify_api_key)):
+def settle_pick_endpoint(
+    pick_id: int, result: float = 0.0, profit_loss: float = 0.0, api_key: str = Depends(verify_api_key)
+):
     try:
         settle_pick(pick_id, result, profit_loss)
         return {"status": "updated", "pick_id": pick_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 
 
 @app.get("/dashboard", response_class=HTMLResponse, summary="Dashboard visual", tags=["Dashboard"])
@@ -402,13 +431,13 @@ def dashboard():
 </body>
 </html>"""
 
-    losses = stats['total_picks'] - stats['wins']
+    losses = stats["total_picks"] - stats["wins"]
     html = html.format(
-        total_picks=stats['total_picks'],
-        wins=stats['wins'],
+        total_picks=stats["total_picks"],
+        wins=stats["wins"],
         win_rate=f"{stats['win_rate']:.1f}",
         total_profit=f"{stats['total_profit']:.2f}",
-        losses=losses
+        losses=losses,
     )
 
     return HTMLResponse(content=html)
@@ -419,9 +448,12 @@ def dashboard():
 def debug_jornadas(request: Request):
     """Muestra el contenido de jornadas.json para debugging"""
     import json
+
     try:
-        jornadas_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "jornadas.json")
-        with open(jornadas_path, 'r', encoding='utf-8') as f:
+        jornadas_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "jornadas.json"
+        )
+        with open(jornadas_path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
         # Contar partidos
@@ -429,7 +461,7 @@ def debug_jornadas(request: Request):
             count = len(data)
             sample = data[:2] if data else []
         else:
-            partidos = data.get('partidos', [])
+            partidos = data.get("partidos", [])
             count = len(partidos)
             sample = partidos[:2] if partidos else []
 
@@ -437,7 +469,7 @@ def debug_jornadas(request: Request):
             "status": "success",
             "total_partidos": count,
             "sample": sample,
-            "structure": "list" if isinstance(data, list) else "dict"
+            "structure": "list" if isinstance(data, list) else "dict",
         }
     except Exception as e:
         return {"status": "error", "message": str(e)}
@@ -449,6 +481,7 @@ def debug_scraper(request: Request):
     """Diagnóstico de la fuente real: próximos fixtures de Liga MX desde ESPN."""
     try:
         from src import espn_data
+
         fixtures = espn_data.obtener_fixtures()
         return {
             "status": "success",
@@ -470,6 +503,7 @@ def debug_api_response(request: Request):
     """
     try:
         from src import fuentes_datos
+
         datos = fuentes_datos.obtener_resultados(meses=2)
         return {
             "status": "success",
@@ -480,6 +514,8 @@ def debug_api_response(request: Request):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run("src.api:app", host="0.0.0.0", port=8000, reload=True)

@@ -11,6 +11,7 @@ históricamente a ese rival concreto.
 No inventa nada: todo sale de los resultados ya jugados (misma fuente que el
 modelo). Es una SEÑAL de cautela, no un veredicto.
 """
+
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Sequence
@@ -24,8 +25,7 @@ except ImportError:  # pragma: no cover
 MIN_JUEGOS = 3
 
 
-def resumen_h2h(resultados: Sequence[Dict[str, Any]], equipo_a: str,
-                equipo_b: str) -> Dict[str, Any]:
+def resumen_h2h(resultados: Sequence[Dict[str, Any]], equipo_a: str, equipo_b: str) -> Dict[str, Any]:
     """
     Cuenta los enfrentamientos directos (en cualquier sede) entre A y B desde el
     historial. Devuelve el registro desde la perspectiva de A:
@@ -61,8 +61,9 @@ def resumen_h2h(resultados: Sequence[Dict[str, Any]], equipo_a: str,
     }
 
 
-def alerta_h2h(resultados: Sequence[Dict[str, Any]], favorito: str, rival: str,
-               min_juegos: int = MIN_JUEGOS) -> Optional[str]:
+def alerta_h2h(
+    resultados: Sequence[Dict[str, Any]], favorito: str, rival: str, min_juegos: int = MIN_JUEGOS
+) -> Optional[str]:
     """
     Devuelve una nota de cautela si el `favorito` NO domina históricamente al
     `rival` (le cuesta / es su bestia negra). None si no hay muestra suficiente
@@ -78,13 +79,14 @@ def alerta_h2h(resultados: Sequence[Dict[str, Any]], favorito: str, rival: str,
     if r["a_gana"] * 2 <= n:  # favorito gana <= 50% de los duelos
         fav = display_team_name(favorito)
         riv = display_team_name(rival)
-        return (f"{riv} le sabe jugar a {fav}: en {n} duelos {fav} ganó "
-                f"{r['a_gana']}, {riv} {r['b_gana']}, empates {r['empates']}.")
+        return (
+            f"{riv} le sabe jugar a {fav}: en {n} duelos {fav} ganó "
+            f"{r['a_gana']}, {riv} {r['b_gana']}, empates {r['empates']}."
+        )
     return None
 
 
-def anotar_h2h(pronosticos: Sequence[Dict[str, Any]],
-               resultados: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def anotar_h2h(pronosticos: Sequence[Dict[str, Any]], resultados: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     Añade `h2h_nota` a cada pronóstico cuando el favorito del modelo (local o
     visitante, según pick_1x2) tiene mal registro histórico vs el rival. Copia

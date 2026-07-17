@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Tests para src/altitud.py (factor de altitud). Sin red."""
+
 from __future__ import annotations
 
 import sys
@@ -35,22 +36,30 @@ class TestFactorAltitud(unittest.TestCase):
 class TestAplicarAltitud(unittest.TestCase):
     def test_sube_prob_local_cuando_aplica(self):
         pron = {
-            "local": "Toluca", "visitante": "Mazatlán",
-            "lambda_local": 1.5, "lambda_visitante": 1.2,
-            "prob_local_pct": 45.0, "prob_empate_pct": 27.0, "prob_visitante_pct": 28.0,
+            "local": "Toluca",
+            "visitante": "Mazatlán",
+            "lambda_local": 1.5,
+            "lambda_visitante": 1.2,
+            "prob_local_pct": 45.0,
+            "prob_empate_pct": 27.0,
+            "prob_visitante_pct": 28.0,
         }
         out = alt.aplicar_altitud(pron)
         self.assertGreater(out["prob_local_pct"], 45.0)
         self.assertIn("ajuste_altitud", out)
         self.assertAlmostEqual(
-            out["prob_local_pct"] + out["prob_empate_pct"] + out["prob_visitante_pct"],
-            100.0, places=1)
+            out["prob_local_pct"] + out["prob_empate_pct"] + out["prob_visitante_pct"], 100.0, places=1
+        )
 
     def test_sin_aplicar_no_cambia(self):
         pron = {
-            "local": "Toluca", "visitante": "Pumas",
-            "lambda_local": 1.4, "lambda_visitante": 1.3,
-            "prob_local_pct": 40.0, "prob_empate_pct": 30.0, "prob_visitante_pct": 30.0,
+            "local": "Toluca",
+            "visitante": "Pumas",
+            "lambda_local": 1.4,
+            "lambda_visitante": 1.3,
+            "prob_local_pct": 40.0,
+            "prob_empate_pct": 30.0,
+            "prob_visitante_pct": 30.0,
         }
         out = alt.aplicar_altitud(pron)
         self.assertNotIn("ajuste_altitud", out)

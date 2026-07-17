@@ -21,6 +21,7 @@ Config:
     GROQ_MODEL   (default 'meta-llama/llama-4-scout-17b-16e-instruct')
     GROQ_ENABLED ('0'/'false' fuerza apagado aunque haya key)
 """
+
 from __future__ import annotations
 
 import json
@@ -101,16 +102,17 @@ def analizar_noticias(equipos: List[str], noticias: List[Dict[str, Any]]) -> Dic
     )
     payload = {
         "model": _modelo(),
-        "messages": [{"role": "system", "content": _SYSTEM},
-                     {"role": "user", "content": user}],
+        "messages": [{"role": "system", "content": _SYSTEM}, {"role": "user", "content": user}],
         "temperature": 0.0,
         "response_format": {"type": "json_object"},
         "max_tokens": 700,
     }
     try:
         resp = requests.post(
-            GROQ_URL, json=payload,
-            headers={"Authorization": f"Bearer {_api_key()}"}, timeout=30,
+            GROQ_URL,
+            json=payload,
+            headers={"Authorization": f"Bearer {_api_key()}"},
+            timeout=30,
         )
         if resp.status_code != 200:
             return {"disponible": False, "motivo": f"Groq HTTP {resp.status_code}."}
@@ -127,13 +129,15 @@ def analizar_noticias(equipos: List[str], noticias: List[Dict[str, Any]]) -> Dic
     for r in riesgos[:10]:
         if not isinstance(r, dict):
             continue
-        limpios.append({
-            "equipo": str(r.get("equipo", ""))[:40],
-            "tipo": str(r.get("tipo", "otro"))[:20],
-            "jugador": str(r.get("jugador", ""))[:60],
-            "resumen": str(r.get("resumen", ""))[:200],
-            "titulo_fuente": str(r.get("titulo_fuente", ""))[:200],
-        })
+        limpios.append(
+            {
+                "equipo": str(r.get("equipo", ""))[:40],
+                "tipo": str(r.get("tipo", "otro"))[:20],
+                "jugador": str(r.get("jugador", ""))[:60],
+                "resumen": str(r.get("resumen", ""))[:200],
+                "titulo_fuente": str(r.get("titulo_fuente", ""))[:200],
+            }
+        )
     return {
         "disponible": True,
         "modelo": _modelo(),

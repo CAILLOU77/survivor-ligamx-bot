@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Tests para src/planificador_survivor.py (estrategia de temporada). Sin red."""
+
 from __future__ import annotations
 
 import sys
@@ -20,22 +21,36 @@ def _historico():
     out = []
     d0 = date(2025, 8, 4)
     pares = [
-        ("A", "D", 3, 0), ("A", "C", 2, 0), ("B", "D", 2, 1), ("C", "D", 1, 1),
-        ("A", "B", 2, 1), ("B", "C", 1, 0), ("D", "C", 0, 1), ("C", "A", 0, 2),
-        ("D", "A", 0, 3), ("B", "A", 1, 2), ("C", "B", 0, 1), ("D", "B", 1, 1),
+        ("A", "D", 3, 0),
+        ("A", "C", 2, 0),
+        ("B", "D", 2, 1),
+        ("C", "D", 1, 1),
+        ("A", "B", 2, 1),
+        ("B", "C", 1, 0),
+        ("D", "C", 0, 1),
+        ("C", "A", 0, 2),
+        ("D", "A", 0, 3),
+        ("B", "A", 1, 2),
+        ("C", "B", 0, 1),
+        ("D", "B", 1, 1),
     ]
     for w, (h, a, hg, ag) in enumerate(pares):
-        out.append({"home_team": h, "away_team": a, "home_goals": hg,
-                    "away_goals": ag, "fecha": (d0 + timedelta(days=7 * w)).isoformat()})
+        out.append(
+            {
+                "home_team": h,
+                "away_team": a,
+                "home_goals": hg,
+                "away_goals": ag,
+                "fecha": (d0 + timedelta(days=7 * w)).isoformat(),
+            }
+        )
     return out
 
 
 def _calendario():
     return [
-        {"jornada": 1, "partidos": [{"home_team": "A", "away_team": "D"},
-                                    {"home_team": "B", "away_team": "C"}]},
-        {"jornada": 2, "partidos": [{"home_team": "C", "away_team": "A"},
-                                    {"home_team": "D", "away_team": "B"}]},
+        {"jornada": 1, "partidos": [{"home_team": "A", "away_team": "D"}, {"home_team": "B", "away_team": "C"}]},
+        {"jornada": 2, "partidos": [{"home_team": "C", "away_team": "A"}, {"home_team": "D", "away_team": "B"}]},
     ]
 
 
@@ -64,8 +79,14 @@ class TestPlanificador(unittest.TestCase):
 
     def test_estructura_y_metricas(self):
         r = ps.planificar(_calendario(), self.fuerzas)
-        for k in ("plan", "prob_supervivencia_total_pct", "victorias_esperadas",
-                  "jornadas_riesgosas", "equipos_no_usados", "decision"):
+        for k in (
+            "plan",
+            "prob_supervivencia_total_pct",
+            "victorias_esperadas",
+            "jornadas_riesgosas",
+            "equipos_no_usados",
+            "decision",
+        ):
             self.assertIn(k, r)
         self.assertTrue(0 < r["prob_supervivencia_total_pct"] <= 100)
         for p in r["plan"]:
@@ -90,6 +111,7 @@ class TestCargarCalendario(unittest.TestCase):
 class TestOddsPorPartido(unittest.TestCase):
     def test_construir_desde_momios_inyectados(self):
         import comparador_mercado as cm
+
         cal = [{"jornada": 1, "partidos": [{"home_team": "América", "away_team": "Toluca"}]}]
         clave = cm._clave_partido("América", "Toluca")
         # Local muy favorito (momio bajo) => prob_local mayor.
@@ -107,6 +129,7 @@ class TestOddsPorPartido(unittest.TestCase):
 
     def test_planificar_con_odds_no_rompe(self):
         import comparador_mercado as cm
+
         fuerzas = pm.calcular_fuerzas(_historico())
         cal = _calendario()
         clave = cm._clave_partido("A", "D")

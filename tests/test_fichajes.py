@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Tests de fichajes: lectura/escritura de altas y bajas (sin scraping)."""
+
 import json
 import os
 import sys
@@ -16,10 +17,17 @@ class TestFichajes(unittest.TestCase):
     def setUp(self):
         # Redirigir el archivo a un temporal para no tocar el real.
         self._tmp = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8")
-        json.dump({"temporada": "test", "equipos": {
-            "América": {"altas": ["Delantero X"], "bajas": ["Volante Y"]},
-            "Guadalajara": {"altas": [], "bajas": []},
-        }}, self._tmp, ensure_ascii=False)
+        json.dump(
+            {
+                "temporada": "test",
+                "equipos": {
+                    "América": {"altas": ["Delantero X"], "bajas": ["Volante Y"]},
+                    "Guadalajara": {"altas": [], "bajas": []},
+                },
+            },
+            self._tmp,
+            ensure_ascii=False,
+        )
         self._tmp.close()
         self._orig = fich._PATH
         fich._PATH = Path(self._tmp.name)

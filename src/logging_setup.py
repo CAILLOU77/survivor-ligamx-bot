@@ -2,6 +2,7 @@
 """
 logging_setup.py — Configuración de logging estructurado (JSON) para el bot.
 """
+
 import json
 import logging
 import os
@@ -23,11 +24,28 @@ class JSONFormatter(logging.Formatter):
         # Añadir campos extra si existen
         for key, value in record.__dict__.items():
             if key not in {
-                "name", "msg", "args", "created", "filename", "funcName",
-                "levelname", "levelno", "lineno", "module", "msecs",
-                "message", "msg", "pathname", "process", "processName",
-                "relativeCreated", "thread", "threadName", "exc_info",
-                "exc_text", "stack_info"
+                "name",
+                "msg",
+                "args",
+                "created",
+                "filename",
+                "funcName",
+                "levelname",
+                "levelno",
+                "lineno",
+                "module",
+                "msecs",
+                "message",
+                "msg",
+                "pathname",
+                "process",
+                "processName",
+                "relativeCreated",
+                "thread",
+                "threadName",
+                "exc_info",
+                "exc_text",
+                "stack_info",
             }:
                 log_obj[key] = value
         if record.exc_info:
@@ -56,9 +74,7 @@ def setup_logging(level: str = None) -> logging.Logger:
     if log_format == "json":
         handler.setFormatter(JSONFormatter())
     else:
-        handler.setFormatter(logging.Formatter(
-            "%(asctime)s %(levelname)s %(name)s %(message)s"
-        ))
+        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
 
     root_logger.addHandler(handler)
 

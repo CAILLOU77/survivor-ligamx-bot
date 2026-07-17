@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Tests para src/fuentes_datos.py (redundancia multi-fuente). Sin red."""
+
 from __future__ import annotations
 
 import sys
@@ -18,20 +19,34 @@ import fuentes_datos as fd  # noqa: E402
 
 class TestParsearTheSportsDB(unittest.TestCase):
     def test_evento_con_marcador(self):
-        data = {"events": [{
-            "strHomeTeam": "Pumas", "strAwayTeam": "Cruz Azul",
-            "intHomeScore": "1", "intAwayScore": "2", "dateEvent": "2026-05-25",
-        }]}
+        data = {
+            "events": [
+                {
+                    "strHomeTeam": "Pumas",
+                    "strAwayTeam": "Cruz Azul",
+                    "intHomeScore": "1",
+                    "intAwayScore": "2",
+                    "dateEvent": "2026-05-25",
+                }
+            ]
+        }
         r = fd.parsear_thesportsdb(data)[0]
         self.assertEqual(r["home_team"], "Pumas")
         self.assertEqual(r["home_goals"], 1)
         self.assertEqual(r["away_goals"], 2)
 
     def test_sin_marcador_se_ignora(self):
-        data = {"events": [{
-            "strHomeTeam": "Necaxa", "strAwayTeam": "Atlante",
-            "intHomeScore": None, "intAwayScore": None, "dateEvent": "2026-07-17",
-        }]}
+        data = {
+            "events": [
+                {
+                    "strHomeTeam": "Necaxa",
+                    "strAwayTeam": "Atlante",
+                    "intHomeScore": None,
+                    "intAwayScore": None,
+                    "dateEvent": "2026-07-17",
+                }
+            ]
+        }
         self.assertEqual(fd.parsear_thesportsdb(data), [])
 
     def test_vacio(self):
@@ -44,7 +59,7 @@ def _r(h, a, hg, ag, fecha="2026-02-01"):
 
 class TestRedundancia(unittest.TestCase):
     def test_espn_primaria_si_suficiente(self):
-        espn = [_r(f"H{i}", f"A{i}", 1, 0, f"2026-02-{i+1:02d}") for i in range(12)]
+        espn = [_r(f"H{i}", f"A{i}", 1, 0, f"2026-02-{i + 1:02d}") for i in range(12)]
         with mock.patch.object(fd.espn_data, "obtener_resultados", return_value=espn):
             with mock.patch.object(fd, "guardar_cache"):  # no tocar el cache real
                 res = fd.obtener_resultados(minimo=10)
@@ -52,7 +67,7 @@ class TestRedundancia(unittest.TestCase):
         self.assertEqual(res["total"], 12)
 
     def test_ligamx_api_primaria_si_habilitada_y_suficiente(self):
-        lmx = [_r(f"H{i}", f"A{i}", 2, 1, f"2026-08-{i+1:02d}") for i in range(12)]
+        lmx = [_r(f"H{i}", f"A{i}", 2, 1, f"2026-08-{i + 1:02d}") for i in range(12)]
         with mock.patch.object(fd.ligamx_api, "usar_como_fuente", return_value=True):
             with mock.patch.object(fd.ligamx_api, "resultados_historicos", return_value=lmx):
                 with mock.patch.object(fd, "guardar_cache"):
@@ -62,7 +77,7 @@ class TestRedundancia(unittest.TestCase):
 
     def test_ligamx_api_ignorada_si_deshabilitada(self):
         # Aunque la API tuviera datos, si el flag está apagado se usa ESPN.
-        espn = [_r(f"H{i}", f"A{i}", 1, 0, f"2026-02-{i+1:02d}") for i in range(12)]
+        espn = [_r(f"H{i}", f"A{i}", 1, 0, f"2026-02-{i + 1:02d}") for i in range(12)]
         with mock.patch.object(fd.ligamx_api, "usar_como_fuente", return_value=False):
             with mock.patch.object(fd.espn_data, "obtener_resultados", return_value=espn):
                 with mock.patch.object(fd, "guardar_cache"):
@@ -101,6 +116,7 @@ class TestEstadoFuentes(unittest.TestCase):
     def _resp(self, code=200):
         class R:
             status_code = code
+
         return R()
 
     def test_ok_global_si_espn_responde(self):

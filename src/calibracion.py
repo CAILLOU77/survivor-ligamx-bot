@@ -17,6 +17,7 @@ Filosofía del proyecto: no inventa nada, todo se deriva de resultados reales, y
 la calibración es OPT-IN (por defecto desactivada): se activa solo cuando los
 datos muestran que mejora la calibración. Informativo / revisión humana.
 """
+
 from __future__ import annotations
 
 from typing import Any, Dict, List, Sequence, Tuple
@@ -150,13 +151,17 @@ def _muestras_walkforward(
             except (KeyError, TypeError, ValueError):
                 continue
             pr = pm.pronostico(h, a, fuerzas)
-            muestras.append({
-                "probs": [pr["prob_local_pct"] / 100.0,
-                          pr["prob_empate_pct"] / 100.0,
-                          pr["prob_visitante_pct"] / 100.0],
-                "resultado": _resultado_1x2(hg, ag),
-                "fecha": str(p.get("fecha", "")),
-            })
+            muestras.append(
+                {
+                    "probs": [
+                        pr["prob_local_pct"] / 100.0,
+                        pr["prob_empate_pct"] / 100.0,
+                        pr["prob_visitante_pct"] / 100.0,
+                    ],
+                    "resultado": _resultado_1x2(hg, ag),
+                    "fecha": str(p.get("fecha", "")),
+                }
+            )
     return muestras
 
 
@@ -172,9 +177,11 @@ def evaluar_calibracion(
     """
     muestras = _muestras_walkforward(resultados, min_train)
     if len(muestras) < 20:
-        return {"n_muestras": len(muestras),
-                "mensaje": "Muestras insuficientes para calibrar.",
-                "decision": DEC_INFORMATIVA}
+        return {
+            "n_muestras": len(muestras),
+            "mensaje": "Muestras insuficientes para calibrar.",
+            "decision": DEC_INFORMATIVA,
+        }
 
     muestras.sort(key=lambda m: m["fecha"])
     corte = len(muestras) // 2
@@ -185,15 +192,13 @@ def evaluar_calibracion(
     alpha = fit["alpha"]
 
     def brier_prom(mset: Sequence[Dict[str, Any]], a: float) -> float:
-        return sum(brier_score(calibrar_probs(m["probs"], a, base), int(m["resultado"]))
-                   for m in mset) / len(mset)
+        return sum(brier_score(calibrar_probs(m["probs"], a, base), int(m["resultado"])) for m in mset) / len(mset)
 
     brier_base_eval = round(brier_prom(eval_set, 0.0), 4)
     brier_cal_eval = round(brier_prom(eval_set, alpha), 4)
     return {
         "n_muestras": len(muestras),
-        "tasa_base": {"local": round(base[0], 3), "empate": round(base[1], 3),
-                      "visita": round(base[2], 3)},
+        "tasa_base": {"local": round(base[0], 3), "empate": round(base[1], 3), "visita": round(base[2], 3)},
         "alpha_sugerido": alpha,
         "brier_sin_calibrar_eval": brier_base_eval,
         "brier_calibrado_eval": brier_cal_eval,
@@ -216,9 +221,7 @@ def calibrar_pronostico(
     """
     out = dict(pron)
     try:
-        probs = [pron["prob_local_pct"] / 100.0,
-                 pron["prob_empate_pct"] / 100.0,
-                 pron["prob_visitante_pct"] / 100.0]
+        probs = [pron["prob_local_pct"] / 100.0, pron["prob_empate_pct"] / 100.0, pron["prob_visitante_pct"] / 100.0]
     except (KeyError, TypeError):
         return out
     pc = calibrar_probs(probs, alpha, base)
@@ -229,16 +232,18 @@ def calibrar_pronostico(
         pick = "Gana Visitante"
     else:
         pick = "Empate"
-    out.update({
-        "prob_local_pct": pl,
-        "prob_empate_pct": pe,
-        "prob_visitante_pct": pv,
-        "prob_pick_pct": round(max(pl, pe, pv), 2),
-        "pick_1x2": pick,
-        "no_perder_local_pct": round(pl + pe, 2),
-        "no_perder_visitante_pct": round(pv + pe, 2),
-        "calibrado": {"alpha": round(float(alpha), 3)},
-    })
+    out.update(
+        {
+            "prob_local_pct": pl,
+            "prob_empate_pct": pe,
+            "prob_visitante_pct": pv,
+            "prob_pick_pct": round(max(pl, pe, pv), 2),
+            "pick_1x2": pick,
+            "no_perder_local_pct": round(pl + pe, 2),
+            "no_perder_visitante_pct": round(pv + pe, 2),
+            "calibrado": {"alpha": round(float(alpha), 3)},
+        }
+    )
     return out
 
 
@@ -255,8 +260,10 @@ def main() -> int:
         return 1
     print(f"Muestras: {r['n_muestras']} | tasa base: {r['tasa_base']}")
     print(f"alpha sugerido: {r['alpha_sugerido']}")
-    print(f"Brier (eval)  sin calibrar: {r['brier_sin_calibrar_eval']} | "
-          f"calibrado: {r['brier_calibrado_eval']} | mejora: {r['mejora_brier_eval']}")
+    print(
+        f"Brier (eval)  sin calibrar: {r['brier_sin_calibrar_eval']} | "
+        f"calibrado: {r['brier_calibrado_eval']} | mejora: {r['mejora_brier_eval']}"
+    )
     print(f"¿Calibrar ayuda?: {'SÍ' if r['calibracion_ayuda'] else 'NO'}")
     return 0
 

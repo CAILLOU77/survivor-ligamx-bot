@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Tests para src/reglas_liga_mx.py (formato/reglas vigentes de Liga MX)."""
+
 from __future__ import annotations
 
 import sys
@@ -98,7 +99,7 @@ class TestZonaYCupos(unittest.TestCase):
 
     def test_cupos_postemporada(self):
         self.assertEqual(rl.cupos_postemporada("Apertura 2026"), 10)  # incluye Play-In
-        self.assertEqual(rl.cupos_postemporada("Clausura 2026"), 8)   # sin Play-In
+        self.assertEqual(rl.cupos_postemporada("Clausura 2026"), 8)  # sin Play-In
 
 
 if __name__ == "__main__":

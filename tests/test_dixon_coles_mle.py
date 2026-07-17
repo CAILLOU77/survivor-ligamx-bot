@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Tests para src/dixon_coles_mle.py (Dixon-Coles por MLE). Requiere scipy."""
+
 from __future__ import annotations
 
 import sys
@@ -13,6 +14,7 @@ if SRC not in sys.path:
 try:
     import numpy  # noqa: F401
     import scipy  # noqa: F401
+
     _DEPS = True
 except ImportError:  # pragma: no cover
     _DEPS = False
@@ -23,16 +25,20 @@ import dixon_coles_mle as dc  # noqa: E402
 def _liga_sintetica(repeticiones=6):
     # Fuerte gana casi siempre, Debil pierde casi siempre.
     base = [
-        ("Fuerte", "Medio", 3, 0), ("Fuerte", "Debil", 4, 0),
-        ("Medio", "Debil", 2, 1), ("Medio", "Fuerte", 0, 2),
-        ("Debil", "Fuerte", 0, 3), ("Debil", "Medio", 1, 2),
+        ("Fuerte", "Medio", 3, 0),
+        ("Fuerte", "Debil", 4, 0),
+        ("Medio", "Debil", 2, 1),
+        ("Medio", "Fuerte", 0, 2),
+        ("Debil", "Fuerte", 0, 3),
+        ("Debil", "Medio", 1, 2),
     ]
     out = []
     dia = 1
     for _ in range(repeticiones):
         for h, a, hg, ag in base:
-            out.append({"home_team": h, "away_team": a, "home_goals": hg,
-                        "away_goals": ag, "fecha": f"2026-03-{dia:02d}"})
+            out.append(
+                {"home_team": h, "away_team": a, "home_goals": hg, "away_goals": ag, "fecha": f"2026-03-{dia:02d}"}
+            )
             dia += 1
     return out
 
@@ -68,8 +74,15 @@ class TestPronostico(unittest.TestCase):
     def test_pronostico_completo_y_suma_100(self):
         modelo = dc.ajustar_dixon_coles(_liga_sintetica())
         r = dc.pronostico(modelo, "Fuerte", "Debil")
-        for k in ("prob_local_pct", "prob_empate_pct", "prob_visitante_pct",
-                  "pick_1x2", "pick_ou", "pick_btts", "marcador_mas_probable"):
+        for k in (
+            "prob_local_pct",
+            "prob_empate_pct",
+            "prob_visitante_pct",
+            "pick_1x2",
+            "pick_ou",
+            "pick_btts",
+            "marcador_mas_probable",
+        ):
             self.assertIn(k, r)
         total = r["prob_local_pct"] + r["prob_empate_pct"] + r["prob_visitante_pct"]
         self.assertAlmostEqual(total, 100.0, places=1)

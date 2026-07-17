@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Tests para src/motor_pronosticos.py (cerebro de pronósticos). Sin red."""
+
 from __future__ import annotations
 
 import sys
@@ -57,14 +58,13 @@ class TestGenerar(unittest.TestCase):
     def test_no_perder_es_suma_coherente(self):
         fixtures = [{"home_team": "América", "away_team": "Toluca", "fecha": "x"}]
         p = mp.generar_pronosticos(fixtures=fixtures, resultados=_historico())["pronosticos"][0]
-        self.assertAlmostEqual(
-            p["no_perder_local_pct"], round(p["prob_local_pct"] + p["prob_empate_pct"], 2), places=1
-        )
+        self.assertAlmostEqual(p["no_perder_local_pct"], round(p["prob_local_pct"] + p["prob_empate_pct"], 2), places=1)
 
     def test_h2h_usa_historico_mas_largo_de_la_api(self):
         # Si la Liga MX API devuelve MÁS partidos, el H2H debe usarlos (no solo
         # los inyectados del modelo). Verificamos que anotar_h2h reciba el largo.
         from unittest import mock
+
         fixtures = [{"home_team": "América", "away_team": "Toluca", "fecha": "x"}]
         largo = _historico() * 3  # simula histórico multi-temporada más grande
         capturado = {}
@@ -128,10 +128,8 @@ class TestGenerar(unittest.TestCase):
 class TestSurvivor(unittest.TestCase):
     def _pronos(self):
         return [
-            {"local": "América", "visitante": "Toluca", "no_perder_local_pct": 85.0,
-             "no_perder_visitante_pct": 40.0},
-            {"local": "Atlas", "visitante": "Pumas", "no_perder_local_pct": 55.0,
-             "no_perder_visitante_pct": 60.0},
+            {"local": "América", "visitante": "Toluca", "no_perder_local_pct": 85.0, "no_perder_visitante_pct": 40.0},
+            {"local": "Atlas", "visitante": "Pumas", "no_perder_local_pct": 55.0, "no_perder_visitante_pct": 60.0},
         ]
 
     def test_elige_mayor_no_perder(self):
@@ -151,10 +149,13 @@ class TestSurvivor(unittest.TestCase):
         # Dos candidatos con MISMO no_perder; gana el que enfrenta al rival
         # con menor motivación (rival 'baja' = más seguro).
         pronos = [
-            {"local": "América", "visitante": "Eliminado", "no_perder_local_pct": 70.0,
-             "no_perder_visitante_pct": 30.0},
-            {"local": "Pumas", "visitante": "Puntero", "no_perder_local_pct": 70.0,
-             "no_perder_visitante_pct": 30.0},
+            {
+                "local": "América",
+                "visitante": "Eliminado",
+                "no_perder_local_pct": 70.0,
+                "no_perder_visitante_pct": 30.0,
+            },
+            {"local": "Pumas", "visitante": "Puntero", "no_perder_local_pct": 70.0, "no_perder_visitante_pct": 30.0},
         ]
         motivacion = {
             "eliminado": {"motivacion_nivel": "baja"},
@@ -167,10 +168,8 @@ class TestSurvivor(unittest.TestCase):
     def test_motivacion_no_altera_orden_principal(self):
         # El no_perder manda: aunque el rival del mejor esté motivado, gana por prob.
         pronos = [
-            {"local": "América", "visitante": "X", "no_perder_local_pct": 85.0,
-             "no_perder_visitante_pct": 30.0},
-            {"local": "Pumas", "visitante": "Y", "no_perder_local_pct": 60.0,
-             "no_perder_visitante_pct": 30.0},
+            {"local": "América", "visitante": "X", "no_perder_local_pct": 85.0, "no_perder_visitante_pct": 30.0},
+            {"local": "Pumas", "visitante": "Y", "no_perder_local_pct": 60.0, "no_perder_visitante_pct": 30.0},
         ]
         motivacion = {"x": {"motivacion_nivel": "alta"}, "y": {"motivacion_nivel": "baja"}}
         pick = mp.mejor_pick_survivor(pronos, motivacion=motivacion)
@@ -178,10 +177,8 @@ class TestSurvivor(unittest.TestCase):
 
     def test_mejores_picks_top_n_ordenados(self):
         pronos = [
-            {"local": "América", "visitante": "Toluca", "no_perder_local_pct": 80.0,
-             "no_perder_visitante_pct": 45.0},
-            {"local": "Pumas", "visitante": "Atlas", "no_perder_local_pct": 70.0,
-             "no_perder_visitante_pct": 35.0},
+            {"local": "América", "visitante": "Toluca", "no_perder_local_pct": 80.0, "no_perder_visitante_pct": 45.0},
+            {"local": "Pumas", "visitante": "Atlas", "no_perder_local_pct": 70.0, "no_perder_visitante_pct": 35.0},
         ]
         # Un solo candidato por partido: Toluca (rival de América en el MISMO juego)
         # NO debe aparecer junto a América como alternativa.
@@ -194,8 +191,7 @@ class TestSurvivor(unittest.TestCase):
     def test_no_recomienda_equipo_y_su_rival_del_mismo_partido(self):
         # Ambos lados del mismo juego son fuertes: solo debe salir UNO.
         pronos = [
-            {"local": "Tijuana", "visitante": "Tigres", "no_perder_local_pct": 78.0,
-             "no_perder_visitante_pct": 76.0},
+            {"local": "Tijuana", "visitante": "Tigres", "no_perder_local_pct": 78.0, "no_perder_visitante_pct": 76.0},
         ]
         top = mp.mejores_picks_survivor(pronos, n=3)
         self.assertEqual(len(top), 1)
@@ -203,11 +199,17 @@ class TestSurvivor(unittest.TestCase):
 
     def test_campos_de_riesgo_presentes(self):
         # Con pronósticos completos, cada candidato trae victoria/empate/nivel.
-        pronos = [{
-            "local": "América", "visitante": "Toluca",
-            "prob_local_pct": 70.0, "prob_empate_pct": 20.0, "prob_visitante_pct": 10.0,
-            "no_perder_local_pct": 90.0, "no_perder_visitante_pct": 30.0,
-        }]
+        pronos = [
+            {
+                "local": "América",
+                "visitante": "Toluca",
+                "prob_local_pct": 70.0,
+                "prob_empate_pct": 20.0,
+                "prob_visitante_pct": 10.0,
+                "no_perder_local_pct": 90.0,
+                "no_perder_visitante_pct": 30.0,
+            }
+        ]
         pick = mp.mejor_pick_survivor(pronos)
         self.assertEqual(pick["equipo"], "América")
         self.assertEqual(pick["prob_victoria_pct"], 70.0)
@@ -217,10 +219,24 @@ class TestSurvivor(unittest.TestCase):
     def test_victoria_desempata_mismo_no_perder(self):
         # Mismo no_perder; gana el de MAYOR prob. de victoria (más puntos).
         pronos = [
-            {"local": "A", "visitante": "B", "prob_local_pct": 50.0, "prob_empate_pct": 35.0,
-             "prob_visitante_pct": 15.0, "no_perder_local_pct": 85.0, "no_perder_visitante_pct": 50.0},
-            {"local": "C", "visitante": "D", "prob_local_pct": 70.0, "prob_empate_pct": 15.0,
-             "prob_visitante_pct": 15.0, "no_perder_local_pct": 85.0, "no_perder_visitante_pct": 30.0},
+            {
+                "local": "A",
+                "visitante": "B",
+                "prob_local_pct": 50.0,
+                "prob_empate_pct": 35.0,
+                "prob_visitante_pct": 15.0,
+                "no_perder_local_pct": 85.0,
+                "no_perder_visitante_pct": 50.0,
+            },
+            {
+                "local": "C",
+                "visitante": "D",
+                "prob_local_pct": 70.0,
+                "prob_empate_pct": 15.0,
+                "prob_visitante_pct": 15.0,
+                "no_perder_local_pct": 85.0,
+                "no_perder_visitante_pct": 30.0,
+            },
         ]
         pick = mp.mejor_pick_survivor(pronos)
         self.assertEqual(pick["equipo"], "C")  # 70% victoria > 50%, mismo no-perder 85
@@ -236,12 +252,24 @@ class TestEstrategia(unittest.TestCase):
     def _pronos(self):
         # Local fuerte (no-perder 82) vs Visitante fuerte (no-perder 84).
         return [
-            {"local": "Casa", "visitante": "Rival1", "prob_local_pct": 62.0,
-             "prob_empate_pct": 20.0, "prob_visitante_pct": 18.0,
-             "no_perder_local_pct": 82.0, "no_perder_visitante_pct": 40.0},
-            {"local": "Rival2", "visitante": "Visita", "prob_local_pct": 16.0,
-             "prob_empate_pct": 18.0, "prob_visitante_pct": 66.0,
-             "no_perder_local_pct": 34.0, "no_perder_visitante_pct": 84.0},
+            {
+                "local": "Casa",
+                "visitante": "Rival1",
+                "prob_local_pct": 62.0,
+                "prob_empate_pct": 20.0,
+                "prob_visitante_pct": 18.0,
+                "no_perder_local_pct": 82.0,
+                "no_perder_visitante_pct": 40.0,
+            },
+            {
+                "local": "Rival2",
+                "visitante": "Visita",
+                "prob_local_pct": 16.0,
+                "prob_empate_pct": 18.0,
+                "prob_visitante_pct": 66.0,
+                "no_perder_local_pct": 34.0,
+                "no_perder_visitante_pct": 84.0,
+            },
         ]
 
     def test_cautela_por_pocos_datos(self):
@@ -285,10 +313,24 @@ class TestEstrategia(unittest.TestCase):
         # (68%) con casi el mismo no-perder (80). Como el desempato del Survivor
         # son las victorias, debe preferir a B. Ambos LOCALES (sin penalización).
         pronos = [
-            {"local": "A", "visitante": "X", "prob_local_pct": 45.0, "prob_empate_pct": 37.0,
-             "prob_visitante_pct": 18.0, "no_perder_local_pct": 82.0, "no_perder_visitante_pct": 20.0},
-            {"local": "B", "visitante": "Y", "prob_local_pct": 68.0, "prob_empate_pct": 12.0,
-             "prob_visitante_pct": 20.0, "no_perder_local_pct": 80.0, "no_perder_visitante_pct": 22.0},
+            {
+                "local": "A",
+                "visitante": "X",
+                "prob_local_pct": 45.0,
+                "prob_empate_pct": 37.0,
+                "prob_visitante_pct": 18.0,
+                "no_perder_local_pct": 82.0,
+                "no_perder_visitante_pct": 20.0,
+            },
+            {
+                "local": "B",
+                "visitante": "Y",
+                "prob_local_pct": 68.0,
+                "prob_empate_pct": 12.0,
+                "prob_visitante_pct": 20.0,
+                "no_perder_local_pct": 80.0,
+                "no_perder_visitante_pct": 22.0,
+            },
         ]
         r = mp.mejores_picks_estrategico(pronos, partidos_jugados_torneo=100, n=2)
         self.assertEqual(r["picks"][0]["equipo"], "B")

@@ -34,7 +34,17 @@ ALIAS_GROUPS: List[Tuple[str, List[str]]] = [
     ("puebla", ["puebla"]),
     ("necaxa", ["necaxa"]),
     ("mazatlan", ["mazatlan", "mazatlán", "mazatlan fc", "mazatlán fc"]),
-    ("atletico de san luis", ["atletico de san luis", "atlético de san luis", "atletico san luis", "atlético san luis", "san luis", "atl san luis"]),
+    (
+        "atletico de san luis",
+        [
+            "atletico de san luis",
+            "atlético de san luis",
+            "atletico san luis",
+            "atlético san luis",
+            "san luis",
+            "atl san luis",
+        ],
+    ),
     ("juarez", ["juarez", "juárez", "fc juarez", "fc juárez", "bravos"]),
     ("atlante", ["atlante"]),
 ]
@@ -102,7 +112,7 @@ def canonical_team_key(name: str) -> str:
 
     for prefix in PREFIXES:
         if cleaned.startswith(prefix):
-            without_prefix = cleaned[len(prefix):].strip()
+            without_prefix = cleaned[len(prefix) :].strip()
             return _ALIAS_LOOKUP.get(without_prefix, without_prefix)
 
     return cleaned
@@ -123,7 +133,7 @@ def team_aliases(name: str) -> Set[str]:
 
     for prefix in PREFIXES:
         if cleaned.startswith(prefix):
-            aliases.add(cleaned[len(prefix):].strip())
+            aliases.add(cleaned[len(prefix) :].strip())
 
     for group_canonical, variants in ALIAS_GROUPS:
         if canonical == group_canonical:

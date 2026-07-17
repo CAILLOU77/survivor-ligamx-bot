@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Tests para src/espn_data.py (ingesta ESPN). Sin red: requests mockeado."""
+
 from __future__ import annotations
 
 import sys
@@ -18,10 +19,14 @@ def _evento(home, away, hg, ag, estado="STATUS_FULL_TIME", fecha="2026-02-07T01:
     return {
         "date": fecha,
         "status": {"type": {"name": estado}},
-        "competitions": [{"competitors": [
-            {"homeAway": "home", "team": {"displayName": home}, "score": hg},
-            {"homeAway": "away", "team": {"displayName": away}, "score": ag},
-        ]}],
+        "competitions": [
+            {
+                "competitors": [
+                    {"homeAway": "home", "team": {"displayName": home}, "score": hg},
+                    {"homeAway": "away", "team": {"displayName": away}, "score": ag},
+                ]
+            }
+        ],
     }
 
 
@@ -52,10 +57,12 @@ class TestParsearEventos(unittest.TestCase):
 class TestObtenerResultados(unittest.TestCase):
     @mock.patch("espn_data._fetch_scoreboard")
     def test_filtra_jugados_y_formato_poisson(self, mock_fetch):
-        mock_fetch.return_value = {"events": [
-            _evento("Necaxa", "Atlante", "2", "1"),
-            _evento("Pumas UNAM", "América", "0", "0", estado="STATUS_SCHEDULED"),
-        ]}
+        mock_fetch.return_value = {
+            "events": [
+                _evento("Necaxa", "Atlante", "2", "1"),
+                _evento("Pumas UNAM", "América", "0", "0", estado="STATUS_SCHEDULED"),
+            ]
+        }
         res = ed.obtener_resultados(meses=1)
         self.assertEqual(len(res), 1)
         self.assertEqual(set(res[0].keys()), {"home_team", "away_team", "home_goals", "away_goals", "fecha"})
@@ -91,6 +98,7 @@ class TestFetch(unittest.TestCase):
 class TestRangos(unittest.TestCase):
     def test_genera_rangos(self):
         from datetime import datetime, timezone
+
         hoy = datetime(2026, 3, 15, tzinfo=timezone.utc)
         rangos = ed._rangos_meses_atras(3, hoy)
         self.assertEqual(len(rangos), 3)
@@ -101,14 +109,17 @@ class TestIntegracionPoisson(unittest.TestCase):
     @mock.patch("espn_data._fetch_scoreboard")
     def test_resultados_alimentan_poisson(self, mock_fetch):
         import poisson_model as pm
-        mock_fetch.return_value = {"events": [
-            _evento("América", "Toluca", "3", "0"),
-            _evento("América", "Atlas", "2", "1"),
-            _evento("Toluca", "Atlas", "1", "1"),
-            _evento("Toluca", "América", "0", "2"),
-            _evento("Atlas", "América", "0", "3"),
-            _evento("Atlas", "Toluca", "1", "1"),
-        ]}
+
+        mock_fetch.return_value = {
+            "events": [
+                _evento("América", "Toluca", "3", "0"),
+                _evento("América", "Atlas", "2", "1"),
+                _evento("Toluca", "Atlas", "1", "1"),
+                _evento("Toluca", "América", "0", "2"),
+                _evento("Atlas", "América", "0", "3"),
+                _evento("Atlas", "Toluca", "1", "1"),
+            ]
+        }
         res = ed.obtener_resultados(meses=1)
         fuerzas = pm.calcular_fuerzas(res)
         self.assertIn("américa", fuerzas["equipos"])

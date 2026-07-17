@@ -22,6 +22,7 @@ Uso:
     python3 scripts/import_calendario.py --dias 170      # ventana ESPN hacia adelante
     python3 scripts/import_calendario.py --dry-run       # muestra, no escribe
 """
+
 from __future__ import annotations
 
 import argparse
@@ -41,6 +42,7 @@ CALENDARIO_PATH = BASE_DIR / "data" / "calendario.json"
 def _semana_iso(fecha: Any) -> str:
     """'YYYY-Www' (año-semana ISO). Se conserva como referencia/etiqueta."""
     from datetime import date
+
     s = str(fecha or "")[:10]
     try:
         y, m, d = s.split("-")
@@ -53,6 +55,7 @@ def _semana_iso(fecha: Any) -> str:
 def _a_fecha(fecha: Any):
     """'YYYY-MM-DD' -> date, o None si no parsea."""
     from datetime import date
+
     s = str(fecha or "")[:10]
     try:
         y, m, d = s.split("-")
@@ -115,6 +118,7 @@ def _calendario_desde_ligamx() -> List[Dict[str, Any]]:
     Lanza si la API falla.
     """
     import ligamx_api  # noqa: E402
+
     fixtures = ligamx_api.fixtures_planos()
     return construir_calendario(fixtures)
 
@@ -122,14 +126,19 @@ def _calendario_desde_ligamx() -> List[Dict[str, Any]]:
 def _calendario_desde_espn(dias: int) -> List[Dict[str, Any]]:
     """Calendario desde ESPN (fixtures programados + agrupado heurístico)."""
     import espn_data  # noqa: E402
+
     fixtures = espn_data.obtener_fixtures_futuros(dias)
     return construir_calendario(fixtures)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Construye data/calendario.json.")
-    parser.add_argument("--fuente", choices=["auto", "ligamx", "espn"], default="auto",
-                        help="Fuente del calendario (auto = Liga MX API con fallback a ESPN).")
+    parser.add_argument(
+        "--fuente",
+        choices=["auto", "ligamx", "espn"],
+        default="auto",
+        help="Fuente del calendario (auto = Liga MX API con fallback a ESPN).",
+    )
     parser.add_argument("--dias", type=int, default=160, help="Ventana ESPN hacia adelante (días).")
     parser.add_argument("--dry-run", action="store_true", help="Muestra sin escribir.")
     parser.add_argument("--output", default=str(CALENDARIO_PATH))
@@ -161,8 +170,7 @@ def main() -> int:
     total_partidos = sum(len(j["partidos"]) for j in calendario)
     print(f"✅ {len(calendario)} jornadas, {total_partidos} partidos.")
     if not calendario:
-        print("   (Ninguna fuente publicó el calendario todavía. Reintenta cerca "
-              "del arranque, ~17-jul.)")
+        print("   (Ninguna fuente publicó el calendario todavía. Reintenta cerca del arranque, ~17-jul.)")
         return 0
     for j in calendario:
         print(f"  J{j['jornada']:>2}: {len(j['partidos'])} partidos")
@@ -170,10 +178,14 @@ def main() -> int:
     # Aviso de calidad: Liga MX regular = 17 jornadas de 9 partidos cada una.
     anomalas = [j["jornada"] for j in calendario if len(j["partidos"]) != 9]
     if len(calendario) != 17 or anomalas:
-        print("⚠️  El calendario no luce como 17 jornadas × 9 partidos "
-              f"({len(calendario)} jornadas; jornadas != 9 partidos: {anomalas}).")
-        print("    Puede ser un agrupado imperfecto de la fuente. Revisa antes de "
-              "confiar en el plan; alternativa: --fuente espn.")
+        print(
+            "⚠️  El calendario no luce como 17 jornadas × 9 partidos "
+            f"({len(calendario)} jornadas; jornadas != 9 partidos: {anomalas})."
+        )
+        print(
+            "    Puede ser un agrupado imperfecto de la fuente. Revisa antes de "
+            "confiar en el plan; alternativa: --fuente espn."
+        )
 
     if args.dry_run:
         print("(dry-run: no se escribió nada)")

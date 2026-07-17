@@ -14,6 +14,7 @@ jornada (equipo con mayor probabilidad de no perder, excluyendo los ya usados).
 Sin momios, sin scraping, sin APIs de pago. Solo resultados reales de ESPN.
 Decisión operativa informativa: este motor NO cierra ni envía picks por sí solo.
 """
+
 from __future__ import annotations
 
 import json
@@ -57,21 +58,31 @@ def _explicar_partido(p: Dict[str, Any]) -> Dict[str, str]:
     linea = p.get("linea_goles", 2.5)
 
     if p["pick_1x2"] == "Gana Local":
-        e1 = (f"{local} es favorito: el modelo le da {pl}% de ganar (vs {pv}% de {visitante}); "
-              f"pesan su mayor fuerza y la ventaja de local. Marcador esperado ~{gl:.1f}-{gv:.1f}.")
+        e1 = (
+            f"{local} es favorito: el modelo le da {pl}% de ganar (vs {pv}% de {visitante}); "
+            f"pesan su mayor fuerza y la ventaja de local. Marcador esperado ~{gl:.1f}-{gv:.1f}."
+        )
     elif p["pick_1x2"] == "Gana Visitante":
-        e1 = (f"{visitante} es favorito aun de visita: {pv}% de ganar (vs {pl}% de {local}); "
-              f"su fuerza supera la ventaja local del rival. Marcador esperado ~{gl:.1f}-{gv:.1f}.")
+        e1 = (
+            f"{visitante} es favorito aun de visita: {pv}% de ganar (vs {pl}% de {local}); "
+            f"su fuerza supera la ventaja local del rival. Marcador esperado ~{gl:.1f}-{gv:.1f}."
+        )
     else:
-        e1 = (f"Partido parejo (L {pl}% / E {pe}% / V {pv}%): sin favorito claro y con ~{total:.1f} "
-              f"goles esperados, el EMPATE es el escenario más probable del modelo.")
+        e1 = (
+            f"Partido parejo (L {pl}% / E {pe}% / V {pv}%): sin favorito claro y con ~{total:.1f} "
+            f"goles esperados, el EMPATE es el escenario más probable del modelo."
+        )
 
     if p["pick_ou"] == "Over":
-        e2 = (f"Over {linea}: se esperan ~{total:.1f} goles ({p['prob_over_pct']}%); los ataques "
-              f"pesan más que las defensas.")
+        e2 = (
+            f"Over {linea}: se esperan ~{total:.1f} goles ({p['prob_over_pct']}%); los ataques "
+            f"pesan más que las defensas."
+        )
     else:
-        e2 = (f"Under {linea}: solo ~{total:.1f} goles esperados ({p['prob_under_pct']}%); "
-              f"defensas sólidas o ataques flojos, por eso el modelo ve pocos goles.")
+        e2 = (
+            f"Under {linea}: solo ~{total:.1f} goles esperados ({p['prob_under_pct']}%); "
+            f"defensas sólidas o ataques flojos, por eso el modelo ve pocos goles."
+        )
     return {"explicacion_1x2": e1, "explicacion_ou": e2}
 
 
@@ -85,17 +96,18 @@ def _nivel_confianza_1x2(prob_pick_pct: float) -> str:
 
 
 # Umbrales de alerta (partido "trampa" para Survivor), derivados del modelo.
-_EMPATE_ALTO_PCT = 30.0       # riesgo de push (empate)
-_GOLES_CERRADO = 2.3          # goles esperados totales bajos => juego cerrado
-_PICK_ABIERTO_PCT = 45.0      # sin favorito claro
+_EMPATE_ALTO_PCT = 30.0  # riesgo de push (empate)
+_GOLES_CERRADO = 2.3  # goles esperados totales bajos => juego cerrado
+_PICK_ABIERTO_PCT = 45.0  # sin favorito claro
 
 # Under de valor + cobertura de hándicap (para apostar +1.5/+2 al under).
-_UNDER_VALOR_PCT = 60.0       # el modelo se inclina claramente al under
-_GOLEADA_RIESGO_PCT = 25.0    # P(margen 3+) alta => el +1.5/+2 puede NO cubrir
+_UNDER_VALOR_PCT = 60.0  # el modelo se inclina claramente al under
+_GOLEADA_RIESGO_PCT = 25.0  # P(margen 3+) alta => el +1.5/+2 puede NO cubrir
 
 
-def _nota_under_handicap(pick_ou: str, prob_under_pct: float, total: float,
-                         prob_margen2_pct: float, prob_margen3_pct: float) -> Dict[str, Any]:
+def _nota_under_handicap(
+    pick_ou: str, prob_under_pct: float, total: float, prob_margen2_pct: float, prob_margen3_pct: float
+) -> Dict[str, Any]:
     """
     Detecta un UNDER de valor y evalúa qué tan seguro es para un hándicap +1.5/+2:
     lo que rompe el hándicap es una goleada (margen 2+ para +1.5, 3+ para +2).
@@ -105,18 +117,18 @@ def _nota_under_handicap(pick_ou: str, prob_under_pct: float, total: float,
     if not under_valor:
         return {"under_valor": False, "nota_handicap": None}
     riesgo_alto = prob_margen3_pct >= _GOLEADA_RIESGO_PCT
-    base = (f"UNDER de valor: {prob_under_pct:.0f}% bajo 2.5 (~{total:.1f} goles). "
-            f"Margen 2+: {prob_margen2_pct:.0f}% · goleada 3+: {prob_margen3_pct:.0f}%.")
+    base = (
+        f"UNDER de valor: {prob_under_pct:.0f}% bajo 2.5 (~{total:.1f} goles). "
+        f"Margen 2+: {prob_margen2_pct:.0f}% · goleada 3+: {prob_margen3_pct:.0f}%."
+    )
     if riesgo_alto:
-        base += (" ⚠️ OJO: riesgo de goleada ALTO — el +1.5/+2 podría NO cubrir; "
-                 "el under es de lectura arriesgada.")
+        base += " ⚠️ OJO: riesgo de goleada ALTO — el +1.5/+2 podría NO cubrir; el under es de lectura arriesgada."
     else:
         base += " ✅ Riesgo de goleada bajo — el +1.5/+2 luce cubierto."
     return {"under_valor": True, "nota_handicap": base}
 
 
-def _alertas_partido(pick_1x2: str, prob_empate: float, prob_pick: float,
-                     goles_totales: float) -> Dict[str, Any]:
+def _alertas_partido(pick_1x2: str, prob_empate: float, prob_pick: float, goles_totales: float) -> Dict[str, Any]:
     """
     Marca un partido como de PRECAUCIÓN / ALERTA ROJA con los motivos concretos
     (basados en los números del modelo). Útil para no quemar el Survivor en un
@@ -141,9 +153,7 @@ def _alertas_partido(pick_1x2: str, prob_empate: float, prob_pick: float,
     return {"precaucion": bool(motivos), "nivel_alerta": nivel, "motivos": motivos}
 
 
-def pronosticar_partido(
-    home: str, away: str, fuerzas: Dict[str, Any]
-) -> Optional[Dict[str, Any]]:
+def pronosticar_partido(home: str, away: str, fuerzas: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Pronóstico de un partido si ambos equipos tienen histórico; si no, None."""
     if not _equipo_conocido(home, fuerzas) or not _equipo_conocido(away, fuerzas):
         return None
@@ -152,8 +162,9 @@ def pronosticar_partido(
     prob_pick = max(p["prob_local_pct"], p["prob_empate_pct"], p["prob_visitante_pct"])
     goles_totales = p["lambda_local"] + p["lambda_visitante"]
     alerta = _alertas_partido(p["pick_1x2"], p["prob_empate_pct"], prob_pick, goles_totales)
-    hand = _nota_under_handicap(p["pick_ou"], p["prob_under_pct"], goles_totales,
-                                p["prob_margen2_pct"], p["prob_margen3_pct"])
+    hand = _nota_under_handicap(
+        p["pick_ou"], p["prob_under_pct"], goles_totales, p["prob_margen2_pct"], p["prob_margen3_pct"]
+    )
     return {
         "local": home,
         "visitante": away,
@@ -234,9 +245,13 @@ def generar_pronosticos(
             elif home and away:
                 # Sin histórico de uno de los equipos (p.ej. recién ascendido). Se
                 # reporta para que la capa de Telegram intente el fallback de momios.
-                fixtures_sin_modelo.append({
-                    "home_team": home, "away_team": away, "fecha": fx.get("fecha", ""),
-                })
+                fixtures_sin_modelo.append(
+                    {
+                        "home_team": home,
+                        "away_team": away,
+                        "fecha": fx.get("fecha", ""),
+                    }
+                )
 
     # Señal "bestia negra" (H2H): usa el histórico MÁS LARGO disponible (todas las
     # temporadas de la Liga MX API), no solo la ventana reciente del modelo.
@@ -300,22 +315,24 @@ def mejores_picks_survivor(
     for p in pronosticos:
         empate = p.get("prob_empate_pct")
         for equipo, rival, cond, prob, win in (
-            (p["local"], p["visitante"], "Local",
-             p["no_perder_local_pct"], p.get("prob_local_pct")),
-            (p["visitante"], p["local"], "Visitante",
-             p["no_perder_visitante_pct"], p.get("prob_visitante_pct")),
+            (p["local"], p["visitante"], "Local", p["no_perder_local_pct"], p.get("prob_local_pct")),
+            (p["visitante"], p["local"], "Visitante", p["no_perder_visitante_pct"], p.get("prob_visitante_pct")),
         ):
             if _norm(equipo) in usados:
                 continue
-            candidatos.append({
-                "equipo": equipo, "rival": rival, "condicion": cond,
-                "no_perder_pct": prob,
-                "prob_victoria_pct": win,
-                "prob_empate_pct": empate,
-                "nivel": _nivel_pick(prob, win),
-                "motivacion_propia": (mot.get(_norm(equipo)) or {}).get("motivacion_nivel"),
-                "rival_motivacion": (mot.get(_norm(rival)) or {}).get("motivacion_nivel"),
-            })
+            candidatos.append(
+                {
+                    "equipo": equipo,
+                    "rival": rival,
+                    "condicion": cond,
+                    "no_perder_pct": prob,
+                    "prob_victoria_pct": win,
+                    "prob_empate_pct": empate,
+                    "nivel": _nivel_pick(prob, win),
+                    "motivacion_propia": (mot.get(_norm(equipo)) or {}).get("motivacion_nivel"),
+                    "rival_motivacion": (mot.get(_norm(rival)) or {}).get("motivacion_nivel"),
+                }
+            )
     candidatos.sort(
         key=lambda c: (
             c["no_perder_pct"],
@@ -424,11 +441,15 @@ try:
 except Exception:
     _CROWD_DIST = {}
 
+
 def _penalizacion_crowd(equipo):
     pct = _CROWD_DIST.get(equipo, 0.0)
-    if pct >= CROWD_PEN_ALTO_PCT: return PEN_CROWD_ALTO
-    if pct >= CROWD_PEN_MED_PCT: return PEN_CROWD_MEDIO
+    if pct >= CROWD_PEN_ALTO_PCT:
+        return PEN_CROWD_ALTO
+    if pct >= CROWD_PEN_MED_PCT:
+        return PEN_CROWD_MEDIO
     return 0.0
+
 
 def _razon_pick(c: Dict[str, Any], es_local: bool, cautela: bool) -> str:
     """Explica en una frase por qué (o por qué no) conviene este pick, con números."""
@@ -488,8 +509,7 @@ def mejores_picks_estrategico(
     pen = PEN_VISITANTE_CAUTELA if cautela else PEN_VISITANTE
     peso_victoria = PESO_VICTORIA_PICK_CAUTELA if cautela else PESO_VICTORIA_PICK
 
-    base = list(mejores_picks_survivor(pronosticos, equipos_usados, motivacion,
-                                       n=10_000, uno_por_partido=False))
+    base = list(mejores_picks_survivor(pronosticos, equipos_usados, motivacion, n=10_000, uno_por_partido=False))
     for c in base:
         es_local = c.get("condicion") == "Local"
         no_perder = float(c.get("no_perder_pct") or 0.0)
@@ -502,8 +522,11 @@ def mejores_picks_estrategico(
         c["razon"] = _razon_pick(c, es_local, cautela)
         if pen_crowd > 0:
             crowd_pct = _CROWD_DIST.get(c.get("equipo", ""), 0.0)
-            c["razon"] += (" ⚠️ OJO: es un pick de manada (" + str(round(crowd_pct, 1)) +
-                  "% del publico lo picka). PERO el bot lo prioriza porque su probabilidad de no perder es tan alta que una sorpresa seria un upset historico: estadisticamente vale mas la pena arriesgarse con el favorito que ir contra la logica por miedo a la manada.")
+            c["razon"] += (
+                " ⚠️ OJO: es un pick de manada ("
+                + str(round(crowd_pct, 1))
+                + "% del publico lo picka). PERO el bot lo prioriza porque su probabilidad de no perder es tan alta que una sorpresa seria un upset historico: estadisticamente vale mas la pena arriesgarse con el favorito que ir contra la logica por miedo a la manada."
+            )
     base.sort(
         key=lambda c: (c["_score"], c.get("prob_victoria_pct") or 0.0, _rank_motivacion(c.get("rival_motivacion"))),
         reverse=True,
@@ -564,26 +587,30 @@ def motivacion_por_equipo() -> Dict[str, Dict[str, Any]]:
 
 def guardar_pronosticos(resultado: Dict[str, Any], path: Path = PRONOSTICOS_PATH) -> None:
     Path(path).parent.mkdir(parents=True, exist_ok=True)
-    Path(path).write_text(
-        json.dumps(resultado, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-    )
+    Path(path).write_text(json.dumps(resultado, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def main() -> int:
     print("🧠 Generando pronósticos Liga MX (datos reales de ESPN)...")
     resultado = generar_pronosticos()
     guardar_pronosticos(resultado)
-    print(f"✅ Fuente: {resultado['fuente_datos']} | "
-          f"histórico: {resultado['total_resultados_historicos']} | "
-          f"pronósticos: {resultado['total_pronosticos']}")
+    print(
+        f"✅ Fuente: {resultado['fuente_datos']} | "
+        f"histórico: {resultado['total_resultados_historicos']} | "
+        f"pronósticos: {resultado['total_pronosticos']}"
+    )
     for p in resultado["pronosticos"]:
-        print(f"  {p['local']} vs {p['visitante']}: {p['pick_1x2']} "
-              f"(L{p['prob_local_pct']}/E{p['prob_empate_pct']}/V{p['prob_visitante_pct']}) "
-              f"| {p['pick_ou']} 2.5 | marcador {p['marcador_mas_probable']}")
+        print(
+            f"  {p['local']} vs {p['visitante']}: {p['pick_1x2']} "
+            f"(L{p['prob_local_pct']}/E{p['prob_empate_pct']}/V{p['prob_visitante_pct']}) "
+            f"| {p['pick_ou']} 2.5 | marcador {p['marcador_mas_probable']}"
+        )
     pick = mejor_pick_survivor(resultado["pronosticos"])
     if pick:
-        print(f"🎯 Survivor sugerido: {pick['equipo']} ({pick['condicion']} vs "
-              f"{pick['rival']}) — no perder {pick['no_perder_pct']}%")
+        print(
+            f"🎯 Survivor sugerido: {pick['equipo']} ({pick['condicion']} vs "
+            f"{pick['rival']}) — no perder {pick['no_perder_pct']}%"
+        )
     return 0
 
 

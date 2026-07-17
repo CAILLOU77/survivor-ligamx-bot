@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Tests de matchup_h2h: señal de 'bestia negra' por H2H (datos reales)."""
+
 import os
 import sys
 import unittest
@@ -57,9 +58,11 @@ class TestAlertaH2H(unittest.TestCase):
         self.assertIsNone(h2h.alerta_h2h(pocos, "A", "B", min_juegos=3))
 
     def test_favorito_domina_no_dispara(self):
-        dom = [_res("Tigres UANL", "Guadalajara", 3, 1),
-               _res("Guadalajara", "Tigres UANL", 0, 2),
-               _res("Tigres UANL", "Guadalajara", 4, 1)]
+        dom = [
+            _res("Tigres UANL", "Guadalajara", 3, 1),
+            _res("Guadalajara", "Tigres UANL", 0, 2),
+            _res("Tigres UANL", "Guadalajara", 4, 1),
+        ]
         self.assertIsNone(h2h.alerta_h2h(dom, "Tigres UANL", "Guadalajara"))
 
 
