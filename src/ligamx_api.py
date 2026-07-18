@@ -572,7 +572,8 @@ def porteros_por_equipo() -> Dict[str, Dict[str, Any]]:
 def match_id_de_partido(home: str, away: str) -> Optional[int]:
     """
     Resuelve el match_id de la Liga MX API para un partido (por nombres, match
-    flexible). Busca en próximos y luego en /matches. None si no lo encuentra.
+    flexible). Busca en próximos, finalizados y luego en /matches general.
+    None si no lo encuentra.
     """
 
     def _buscar(lista: Any) -> Optional[int]:
@@ -596,6 +597,9 @@ def match_id_de_partido(home: str, away: str) -> Optional[int]:
         return None
 
     mid = _buscar(_safe(lambda: partidos_proximos(limit=50), []))
+    if mid is not None:
+        return mid
+    mid = _buscar(_safe(lambda: obtener_partidos(status="finished", limit=100), []))
     if mid is not None:
         return mid
     return _buscar(_safe(lambda: obtener_partidos(limit=100), []))

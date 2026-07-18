@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 try:
@@ -79,70 +79,142 @@ def _ya_jugado(fecha_iso: str, estado: str, horas_post: float = _HORAS_POST_PART
 
 def obtener_partidos_jornada(fecha: Optional[str] = None) -> List[Dict[str, Any]]:
     """
-    Obtiene los partidos de la jornada actual desde ESPN scoreboard.
-    Si `fecha` es None, usa hoy. Devuelve solo partidos YA JUGADOS.
+    Obtiene los partidos YA JUGADOS de la jornada actual.
+    Primero intenta con ESPN scoreboard (rango +/- 2 días).
+    Si no hay suficientes, completa con Liga MX API (partidos finalizados).
     """
+    partidos_espn = _obtener_partidos_espn(fecha)
+    partidos_lmx = _obtener_partidos_ligamx(fecha) if len(partidos_espn) < 3 else []
+    # Combinar y deduplicar
+    vistos: set = set()
+    combinados: List[Dict[str, Any]] = []
+    for p in partidos_espn + partidos_lmx:
+        clave = (p["home_team"], p["away_team"], p["fecha"])
+        if clave in vistos:
+            continue
+        vistos.add(clave)
+        combinados.append(p)
+    combinados.sort(key=lambda x: x.get("fecha", ""))
+    return combinados
+
+
+def _obtener_partidos_espn(fecha: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Obtiene partidos jugados desde ESPN scoreboard."""
     if requests is None:
         return []
-    fecha = fecha or datetime.now(timezone.utc).strftime("%Y%m%d")
-    url = "https://site.api.espn.com/apis/site/v2/sports/soccer/mex.1/scoreboard"
+    hoy = datetime.now(timezone.utc)
+    fecha_base = fecha or hoy.strftime("%Y%m%d")
     try:
-        resp = requests.get(url, params={"dates": fecha}, timeout=20)
-        if resp.status_code != 200:
-            return []
-        data = resp.json()
+        dt_base = datetime.strptime(fecha_base, "%Y%m%d")
+    except ValueError:
+        dt_base = hoy
+
+    url = "https://site.api.espn.com/apis/site/v2/sports/soccer/mex.1/scoreboard"
+    partidos_vistos: set = set()
+    partidos: List[Dict[str, Any]] = []
+
+    for delta in range(-2, 3):
+        rango_fecha = (dt_base + timedelta(days=delta)).strftime("%Y%m%d")
+        try:
+            resp = requests.get(url, params={"dates": rango_fecha}, timeout=20)
+            if resp.status_code != 200:
+                continue
+            data = resp.json()
+        except Exception:
+            continue
+
+        for ev in data.get("events", []):
+            if not isinstance(ev, dict):
+                continue
+            comps = ev.get("competitions") or [{}]
+            comp = comps[0] if comps else {}
+            competidores = comp.get("competitors", [])
+            home = away = None
+            hg = ag = None
+            for c in competidores:
+                if not isinstance(c, dict):
+                    continue
+                nombre = (c.get("team") or {}).get("displayName", "")
+                score = c.get("score")
+                if c.get("homeAway") == "home":
+                    home, hg = nombre, score
+                elif c.get("homeAway") == "away":
+                    away, ag = nombre, score
+            if not home or not away:
+                continue
+            estado = ((ev.get("status") or {}).get("type") or {}).get("name", "")
+            fecha_iso = str(ev.get("date", ""))
+            if not _ya_jugado(fecha_iso, estado):
+                continue
+            try:
+                home_goals = int(hg) if hg is not None else None
+                away_goals = int(ag) if ag is not None else None
+            except (TypeError, ValueError):
+                continue
+            clave = (display_team_name(home), display_team_name(away), fecha_iso[:10])
+            if clave in partidos_vistos:
+                continue
+            partidos_vistos.add(clave)
+            partidos.append(
+                {
+                    "fecha": fecha_iso[:10],
+                    "home_team": display_team_name(home),
+                    "away_team": display_team_name(away),
+                    "home_goals": home_goals,
+                    "away_goals": away_goals,
+                    "estado": estado,
+                    "event_id": ev.get("id"),
+                }
+            )
+    return partidos
+
+
+def _obtener_partidos_ligamx(fecha: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Obtiene partidos finalizados desde Liga MX API."""
+    try:
+        partidos_crudos = lmx.obtener_partidos(status="finished", limit=50)
     except Exception:
         return []
-
     partidos: List[Dict[str, Any]] = []
-    for ev in data.get("events", []):
-        if not isinstance(ev, dict):
+    vistos: set = set()
+    for m in partidos_crudos:
+        if not isinstance(m, dict):
             continue
-        comps = ev.get("competitions") or [{}]
-        comp = comps[0] if comps else {}
-        competidores = comp.get("competitors", [])
-        home = away = None
-        hg = ag = None
-        for c in competidores:
-            if not isinstance(c, dict):
-                continue
-            nombre = (c.get("team") or {}).get("displayName", "")
-            score = c.get("score")
-            if c.get("homeAway") == "home":
-                home, hg = nombre, score
-            elif c.get("homeAway") == "away":
-                away, ag = nombre, score
-        if not home or not away:
-            continue
-        estado = ((ev.get("status") or {}).get("type") or {}).get("name", "")
-        fecha_iso = str(ev.get("date", ""))
-        if not _ya_jugado(fecha_iso, estado):
+        home = (m.get("home_team") or {}).get("name", "")
+        away = (m.get("away_team") or {}).get("name", "")
+        hg, ag = m.get("home_score"), m.get("away_score")
+        fecha_m = str(m.get("match_date") or "")[:10]
+        if not home or not away or hg is None or ag is None:
             continue
         try:
-            home_goals = int(hg) if hg is not None else None
-            away_goals = int(ag) if ag is not None else None
+            hg, ag = int(hg), int(ag)
         except (TypeError, ValueError):
             continue
+        clave = (display_team_name(home), display_team_name(away), fecha_m)
+        if clave in vistos:
+            continue
+        vistos.add(clave)
         partidos.append(
             {
-                "fecha": fecha_iso[:10],
+                "fecha": fecha_m,
                 "home_team": display_team_name(home),
                 "away_team": display_team_name(away),
-                "home_goals": home_goals,
-                "away_goals": away_goals,
-                "estado": estado,
-                "event_id": ev.get("id"),
+                "home_goals": hg,
+                "away_goals": ag,
+                "estado": "STATUS_FULL_TIME",
+                "event_id": m.get("id"),
             }
         )
     return partidos
 
 
-def obtener_detalle_partido(home: str, away: str) -> Dict[str, Any]:
+def obtener_detalle_partido(home: str, away: str, event_id: Optional[str] = None) -> Dict[str, Any]:
     """
     Obtiene detalle completo de un partido ya jugado:
     - eventos (goles, tarjetas, cambios)
     - alineación confirmada
     - impacto del XI
+    Usa Liga MX API como fuente principal.
     """
     out: Dict[str, Any] = {
         "home": home,
@@ -152,18 +224,25 @@ def obtener_detalle_partido(home: str, away: str) -> Dict[str, Any]:
         "impacto_xi": None,
         "noticias": [],
     }
+    # Intentar obtener eventos desde Liga MX API
     try:
-        out["eventos"] = lmx.eventos_partido(lmx.match_id_de_partido(home, away)) if lmx.match_id_de_partido(home, away) else []
+        mid = lmx.match_id_de_partido(home, away)
+        if mid:
+            try:
+                out["eventos"] = lmx.eventos_partido(mid) or []
+            except Exception:
+                pass
+            try:
+                out["alineacion"] = lmx.alineacion_de_partido(home, away)
+            except Exception:
+                pass
+            try:
+                out["impacto_xi"] = lmx.lineup_impact_partido(home, away)
+            except Exception:
+                pass
     except Exception:
         pass
-    try:
-        out["alineacion"] = lmx.alineacion_de_partido(home, away)
-    except Exception:
-        pass
-    try:
-        out["impacto_xi"] = lmx.lineup_impact_partido(home, away)
-    except Exception:
-        pass
+    # Noticias
     try:
         out["noticias"] = lmx.noticias_de_equipos([home, away], limit=5, dias=7)
     except Exception:
@@ -216,7 +295,7 @@ def _formatear_tarjetas(eventos: List[Dict[str, Any]]) -> List[str]:
     return out[:10]
 
 
-def _conclusion_ia(home: str, away: str, detalle: Dict[str, Any]) -> Dict[str, Any]:
+def _conclusion_ia(home: str, away: str, detalle: Dict[str, Any], hg: Optional[int] = None, ag: Optional[int] = None) -> Dict[str, Any]:
     """
     Pide a la IA una conclusión narrativa del partido.
     Tolerante: si no hay IA, devuelve fallback.
@@ -228,7 +307,7 @@ def _conclusion_ia(home: str, away: str, detalle: Dict[str, Any]) -> Dict[str, A
             "conclusion": "",
         }
 
-    eventos_txt = "\n".join(_formatear_eventos(detalle.get("eventos", []))) or "Sin eventos detallados."
+    eventos_txt = "\n".join(_formatear_eventos(detalle.get("eventos", []))) or "Sin eventos detallados disponibles."
     alineacion_txt = ""
     if detalle.get("alineacion") and detalle["alineacion"].get("disponible"):
         equipos = detalle["alineacion"].get("equipos", [])
@@ -265,14 +344,18 @@ def _conclusion_ia(home: str, away: str, detalle: Dict[str, Any]) -> Dict[str, A
     else:
         impacto_txt = "Impacto XI no disponible."
 
+    marcador_txt = f"Marcador final: {home} {hg or '?'} - {ag or '?'} {away}" if hg is not None and ag is not None else "Marcador final no disponible."
+
     user = (
         f"Partido: {home} vs {away}\n\n"
+        f"{marcador_txt}\n\n"
         f"Eventos del partido:\n{eventos_txt}\n\n"
         f"{alineacion_txt}\n\n"
         f"{impacto_txt}\n\n"
         "Genera una conclusión BREVE (máx 4 líneas) de por qué ganó/perdió/empató "
         "cada equipo, enfocándote en: goles clave, expulsiones, alineación mermada, "
-        "cambios decisivos. Si no hay datos suficientes, di 'Datos insuficientes'."
+        "cambios decisivos. Si no hay eventos detallados, usa el marcador y el contexto "
+        "de alineaciones para inferir. Si no hay datos suficientes, di 'Datos insuficientes'."
     )
 
     payload = {
@@ -348,8 +431,8 @@ def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[Lis
         away = p.get("away_team", "")
         hg = p.get("home_goals")
         ag = p.get("away_goals")
-        detalle = obtener_detalle_partido(home, away)
-        conclusion = _conclusion_ia(home, away, detalle)
+        detalle = obtener_detalle_partido(home, away, event_id=p.get("event_id"))
+        conclusion = _conclusion_ia(home, away, detalle, hg=hg, ag=ag)
 
         eventos_lineas = _formatear_eventos(detalle.get("eventos", []))
         tarjetas_lineas = _formatear_tarjetas(detalle.get("eventos", []))
