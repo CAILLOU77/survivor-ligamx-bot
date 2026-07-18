@@ -43,9 +43,6 @@ _PROXY_MODEL = os.getenv("PROXY_MODEL", "claude-opus-4-6-thinking").strip()
 # Backend 2: Groq
 # ---------------------------------------------------------------------------
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
-# Modelo por defecto: llama-3.3-70b-versatile (gratis, rápido, buen JSON).
-# Si tu cuenta no tiene acceso, cambiá por otro de la lista de Groq:
-# https://console.groq.com/docs/models
 DEFAULT_MODEL = "llama-3.3-70b-versatile"
 DECISION = "INFORMATIVO / REVISIÓN HUMANA"
 
@@ -90,6 +87,32 @@ def _modelo() -> str:
     return os.getenv("GROQ_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
 
 
+def _buscar_web(query: str, max_results: int = 5) -> List[Dict[str, str]]:
+    """Busca en DuckDuckGo HTML sin API key. Retorna [{title, url, snippet}]."""
+    try:
+        resp = requests.post(
+            "https://html.duckduckgo.com/html/",
+            data={"q": query},
+            timeout=10,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; LigaMXBot/1.0)"},
+        )
+        if resp.status_code != 200:
+            return []
+        texto = resp.text
+        resultados: List[Dict[str, str]] = []
+        import re as _re
+        bloques = _re.findall(r'<a[^>]+class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>', texto, _re.DOTALL)
+        snippets = _re.findall(r'<[^>]+class="result__snippet"[^>]*>(.*?)</[^>]+>', texto, _re.DOTALL)
+        for i, (url, titulo_html) in enumerate(bloques[:max_results]):
+            titulo = _re.sub(r'<[^>]+>', '', titulo_html).strip()
+            snippet = _re.sub(r'<[^>]+>', '', snippets[i]).strip() if i < len(snippets) else ""
+            if titulo and url and not url.startswith("javascript"):
+                resultados.append({"title": titulo, "url": url, "snippet": snippet})
+        return resultados
+    except Exception:
+        return []
+
+
 def _texto_noticias(noticias: List[Dict[str, Any]], max_n: int = 12) -> str:
     """Aplana las noticias a un texto compacto (titulo + fuente) para el prompt."""
     lineas = []
@@ -101,6 +124,22 @@ def _texto_noticias(noticias: List[Dict[str, Any]], max_n: int = 12) -> str:
         if titulo:
             lineas.append(f"- [{fuente}] {titulo}")
     return "\n".join(lineas)
+
+
+def _enriquecer_con_busqueda_web(equipos: List[str], noticias: List[Dict[str, Any]]) -> str:
+    """Busca en web info actualizada sobre lesiones/suspensiones y la agrega al contexto."""
+    consultas = []
+    for eq in (equipos or [])[:2]:
+        consultas.append(f"{eq} lesion suspension duda 2026")
+        consultas.append(f"Liga MX {eq} bajas rotacion alineacion")
+    resultados_txt = []
+    for q in consultas[:4]:
+        resultados = _buscar_web(q, max_results=3)
+        if resultados:
+            resultados_txt.append(f"\n🔍 Búsqueda web: {q}")
+            for r in resultados:
+                resultados_txt.append(f"- {r.get('title', '')} — {r.get('snippet', '')} ({r.get('url', '')})")
+    return "\n".join(resultados_txt) if resultados_txt else ""
 
 
 def analizar_noticias(equipos: List[str], noticias: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -119,8 +158,19 @@ def analizar_noticias(equipos: List[str], noticias: List[Dict[str, Any]]) -> Dic
     user = (
         f"Equipos del partido: {', '.join(equipos)}.\n\n"
         f"Noticias recientes (úsalas SOLO como fuente, no inventes):\n{texto}\n\n"
-        "Devuelve el JSON con las señales de riesgo relevantes a esos equipos."
+        "Si las noticias son insuficientes o parecen desactualizadas, "
+        "usa la herramienta web_search para buscar información actual "
+        "sobre lesiones, suspensiones, dudas o rotación de estos equipos. "
+        "Devuelve el JSON con las señales de riesgo relevantes."
     )
+    
+    # Enriquecer con búsqueda web si hay equipos definidos
+    web_ctx = ""
+    if equipos:
+        web_ctx = _enriquecer_con_busqueda_web(equipos, noticias)
+    if web_ctx:
+        user += f"\n\nInformaci adicional de búsqueda web (también usala SOLO como fuente):\n{web_ctx}"
+    
     payload = {
         "model": _modelo(),
         "messages": [{"role": "system", "content": _SYSTEM}, {"role": "user", "content": user}],
@@ -206,9 +256,11 @@ def analizar_partido(home: str, away: str) -> Dict[str, Any]:
     """
     Analiza el riesgo (por noticias) de un partido: baja las noticias de ambos
     equipos vía la Liga MX API y las pasa por el LLM. Tolerante.
+    Ahora también busca en web información actualizada sobre lesiones,
+    suspensiones, dudas o rotación.
     """
     if not habilitado():
-        return {"disponible": False, "motivo": "IA desactivada (sin GROQ_API_KEY)."}
+        return {"disponible": False, "motivo": "IA desactivada (sin PROXY_API_KEY ni GROQ_API_KEY)."}
     try:
         try:
             import ligamx_api as lmx
