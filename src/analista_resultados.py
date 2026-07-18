@@ -98,6 +98,18 @@ def obtener_partidos_jornada(fecha: Optional[str] = None) -> List[Dict[str, Any]
     return combinados
 
 
+def _obtener_detalles_fuera(home: str, away: str, fecha: str) -> Dict[str, Any]:
+    """Obtiene detalles usando el scraper fuerte."""
+    try:
+        try:
+            import scraper_resultados as sr
+        except ImportError:  # pragma: no cover
+            from src import scraper_resultados as sr  # type: ignore
+        return sr.analizar_partido_fuerte(home, away, 0, 0, fecha)
+    except Exception:
+        return {}
+
+
 def _obtener_partidos_espn(fecha: Optional[str] = None) -> List[Dict[str, Any]]:
     """Obtiene partidos jugados desde ESPN scoreboard."""
     if requests is None:
@@ -445,24 +457,33 @@ def _conclusion_ia(home: str, away: str, detalle: Dict[str, Any], hg: Optional[i
     if web_txt:
         user += f"Información de fuentes web:\n{web_txt}\n\n"
     user += (
-        "Genera un análisis PROFESIONAL y DETALLADO (máx 10 líneas) de este partido de Liga MX. "
+        "Genera un análisis LARGO, PROFESIONAL y COMPLETO de este partido de Liga MX. "
+        "NO TE LIMITES a pocas líneas. Desarrolla cada punto con detalles.\n\n"
         "Estructura tu respuesta así:\n"
-        "1. Resumen general del partido (estilo, intensidad, contexto)\n"
-        "2. Momentos clave: goles, expulsiones, cambios decisivos, penales\n"
-        "3. Análisis por equipo: qué funcionó, qué falló, jugadores destacados\n"
-        "4. Impacto en la tabla de posiciones y próximos retos\n"
-        "Usa TODA la información disponible, incluyendo las fuentes web. "
-        "Si no hay eventos detallados, igual genera un análisis completo basado en el marcador y contexto."
+        "## 1. Contexto y narrativa del partido\n"
+        "Describe el momento de la temporada, la importancia del rival, antecedentes recientes y el contexto general.\n\n"
+        "## 2. Cronología de eventos clave\n"
+        "Lista goles, expulsiones, penales, cambios decisivos y cualquier momento que cambió el rumbo del partido. "
+        "Si no hay eventos detallados, describe cómo se pudo haber desarrollado el partido según el marcador.\n\n"
+        "## 3. Análisis por equipo\n"
+        "- {home}: puntos fuertes, errores, jugadores destacados, qué cambió respecto a partidos anteriores.\n"
+        "- {away}: mismo análisis.\n\n"
+        "## 4. Impacto en la tabla y próximos retos\n"
+        "Cómo afecta este resultado a la tabla de posiciones y qué deben mejorar cada uno para los próximos partidos.\n\n"
+        "## 5. Veredicto final\n"
+        "Resumen de por qué ganó/perdió/empató cada equipo en 2-3 frases contundentes.\n\n"
+        "IMPORTANTE: Desarrolla CADA SECCIÓN con al menos 3-4 líneas de contenido real. "
+        "No repitas el marcador. Usa toda la información disponible."
     )
 
     payload = {
         "model": ia._modelo(),
         "messages": [
-            {"role": "system", "content": "Eres analista profesional de Liga MX con acceso a información detallada de partidos. Tus análisis son precisos, objetivos y ricos en detalles tácticos y contextuales."},
+            {"role": "system", "content": "Eres analista profesional de Liga MX con acceso a información detallada de partidos. Tus análisis son extensos, precisos, objetivos y ricos en detalles tácticos y contextuales. NUNCA te limites a respuestas cortas."},
             {"role": "user", "content": user},
         ],
         "temperature": 0.3,
-        "max_tokens": 600,
+        "max_tokens": 1500,
     }
 
     backend = ia._backend()
@@ -542,7 +563,20 @@ def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[Lis
         hg = p.get("home_goals")
         ag = p.get("away_goals")
         detalle = obtener_detalle_partido(home, away, event_id=p.get("event_id"), fecha=p.get("fecha", ""))
-        conclusion = _conclusion_ia(home, away, detalle, hg=hg, ag=ag)
+        
+        # Si no hay eventos de las APIs normales, usar scraper fuerte
+        if not detalle.get("eventos") and p.get("fecha"):
+            detalle_fuera = _obtener_detalles_fuera(home, away, p.get("fecha", ""))
+            if detalle_fuera:
+                detalle["eventos"] = detalle_fuera.get("eventos", [])
+                detalle["conclusion_ia"] = {
+                    "disponible": True,
+                    "conclusion": detalle_fuera.get("conclusion", ""),
+                }
+        
+        conclusion = detalle.pop("conclusion_ia", {}) or {}
+        if not conclusion:
+            conclusion = _conclusion_ia(home, away, detalle, hg=hg, ag=ag)
 
         eventos_lineas = _formatear_eventos(detalle.get("eventos", []))
         tarjetas_lineas = _formatear_tarjetas(detalle.get("eventos", []))
