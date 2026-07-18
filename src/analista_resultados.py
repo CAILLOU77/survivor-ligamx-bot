@@ -412,9 +412,9 @@ def obtener_detalle_partido(home: str, away: str, event_id: Optional[str] = None
 
 
 def _formatear_eventos(eventos: List[Dict[str, Any]]) -> List[str]:
-    """Convierte eventos a líneas legibles."""
+    """Convierte eventos a líneas legibles, ordenados por minuto."""
     lineas: List[str] = []
-    for e in (eventos or [])[:20]:
+    for e in (eventos or [])[:30]:
         if not isinstance(e, dict):
             continue
         tipo_raw = str(e.get("type", "") or e.get("category", "") or "").lower()
@@ -448,6 +448,12 @@ def _formatear_eventos(eventos: List[Dict[str, Any]]) -> List[str]:
         # Woodwork / other notable
         elif any(k in tipo_raw for k in ["woodwork", "poste", "palo", "save", "salvada"]):
             lineas.append(f"🥅 {minuto}' {equipo} — {jugador} {detalle}".strip())
+    # Ordenar por minuto (los eventos de 365scores ya vienen ordenados, pero por si acaso)
+    def _sort_key(linea: str) -> int:
+        import re
+        m = re.search(r"(\d+)'", linea)
+        return int(m.group(1)) if m else 9999
+    lineas.sort(key=_sort_key)
     return lineas
 
 
@@ -703,11 +709,11 @@ def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[Lis
         ]
         if eventos_lineas:
             bloque.append("📋 Eventos:")
-            for ev in eventos_lineas[:8]:
+            for ev in eventos_lineas[:20]:
                 bloque.append(f"  • {ev}")
         if tarjetas_lineas:
             bloque.append("🟨🟥 Tarjetas:")
-            for t in tarjetas_lineas[:6]:
+            for t in tarjetas_lineas[:10]:
                 bloque.append(f"  • {t}")
         if picks_lineas:
             for pl in picks_lineas:
@@ -777,7 +783,7 @@ def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[Lis
             
             if eventos_lineas:
                 mensaje1_partes.append("📋 Eventos:")
-                for ev in eventos_lineas[:10]:
+                for ev in eventos_lineas[:20]:
                     mensaje1_partes.append(f"  • {ev}")
             else:
                 goles_marcador = _goles_desde_marcador(home, away, hg, ag)
@@ -787,7 +793,7 @@ def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[Lis
                         mensaje1_partes.append(f"  • {g}")
             if tarjetas_lineas:
                 mensaje1_partes.append("🟨🟥 Tarjetas:")
-                for t in tarjetas_lineas[:6]:
+                for t in tarjetas_lineas[:10]:
                     mensaje1_partes.append(f"  • {t}")
             if conclusion.get("disponible") and conclusion.get("conclusion"):
                 texto_conclusion = conclusion['conclusion']
@@ -834,7 +840,7 @@ def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[Lis
                 
                 if eventos_lineas:
                     mensaje2_partes.append("📋 Eventos:")
-                    for ev in eventos_lineas[:10]:
+                    for ev in eventos_lineas[:20]:
                         mensaje2_partes.append(f"  • {ev}")
                 else:
                     goles_marcador = _goles_desde_marcador(home, away, hg, ag)
@@ -844,7 +850,7 @@ def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[Lis
                             mensaje2_partes.append(f"  • {g}")
                 if tarjetas_lineas:
                     mensaje2_partes.append("🟨🟥 Tarjetas:")
-                    for t in tarjetas_lineas[:6]:
+                    for t in tarjetas_lineas[:10]:
                         mensaje2_partes.append(f"  • {t}")
                 if conclusion.get("disponible") and conclusion.get("conclusion"):
                     texto_conclusion = conclusion['conclusion']
@@ -895,7 +901,7 @@ def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[Lis
             # Mostrar eventos si hay
             if eventos_lineas:
                 mensaje_partido.append("📋 Eventos:")
-                for ev in eventos_lineas[:10]:
+                for ev in eventos_lineas[:20]:
                     mensaje_partido.append(f"  • {ev}")
             else:
                 # Si no hay eventos pero hay marcador, mostrar goles básicos
@@ -907,7 +913,7 @@ def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[Lis
             
             if tarjetas_lineas:
                 mensaje_partido.append("🟨🟥 Tarjetas:")
-                for t in tarjetas_lineas[:6]:
+                for t in tarjetas_lineas[:10]:
                     mensaje_partido.append(f"  • {t}")
             if conclusion.get("disponible") and conclusion.get("conclusion"):
                 texto_conclusion = conclusion['conclusion']
