@@ -734,7 +734,7 @@ def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[Lis
     mapa_orden = {(p.get("home_team"), p.get("away_team")): i for i, p in enumerate(partidos)}
     analisis.sort(key=lambda a: mapa_orden.get((a["home"], a["away"]), 0))
 
-    # Estadísticas por equipo
+    # Estadísticas por equipo (solo esta jornada, para contexto si hiciera falta)
     stats_equipos: Dict[str, Dict[str, Any]] = {}
     for a in analisis:
         home = a["home"]; away = a["away"]
@@ -752,15 +752,24 @@ def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[Lis
             else:
                 stats_equipos[equipo]["p"] += 1
 
+    # Tabla general del TORNEO (acumula todas las jornadas guardadas)
+    _fecha_guardado = fecha or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    _guardar_resultados_jornada(stats_equipos, _fecha_guardado)
+    hist = cargar_historial_resultados()
+    tabla_torneo = _tabla_acumulada()
+    total_jornadas = len((hist.get("por_fecha") or {})) if isinstance(hist, dict) else 0
+
     # Tabla de posiciones resumida
-    tabla_lineas = ["📈 <b>CÓMO VA CADA EQUIPO</b>", "━━━━━━━━━━"]
-    for pos, (eq, st) in enumerate(sorted(stats_equipos.items(), key=lambda x: (x[1]["puntos"], x[1]["gf"] - x[1]["gc"]), reverse=True), 1):
+    tabla_lineas = [f"📈 <b>TABLA GENERAL ({total_jornadas} jornada(s))</b>", "━━━━━━━━━━"]
+    if not tabla_torneo:
+        tabla_lineas.append("(sin datos acumulados aún)")
+    for pos, (eq, st) in enumerate(sorted(tabla_torneo.items(), key=lambda x: (x[1]["puntos"], x[1]["gf"] - x[1]["gc"]), reverse=True), 1):
         dg = st['gf'] - st['gc']
         dg_str = f"+{dg}" if dg > 0 else str(dg)
         tabla_lineas.append(
             f"{pos}º {eq}\n"
             f"   PJ:{st['pj']} · G:{st['g']} E:{st['e']} P:{st['p']} · "
-            f"GF:{st['gf']} GC:{st['gc']} DG:{dg_str}"
+            f"GF:{st['gf']} GC:{st['gc']} DG:{dg_str} · PTS:{st['puntos']}"
         )
     tabla_lineas.append("")
     tabla_lineas.append(_DECISION)
@@ -781,8 +790,6 @@ def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[Lis
 
     # Mensajes individuales (uno por partido)
     mensajes_individuales = ["\n".join(_bloque_partido(a)) for a in analisis]
-
-    _guardar_resultados_jornada(stats_equipos, fecha or datetime.now(timezone.utc).strftime("%Y-%m-%d"))
 
     return {
         "partidos": analisis,
@@ -834,7 +841,11 @@ def _bloque_partido(a: Dict[str, Any]) -> List[str]:
 
 
 def _guardar_resultados_jornada(stats_equipos: Dict[str, Dict[str, Any]], fecha: str) -> None:
-    """Guarda los resultados de la jornada en un archivo JSON para tracking."""
+    """
+    Guarda los resultados de la jornada en data/historial_resultados.json.
+    Usa un dict por fecha (merge) para NO duplicar si se corre /analisis varias
+    veces en la misma jornada.
+    """
     import json
     from pathlib import Path
     BASE_DIR = Path(__file__).resolve().parents[1]
@@ -844,18 +855,25 @@ def _guardar_resultados_jornada(stats_equipos: Dict[str, Dict[str, Any]], fecha:
             with open(historial_path, "r", encoding="utf-8") as f:
                 historial = json.load(f)
         else:
-            historial = {"jornadas": []}
+            historial = {}
     except Exception:
-        historial = {"jornadas": []}
-    
-    jornada_data = {
+        historial = {}
+
+    if not isinstance(historial, dict):
+        historial = {}
+
+    por_fecha = historial.get("por_fecha", {})
+    por_fecha[fecha] = {
         "fecha": fecha,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "equipos": stats_equipos,
     }
-    historial["jornadas"].append(jornada_data)
-    historial["jornadas"] = historial["jornadas"][-10:]  # Guardar últimas 10 jornadas
-    
+    historial["por_fecha"] = por_fecha
+    # Mantener también lista legible de las últimas 10 fechas
+    historial["jornadas"] = [
+        por_fecha[f] for f in sorted(por_fecha.keys())[-10:]
+    ]
+
     try:
         historial_path.parent.mkdir(parents=True, exist_ok=True)
         with open(historial_path, "w", encoding="utf-8") as f:
@@ -864,8 +882,38 @@ def _guardar_resultados_jornada(stats_equipos: Dict[str, Dict[str, Any]], fecha:
         pass
 
 
+def _tabla_acumulada() -> Dict[str, Dict[str, Any]]:
+    """
+    Tabla general del torneo: suma los equipos de TODAS las jornadas guardadas
+    en data/historial_resultados.json. Devuelve {equipo: {pj,g,e,p,gf,gc,puntos}}.
+    Si no hay historial, devuelve {}.
+    """
+    historial = cargar_historial_resultados()
+    acum: Dict[str, Dict[str, Any]] = {}
+    por_fecha = (historial.get("por_fecha") or {}) if isinstance(historial, dict) else {}
+    # fallback a formato viejo (lista de jornadas)
+    if not por_fecha and isinstance(historial, dict):
+        for j in historial.get("jornadas", []) or []:
+            if isinstance(j, dict) and isinstance(j.get("equipos"), dict):
+                por_fecha[j.get("fecha", "x")] = j
+    for datos in por_fecha.values():
+        equipos = (datos or {}).get("equipos", {}) if isinstance(datos, dict) else {}
+        for eq, st in equipos.items():
+            if not isinstance(st, dict):
+                continue
+            a = acum.setdefault(eq, {"pj": 0, "g": 0, "e": 0, "p": 0, "gf": 0, "gc": 0, "puntos": 0})
+            a["pj"] += int(st.get("pj", 0) or 0)
+            a["g"] += int(st.get("g", 0) or 0)
+            a["e"] += int(st.get("e", 0) or 0)
+            a["p"] += int(st.get("p", 0) or 0)
+            a["gf"] += int(st.get("gf", 0) or 0)
+            a["gc"] += int(st.get("gc", 0) or 0)
+            a["puntos"] += int(st.get("puntos", 0) or 0)
+    return acum
+
+
 def cargar_historial_resultados() -> Dict[str, Any]:
-    """Carga el historial de resultados de las últimas jornadas."""
+    """Carga el historial de resultados de las jornadas guardadas."""
     import json
     from pathlib import Path
     BASE_DIR = Path(__file__).resolve().parents[1]
@@ -873,7 +921,8 @@ def cargar_historial_resultados() -> Dict[str, Any]:
     try:
         if historial_path.exists():
             with open(historial_path, "r", encoding="utf-8") as f:
-                return json.load(f)
+                data = json.load(f)
+                return data if isinstance(data, dict) else {"jornadas": []}
     except Exception:
         pass
     return {"jornadas": []}
