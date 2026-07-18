@@ -2285,11 +2285,26 @@ def enviar_analisis_jornada() -> Dict[str, Any]:
     cabecera = resultado.get("resumen", "").split("\n")[0] if resultado.get("resumen") else "📊 ANÁLISIS DE LA JORNADA"
     enviado = enviar_mensaje(f"{cabecera}\n🕒 {datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M')} h (UTC)\n━━━━━━━━━━")
     
-    # Enviar cada partido como mensaje individual para que no se corten las conclusiones
+    # Enviar cada partido como mensaje individual o dividido si es muy largo
     for mensaje_partido in resultado.get("mensajes_individuales", []):
-        if mensaje_partido.strip():
-            env = enviar_mensaje(mensaje_partido)
-            enviado = enviado and env
+        if not mensaje_partido.strip():
+            continue
+        # Si el mensaje supera los 3000 caracteres, dividirlo
+        if len(mensaje_partido) > 3000:
+            # Dividir por la conclusión
+            partes = mensaje_partido.split("💡 <b>Conclusión:</b>")
+            if len(partes) == 2:
+                parte1 = partes[0] + "💡 <b>Conclusión (1/2):</b>"
+                parte2 = "💡 <b>Conclusión (2/2):</b>" + partes[1]
+                enviado = enviado and enviar_mensaje(parte1)
+                enviado = enviado and enviar_mensaje(parte2)
+            else:
+                # Fallback: dividir por la mitad
+                mitad = len(mensaje_partido) // 2
+                enviado = enviado and enviar_mensaje(mensaje_partido[:mitad] + "...")
+                enviado = enviado and enviar_mensaje("..." + mensaje_partido[mitad:])
+        else:
+            enviado = enviado and enviar_mensaje(mensaje_partido)
     
     # Enviar tabla de posiciones
     mensaje_tabla = resultado.get("mensaje_tabla", "")

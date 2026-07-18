@@ -710,8 +710,8 @@ def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[Lis
                     mensaje1_partes.append(f"  • {t}")
             if conclusion.get("disponible") and conclusion.get("conclusion"):
                 texto_conclusion = conclusion['conclusion']
-                if len(texto_conclusion) > 2000:
-                    texto_conclusion = texto_conclusion[:2000] + "..."
+                if len(texto_conclusion) > 1200:
+                    texto_conclusion = texto_conclusion[:1200] + "..."
                 mensaje1_partes.append(f"💡 <b>Conclusión:</b> {texto_conclusion}")
             elif conclusion.get("motivo"):
                 mensaje1_partes.append(f"<i>Conclusión IA: {conclusion['motivo']}</i>")
@@ -761,8 +761,8 @@ def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[Lis
                         mensaje2_partes.append(f"  • {t}")
                 if conclusion.get("disponible") and conclusion.get("conclusion"):
                     texto_conclusion = conclusion['conclusion']
-                    if len(texto_conclusion) > 2000:
-                        texto_conclusion = texto_conclusion[:2000] + "..."
+                    if len(texto_conclusion) > 1200:
+                        texto_conclusion = texto_conclusion[:1200] + "..."
                     mensaje2_partes.append(f"💡 <b>Conclusión:</b> {texto_conclusion}")
                 elif conclusion.get("motivo"):
                     mensaje2_partes.append(f"<i>Conclusión IA: {conclusion['motivo']}</i>")
