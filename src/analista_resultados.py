@@ -18,8 +18,7 @@ Activación: automática desde Telegram (/analisis) o endpoint API.
 
 from __future__ import annotations
 
-import json
-import os
+from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
@@ -638,6 +637,66 @@ def _comparar_picks_anteriores(home: str, away: str, picks_anteriores: List[Dict
     return lineas
 
 
+def _procesar_partido(p: Dict[str, Any], picks_anteriores: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Procesa UN partido de forma aislada: obtiene detalle (con cache), conclusion IA,
+    y devuelve el dict de análisis. Pensado para correr en paralelo por partido.
+    """
+    home = p.get("home_team", "")
+    away = p.get("away_team", "")
+    hg = p.get("home_goals")
+    ag = p.get("away_goals")
+
+    detalle = obtener_detalle_partido(home, away, event_id=p.get("event_id"), fecha=p.get("fecha", ""))
+
+    # Prioridad: eventos de ESPN si existen
+    if p.get("eventos_espn"):
+        detalle["eventos"] = p["eventos_espn"]
+
+    # Si no hay eventos, fallback rápido SIN web search
+    if not detalle.get("eventos"):
+        detalle_fuera = _obtener_detalles_fuera(home, away, p.get("fecha", ""), hg=hg or 0, ag=ag or 0)
+        if detalle_fuera:
+            detalle["eventos"] = detalle_fuera.get("eventos", [])
+            detalle["conclusion_ia"] = {
+                "disponible": True,
+                "conclusion": detalle_fuera.get("conclusion", ""),
+            }
+
+    conclusion = detalle.pop("conclusion_ia", {}) or {}
+    if not conclusion:
+        conclusion = _conclusion_ia(home, away, detalle, hg=hg, ag=ag)
+
+    eventos_lineas = _formatear_eventos(detalle.get("eventos", []))
+    tarjetas_lineas = _formatear_tarjetas(detalle.get("eventos", []))
+    picks_lineas = _comparar_picks_anteriores(home, away, picks_anteriores)
+
+    if hg is not None and ag is not None:
+        if hg > ag:
+            resultado = f"🏆 {home} {hg}-{ag} {away}"
+        elif hg < ag:
+            resultado = f"🏆 {away} {ag}-{hg} {home}"
+        else:
+            resultado = f"🤝 {home} {hg}-{ag} {away}"
+    else:
+        resultado = f"⏳ {home} vs {away}"
+
+    return {
+        "home": home,
+        "away": away,
+        "home_goals": hg,
+        "away_goals": ag,
+        "resultado": resultado,
+        "eventos": detalle.get("eventos", []),
+        "eventos_lineas": eventos_lineas,
+        "tarjetas": tarjetas_lineas,
+        "alineacion": detalle.get("alineacion"),
+        "impacto_xi": detalle.get("impacto_xi"),
+        "picks_lineas": picks_lineas,
+        "conclusion_ia": conclusion,
+    }
+
+
 def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
     """
     Analiza TODOS los partidos YA JUGADOS de la jornada actual.
@@ -652,119 +711,50 @@ def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[Lis
         return {"partidos": [], "resumen": "No hay partidos jugados aún en la jornada actual.", "resumen_2": "", "tabla_posiciones": ""}
 
     picks_anteriores = picks_anteriores or []
+
+    # Procesar TODOS los partidos en paralelo (cada uno hace sus HTTP + IA en su hilo)
     analisis: List[Dict[str, Any]] = []
-    lineas_html: List[str] = [
-        "📊 <b>ANÁLISIS DE LA JORNADA</b>",
-        f"🕒 {datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M')} h (UTC)",
-        "━━━━━━━━━━",
-    ]
+    with ThreadPoolExecutor(max_workers=min(len(partidos), 8)) as ex:
+        futuros = {ex.submit(_procesar_partido, p, picks_anteriores): p for p in partidos}
+        for fut in as_completed(futuros):
+            try:
+                analisis.append(fut.result())
+            except Exception:
+                p = futuros[fut]
+                analisis.append({
+                    "home": p.get("home_team", ""),
+                    "away": p.get("away_team", ""),
+                    "home_goals": p.get("home_goals"),
+                    "away_goals": p.get("away_goals"),
+                    "eventos": [], "eventos_lineas": [], "tarjetas": [],
+                    "alineacion": None, "impacto_xi": None, "picks_lineas": [],
+                    "conclusion_ia": {"disponible": False, "motivo": "Error al procesar", "conclusion": ""},
+                })
+    # Ordenar por fecha/orden original de la jornada
+    mapa_orden = {(p.get("home_team"), p.get("away_team")): i for i, p in enumerate(partidos)}
+    analisis.sort(key=lambda a: mapa_orden.get((a["home"], a["away"]), 0))
 
     # Estadísticas por equipo
     stats_equipos: Dict[str, Dict[str, Any]] = {}
-
-    for p in partidos:
-        home = p.get("home_team", "")
-        away = p.get("away_team", "")
-        hg = p.get("home_goals")
-        ag = p.get("away_goals")
-        detalle = obtener_detalle_partido(home, away, event_id=p.get("event_id"), fecha=p.get("fecha", ""))
-        
-        # Prioridad 1: eventos reales de ESPN (goles, tarjetas, cambios confirmados)
-        if p.get("eventos_espn"):
-            detalle["eventos"] = p["eventos_espn"]
-        
-        # Si no hay eventos en absoluto, usar scraper fuerte como fallback
-        if not detalle.get("eventos") and p.get("fecha"):
-            detalle_fuera = _obtener_detalles_fuera(home, away, p.get("fecha", ""), hg=hg or 0, ag=ag or 0)
-            if detalle_fuera:
-                detalle["eventos"] = detalle_fuera.get("eventos", [])
-                detalle["conclusion_ia"] = {
-                    "disponible": True,
-                    "conclusion": detalle_fuera.get("conclusion", ""),
-                }
-        
-        conclusion = detalle.pop("conclusion_ia", {}) or {}
-        if not conclusion:
-            conclusion = _conclusion_ia(home, away, detalle, hg=hg, ag=ag)
-
-        eventos_lineas = _formatear_eventos(detalle.get("eventos", []))
-        tarjetas_lineas = _formatear_tarjetas(detalle.get("eventos", []))
-        picks_lineas = _comparar_picks_anteriores(home, away, picks_anteriores)
-
-        # Determinar resultado
-        if hg is not None and ag is not None:
-            if hg > ag:
-                resultado = f"🏆 {home} {hg}-{ag} {away}"
-            elif hg < ag:
-                resultado = f"🏆 {away} {ag}-{hg} {home}"
-            else:
-                resultado = f"🤝 {home} {hg}-{ag} {away}"
-        else:
-            resultado = f"⏳ {home} vs {away}"
-
-        analisis.append(
-            {
-                "home": home,
-                "away": away,
-                "home_goals": hg,
-                "away_goals": ag,
-                "eventos": detalle.get("eventos", []),
-                "tarjetas": tarjetas_lineas,
-                "alineacion": detalle.get("alineacion"),
-                "impacto_xi": detalle.get("impacto_xi"),
-                "conclusion_ia": conclusion,
-            }
-        )
-
-        # Actualizar estadísticas por equipo
-        for equipo, goles_favor, goles_contra in [(home, hg or 0, ag or 0), (away, ag or 0, hg or 0)]:
+    for a in analisis:
+        home = a["home"]; away = a["away"]
+        hg = a.get("home_goals"); ag = a.get("away_goals")
+        for equipo, gf, gc in [(home, hg or 0, ag or 0), (away, ag or 0, hg or 0)]:
             if equipo not in stats_equipos:
                 stats_equipos[equipo] = {"gf": 0, "gc": 0, "pj": 0, "g": 0, "e": 0, "p": 0, "puntos": 0}
-            stats_equipos[equipo]["gf"] += goles_favor
-            stats_equipos[equipo]["gc"] += goles_contra
+            stats_equipos[equipo]["gf"] += gf
+            stats_equipos[equipo]["gc"] += gc
             stats_equipos[equipo]["pj"] += 1
-            if goles_favor > goles_contra:
-                stats_equipos[equipo]["g"] += 1
-                stats_equipos[equipo]["puntos"] += 3
-            elif goles_favor == goles_contra:
-                stats_equipos[equipo]["e"] += 1
-                stats_equipos[equipo]["puntos"] += 1
+            if gf > gc:
+                stats_equipos[equipo]["g"] += 1; stats_equipos[equipo]["puntos"] += 3
+            elif gf == gc:
+                stats_equipos[equipo]["e"] += 1; stats_equipos[equipo]["puntos"] += 1
             else:
                 stats_equipos[equipo]["p"] += 1
 
-        # Armar bloque del partido
-        bloque: List[str] = [
-            f"⚽ <b>{home}</b> vs <b>{away}</b>",
-            f"📊 Resultado: {resultado}",
-        ]
-        if eventos_lineas:
-            bloque.append("📋 Eventos:")
-            for ev in eventos_lineas[:20]:
-                bloque.append(f"  • {ev}")
-        if tarjetas_lineas:
-            bloque.append("🟨🟥 Tarjetas:")
-            for t in tarjetas_lineas[:10]:
-                bloque.append(f"  • {t}")
-        if picks_lineas:
-            for pl in picks_lineas:
-                bloque.append(f"🎯 {pl}")
-        if conclusion.get("disponible") and conclusion.get("conclusion"):
-            bloque.append(f"💡 <b>Conclusión:</b> {conclusion['conclusion']}")
-        elif conclusion.get("motivo"):
-            bloque.append(f"<i>Conclusión IA: {conclusion['motivo']}</i>")
-        bloque.append("")
-
-        # Agregar bloque al mensaje actual o al segundo
-        # Si el mensaje actual supera ~3500 chars, mover a resumen_2
-        lineas_html.extend(bloque)
-
-    lineas_html.append("━━━━━━━━━━")
-    lineas_html.append(_DECISION)
-
     # Tabla de posiciones resumida
     tabla_lineas = ["📈 <b>CÓMO VA CADA EQUIPO</b>", "━━━━━━━━━━"]
-    equipos_ordenados = sorted(stats_equipos.items(), key=lambda x: (x[1]["puntos"], x[1]["dg"]), reverse=True)
-    for pos, (eq, st) in enumerate(equipos_ordenados, 1):
+    for pos, (eq, st) in enumerate(sorted(stats_equipos.items(), key=lambda x: (x[1]["puntos"], x[1]["gf"] - x[1]["gc"]), reverse=True), 1):
         dg = st['gf'] - st['gc']
         dg_str = f"+{dg}" if dg > 0 else str(dg)
         tabla_lineas.append(
@@ -775,202 +765,72 @@ def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[Lis
     tabla_lineas.append("")
     tabla_lineas.append(_DECISION)
 
-    # Dividir en 2 mensajes
-    resumen_completo = "\n".join(lineas_html)
-    tabla_completa = "\n".join(tabla_lineas)
-    
-    # Mensaje 1: primeros 5 partidos + inicio de tabla
-    mensaje1_partes = []
-    mensaje1_partes.append("📊 <b>ANÁLISIS DE LA JORNADA (1/2)</b>")
-    mensaje1_partes.append(f"🕒 {datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M')} h (UTC)")
-    mensaje1_partes.append("━━━━━━━━━━")
-    
-    partidos_mensaje1 = partidos[:5]
-    partidos_mensaje2 = partidos[5:]
-    
-    for p_item in partidos[:5]:
-        # Reconstruir el bloque para este partido
-        home = p_item.get("home_team", "")
-        away = p_item.get("away_team", "")
-        hg = p_item.get("home_goals")
-        ag = p_item.get("away_goals")
-        
-        if hg is not None and ag is not None:
-            if hg > ag:
-                resultado = f"🏆 {home} {hg}-{ag} {away}"
-            elif hg < ag:
-                resultado = f"🏆 {away} {ag}-{hg} {home}"
-            else:
-                resultado = f"🤝 {home} {hg}-{ag} {away}"
-        else:
-            resultado = f"⏳ {home} vs {away}"
-        
-        mensaje1_partes.append(f"⚽ <b>{home}</b> vs <b>{away}</b>")
-        mensaje1_partes.append(f"📊 Resultado: {resultado}")
-        
-        # Buscar el análisis correspondiente
-        analisis_p = next((a for a in analisis if a["home"] == home and a["away"] == away), None)
-        if analisis_p:
-            eventos_lineas = _formatear_eventos(analisis_p.get("eventos", []))
-            tarjetas_lineas = analisis_p.get("tarjetas", [])
-            conclusion = analisis_p.get("conclusion_ia", {})
-            
-            if eventos_lineas:
-                mensaje1_partes.append("📋 Eventos:")
-                for ev in eventos_lineas[:20]:
-                    mensaje1_partes.append(f"  • {ev}")
-            else:
-                goles_marcador = _goles_desde_marcador(home, away, hg, ag)
-                if goles_marcador:
-                    mensaje1_partes.append("📋 Goles:")
-                    for g in goles_marcador:
-                        mensaje1_partes.append(f"  • {g}")
-            if tarjetas_lineas:
-                mensaje1_partes.append("🟨🟥 Tarjetas:")
-                for t in tarjetas_lineas[:10]:
-                    mensaje1_partes.append(f"  • {t}")
-            if conclusion.get("disponible") and conclusion.get("conclusion"):
-                texto_conclusion = conclusion['conclusion']
-                if len(texto_conclusion) > 1200:
-                    texto_conclusion = texto_conclusion[:1200] + "..."
-                mensaje1_partes.append(f"💡 <b>Conclusión:</b> {texto_conclusion}")
-            elif conclusion.get("motivo"):
-                mensaje1_partes.append(f"<i>Conclusión IA: {conclusion['motivo']}</i>")
-        mensaje1_partes.append("")
-    
-    mensaje1_partes.append("━━━━━━━━━━")
-    mensaje1_partes.append(_DECISION)
-    
-    # Mensaje 2: resto de partidos + tabla de posiciones
-    mensaje2_partes = []
-    if partidos_mensaje2:
-        mensaje2_partes.append("📊 <b>ANÁLISIS DE LA JORNADA (2/2)</b>")
-        mensaje2_partes.append("━━━━━━━━━━")
-        
-        for p_item in partidos_mensaje2:
-            home = p_item.get("home_team", "")
-            away = p_item.get("away_team", "")
-            hg = p_item.get("home_goals")
-            ag = p_item.get("away_goals")
-            
-            if hg is not None and ag is not None:
-                if hg > ag:
-                    resultado = f"🏆 {home} {hg}-{ag} {away}"
-                elif hg < ag:
-                    resultado = f"🏆 {away} {ag}-{hg} {home}"
-                else:
-                    resultado = f"🤝 {home} {hg}-{ag} {away}"
-            else:
-                resultado = f"⏳ {home} vs {away}"
-            
-            mensaje2_partes.append(f"⚽ <b>{home}</b> vs <b>{away}</b>")
-            mensaje2_partes.append(f"📊 Resultado: {resultado}")
-            
-            analisis_p = next((a for a in analisis if a["home"] == home and a["away"] == away), None)
-            if analisis_p:
-                eventos_lineas = _formatear_eventos(analisis_p.get("eventos", []))
-                tarjetas_lineas = analisis_p.get("tarjetas", [])
-                conclusion = analisis_p.get("conclusion_ia", {})
-                
-                if eventos_lineas:
-                    mensaje2_partes.append("📋 Eventos:")
-                    for ev in eventos_lineas[:20]:
-                        mensaje2_partes.append(f"  • {ev}")
-                else:
-                    goles_marcador = _goles_desde_marcador(home, away, hg, ag)
-                    if goles_marcador:
-                        mensaje2_partes.append("📋 Goles:")
-                        for g in goles_marcador:
-                            mensaje2_partes.append(f"  • {g}")
-                if tarjetas_lineas:
-                    mensaje2_partes.append("🟨🟥 Tarjetas:")
-                    for t in tarjetas_lineas[:10]:
-                        mensaje2_partes.append(f"  • {t}")
-                if conclusion.get("disponible") and conclusion.get("conclusion"):
-                    texto_conclusion = conclusion['conclusion']
-                    if len(texto_conclusion) > 1200:
-                        texto_conclusion = texto_conclusion[:1200] + "..."
-                    mensaje2_partes.append(f"💡 <b>Conclusión:</b> {texto_conclusion}")
-                elif conclusion.get("motivo"):
-                    mensaje2_partes.append(f"<i>Conclusión IA: {conclusion['motivo']}</i>")
-            mensaje2_partes.append("")
-        
-        mensaje2_partes.append("━━━━━━━━━━")
-    
-    # Agregar tabla de posiciones al último mensaje
+    # Mensaje 1: primeros 5 partidos
+    mensaje1_partes = ["📊 <b>ANÁLISIS DE LA JORNADA (1/2)</b>",
+                       f"🕒 {datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M')} h (UTC)", "━━━━━━━━━━"]
+    for a in analisis[:5]:
+        mensaje1_partes.extend(_bloque_partido(a))
+    mensaje1_partes.append("━━━━━━━━━━"); mensaje1_partes.append(_DECISION)
+
+    # Mensaje 2: resto + tabla
+    mensaje2_partes = ["📊 <b>ANÁLISIS DE LA JORNADA (2/2)</b>", "━━━━━━━━━━"]
+    for a in analisis[5:]:
+        mensaje2_partes.extend(_bloque_partido(a))
+    mensaje2_partes.append("━━━━━━━━━━")
     mensaje2_partes.extend(tabla_lineas)
 
-    # Guardar resultados por equipo
-    _guardar_resultados_jornada(stats_equipos, fecha or datetime.now(timezone.utc).strftime("%Y-%m-%d"))
+    # Mensajes individuales (uno por partido)
+    mensajes_individuales = ["\n".join(_bloque_partido(a)) for a in analisis]
 
-    # Generar mensajes individuales por partido para evitar cortes
-    mensajes_individuales = []
-    for p_item in partidos:
-        home = p_item.get("home_team", "")
-        away = p_item.get("away_team", "")
-        hg = p_item.get("home_goals")
-        ag = p_item.get("away_goals")
-        
-        if hg is not None and ag is not None:
-            if hg > ag:
-                resultado = f"🏆 {home} {hg}-{ag} {away}"
-            elif hg < ag:
-                resultado = f"🏆 {away} {ag}-{hg} {home}"
-            else:
-                resultado = f"🤝 {home} {hg}-{ag} {away}"
-        else:
-            resultado = f"⏳ {home} vs {away}"
-        
-        mensaje_partido = [
-            f"⚽ <b>{home}</b> vs <b>{away}</b>",
-            f"📊 Resultado: {resultado}",
-        ]
-        
-        analisis_p = next((a for a in analisis if a["home"] == home and a["away"] == away), None)
-        if analisis_p:
-            eventos_lineas = _formatear_eventos(analisis_p.get("eventos", []))
-            tarjetas_lineas = analisis_p.get("tarjetas", [])
-            conclusion = analisis_p.get("conclusion_ia", {})
-            
-            # Mostrar eventos si hay
-            if eventos_lineas:
-                mensaje_partido.append("📋 Eventos:")
-                for ev in eventos_lineas[:20]:
-                    mensaje_partido.append(f"  • {ev}")
-            else:
-                # Si no hay eventos pero hay marcador, mostrar goles básicos
-                goles_marcador = _goles_desde_marcador(home, away, hg, ag)
-                if goles_marcador:
-                    mensaje_partido.append("📋 Goles:")
-                    for g in goles_marcador:
-                        mensaje_partido.append(f"  • {g}")
-            
-            if tarjetas_lineas:
-                mensaje_partido.append("🟨🟥 Tarjetas:")
-                for t in tarjetas_lineas[:10]:
-                    mensaje_partido.append(f"  • {t}")
-            if conclusion.get("disponible") and conclusion.get("conclusion"):
-                texto_conclusion = conclusion['conclusion']
-                if len(texto_conclusion) > 1500:
-                    texto_conclusion = texto_conclusion[:1500] + "..."
-                mensaje_partido.append(f"💡 <b>Conclusión:</b> {texto_conclusion}")
-            elif conclusion.get("motivo"):
-                mensaje_partido.append(f"<i>Conclusión IA: {conclusion['motivo']}</i>")
-        
-        mensaje_partido.append("")
-        mensajes_individuales.append("\n".join(mensaje_partido))
-    
-    # Mensaje de resumen de tabla
-    mensaje_tabla = "\n".join(tabla_lineas)
+    _guardar_resultados_jornada(stats_equipos, fecha or datetime.now(timezone.utc).strftime("%Y-%m-%d"))
 
     return {
         "partidos": analisis,
         "resumen": "\n".join(mensaje1_partes),
         "resumen_2": "\n".join(mensaje2_partes) if mensaje2_partes else "",
-        "tabla_posiciones": tabla_completa,
+        "tabla_posiciones": "\n".join(tabla_lineas),
         "mensajes_individuales": mensajes_individuales,
-        "mensaje_tabla": mensaje_tabla,
+        "mensaje_tabla": "\n".join(tabla_lineas),
     }
+
+
+def _bloque_partido(a: Dict[str, Any]) -> List[str]:
+    """Arma el bloque de un partido para Telegram (usa los campos ya calculados)."""
+    home = a["home"]; away = a["away"]
+    hg = a.get("home_goals"); ag = a.get("away_goals")
+    if hg is not None and ag is not None:
+        resultado = f"🏆 {home} {hg}-{ag} {away}" if hg > ag else (f"🏆 {away} {ag}-{hg} {home}" if hg < ag else f"🤝 {home} {hg}-{ag} {away}")
+    else:
+        resultado = f"⏳ {home} vs {away}"
+    bloque = [f"⚽ <b>{home}</b> vs <b>{away}</b>", f"📊 Resultado: {resultado}"]
+    eventos_lineas = a.get("eventos_lineas") or []
+    tarjetas_lineas = a.get("tarjetas") or []
+    if eventos_lineas:
+        bloque.append("📋 Eventos:")
+        for ev in eventos_lineas[:20]:
+            bloque.append(f"  • {ev}")
+    else:
+        goles_marcador = _goles_desde_marcador(home, away, hg, ag)
+        if goles_marcador:
+            bloque.append("📋 Goles:")
+            for g in goles_marcador:
+                bloque.append(f"  • {g}")
+    if tarjetas_lineas:
+        bloque.append("🟨🟥 Tarjetas:")
+        for t in tarjetas_lineas[:10]:
+            bloque.append(f"  • {t}")
+    for pl in a.get("picks_lineas", []):
+        bloque.append(f"🎯 {pl}")
+    conclusion = a.get("conclusion_ia", {})
+    if conclusion.get("disponible") and conclusion.get("conclusion"):
+        texto = conclusion["conclusion"]
+        if len(texto) > 1500:
+            texto = texto[:1500] + "..."
+        bloque.append(f"💡 <b>Conclusión:</b> {texto}")
+    elif conclusion.get("motivo"):
+        bloque.append(f"<i>Conclusión IA: {conclusion['motivo']}</i>")
+    bloque.append("")
+    return bloque
 
 
 def _guardar_resultados_jornada(stats_equipos: Dict[str, Dict[str, Any]], fecha: str) -> None:
