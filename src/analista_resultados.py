@@ -413,7 +413,8 @@ def obtener_detalle_partido(home: str, away: str, event_id: Optional[str] = None
 
 def _formatear_eventos(eventos: List[Dict[str, Any]]) -> List[str]:
     """Convierte eventos a líneas legibles, ordenados por minuto."""
-    lineas: List[str] = []
+    # Primero filtrar y formatear
+    items: List[tuple[int, str]] = []  # (minuto_sort, linea)
     for e in (eventos or [])[:30]:
         if not isinstance(e, dict):
             continue
@@ -429,32 +430,35 @@ def _formatear_eventos(eventos: List[Dict[str, Any]]) -> List[str]:
             continue
         # Goal variants
         if any(k in tipo_raw for k in ["goal", "gol", "score", "point", "cancha"]):
-            lineas.append(f"⚽ {minuto}' {equipo} — {jugador} {detalle}".strip())
+            linea = f"⚽ {minuto}' {equipo} — {jugador} {detalle}".strip()
         # Card variants
         elif any(k in tipo_raw for k in ["card", "yellow", "red", "tarjeta", "amonest", "foul"]):
             color = "🟨" if any(k in tipo_raw for k in ["yellow", "amarilla", "yellow_card"]) else "🟥"
-            lineas.append(f"{color} {minuto}' {equipo} — {jugador}".strip())
+            linea = f"{color} {minuto}' {equipo} — {jugador}".strip()
         # Substitution variants
         elif any(k in tipo_raw for k in ["substitution", "sub", "cambio", "change"]):
             entra = str(e.get("playerIn", "") or e.get("substitute", "") or e.get("player_in", "") or "")
             sale = str(e.get("playerOut", "") or e.get("player_out", "") or jugador)
             if entra:
-                lineas.append(f"🔄 {minuto}' {equipo} — entra {entra}, sale {sale}".strip())
+                linea = f"🔄 {minuto}' {equipo} — entra {entra}, sale {sale}".strip()
             else:
-                lineas.append(f"🔄 {minuto}' {equipo} — {sale}".strip())
+                linea = f"🔄 {minuto}' {equipo} — {sale}".strip()
         # Penalty variants
         elif any(k in tipo_raw for k in ["penalty", "penal"]):
-            lineas.append(f"🎯 {minuto}' {equipo} — {jugador} {detalle}".strip())
+            linea = f"🎯 {minuto}' {equipo} — {jugador} {detalle}".strip()
         # Woodwork / other notable
         elif any(k in tipo_raw for k in ["woodwork", "poste", "palo", "save", "salvada"]):
-            lineas.append(f"🥅 {minuto}' {equipo} — {jugador} {detalle}".strip())
-    # Ordenar por minuto (los eventos de 365scores ya vienen ordenados, pero por si acaso)
-    def _sort_key(linea: str) -> int:
+            linea = f"🥅 {minuto}' {equipo} — {jugador} {detalle}".strip()
+        else:
+            continue
+        # Extraer minuto numérico del campo minute para ordenar
         import re
-        m = re.search(r"(\d+)", linea)
-        return int(m.group(1)) if m else 9999
-    lineas.sort(key=_sort_key)
-    return lineas
+        m = re.search(r"(\d+)", minuto)
+        minuto_sort = int(m.group(1)) if m else 9999
+        items.append((minuto_sort, linea))
+    # Ordenar por minuto
+    items.sort(key=lambda x: x[0])
+    return [linea for _, linea in items]
 
 
 def _formatear_tarjetas(eventos: List[Dict[str, Any]]) -> List[str]:
@@ -691,14 +695,16 @@ def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[Lis
         # Actualizar estadísticas por equipo
         for equipo, goles_favor, goles_contra in [(home, hg or 0, ag or 0), (away, ag or 0, hg or 0)]:
             if equipo not in stats_equipos:
-                stats_equipos[equipo] = {"gf": 0, "gc": 0, "pj": 0, "g": 0, "e": 0, "p": 0}
+                stats_equipos[equipo] = {"gf": 0, "gc": 0, "pj": 0, "g": 0, "e": 0, "p": 0, "puntos": 0}
             stats_equipos[equipo]["gf"] += goles_favor
             stats_equipos[equipo]["gc"] += goles_contra
             stats_equipos[equipo]["pj"] += 1
             if goles_favor > goles_contra:
                 stats_equipos[equipo]["g"] += 1
+                stats_equipos[equipo]["puntos"] += 3
             elif goles_favor == goles_contra:
                 stats_equipos[equipo]["e"] += 1
+                stats_equipos[equipo]["puntos"] += 1
             else:
                 stats_equipos[equipo]["p"] += 1
 
@@ -733,10 +739,14 @@ def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[Lis
 
     # Tabla de posiciones resumida
     tabla_lineas = ["📈 <b>CÓMO VA CADA EQUIPO</b>", "━━━━━━━━━━"]
-    for eq, st in sorted(stats_equipos.items(), key=lambda x: x[1]["gf"] - x[1]["gc"], reverse=True):
+    equipos_ordenados = sorted(stats_equipos.items(), key=lambda x: (x[1]["puntos"], x[1]["dg"]), reverse=True)
+    for pos, (eq, st) in enumerate(equipos_ordenados, 1):
+        dg = st['gf'] - st['gc']
+        dg_str = f"+{dg}" if dg > 0 else str(dg)
         tabla_lineas.append(
-            f"{eq}: {st['pj']}PJ · {st['g']}G {st['e']}E {st['p']}P · "
-            f"GF {st['gf']} · GC {st['gc']} · DG {st['gf'] - st['gc']}"
+            f"{pos}º {eq}\n"
+            f"   PJ:{st['pj']} · G:{st['g']} E:{st['e']} P:{st['p']} · "
+            f"GF:{st['gf']} GC:{st['gc']} DG:{dg_str}"
         )
     tabla_lineas.append("")
     tabla_lineas.append(_DECISION)
