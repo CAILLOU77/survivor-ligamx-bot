@@ -354,8 +354,9 @@ def _conclusion_ia(home: str, away: str, detalle: Dict[str, Any], hg: Optional[i
         f"{impacto_txt}\n\n"
         "Genera una conclusión BREVE (máx 4 líneas) de por qué ganó/perdió/empató "
         "cada equipo, enfocándote en: goles clave, expulsiones, alineación mermada, "
-        "cambios decisivos. Si no hay eventos detallados, usa el marcador y el contexto "
-        "de alineaciones para inferir. Si no hay datos suficientes, di 'Datos insuficientes'."
+        "cambios decisivos. SIEMPRE genera una conclusión, incluso si no hay eventos "
+        "detallados: usa el marcador y el contexto de alineaciones para inferir. "
+        "NUNCA digas 'Datos insuficientes'."
     )
 
     payload = {
@@ -379,6 +380,14 @@ def _conclusion_ia(home: str, away: str, detalle: Dict[str, Any], hg: Optional[i
             return {"disponible": True, "conclusion": str(contenido).strip()}
     except Exception:
         pass
+    # Fallback: conclusión básica sin IA
+    if hg is not None and ag is not None:
+        if hg > ag:
+            return {"disponible": True, "conclusion": f"{home} ganó {hg}-{ag}."}
+        elif hg < ag:
+            return {"disponible": True, "conclusion": f"{away} ganó {ag}-{hg}."}
+        else:
+            return {"disponible": True, "conclusion": f"Empate {hg}-{ag}."}
     return {
         "disponible": False,
         "motivo": "Error en llamada IA.",
