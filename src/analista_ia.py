@@ -136,7 +136,7 @@ def _buscar_web(query: str, max_results: int = 5) -> List[Dict[str, str]]:
                         })
         except Exception:
             pass
-    # Tercer fallback: intentar obtener contenido de las URLs encontradas
+    # Tercer fallback: obtener contenido completo de las URLs encontradas
     for r in resultados[:3]:
         if r.get("url") and not r.get("snippet"):
             try:
@@ -145,7 +145,7 @@ def _buscar_web(query: str, max_results: int = 5) -> List[Dict[str, str]]:
                     import re as _re2
                     texto = _re2.sub(r'<[^>]+>', ' ', page_resp.text)
                     texto = ' '.join(texto.split())
-                    r["snippet"] = texto[:300]
+                    r["snippet"] = texto[:500]
             except Exception:
                 pass
     return resultados
@@ -171,6 +171,7 @@ def _enriquecer_con_busqueda_web(equipos: List[str], noticias: List[Dict[str, An
     for eq in (equipos or [])[:2]:
         consultas.append(f"Liga MX {eq} lesion suspension baja 2026")
         consultas.append(f"Liga MX {eq} alineacion probable rotacion 2026")
+        consultas.append(f"{eq} resultado último partido 2026")
     # Búsquedas específicas por jugadores mencionados en las noticias
     jugadores_mencionados: set = set()
     for n in (noticias or []):
@@ -184,12 +185,15 @@ def _enriquecer_con_busqueda_web(equipos: List[str], noticias: List[Dict[str, An
         consultas.append(f"{jug} equipo actual 2026 Liga MX")
         consultas.append(f"{jug} lesion suspension 2026")
     resultados_txt = []
-    for q in consultas[:6]:
+    for q in consultas[:8]:
         resultados = _buscar_web(q, max_results=3)
         if resultados:
             resultados_txt.append(f"\n🔍 Búsqueda web: {q}")
             for r in resultados:
-                resultados_txt.append(f"- {r.get('title', '')} — {r.get('snippet', '')} ({r.get('url', '')})")
+                titulo = r.get('title', '')
+                snippet = r.get('snippet', '')
+                if titulo or snippet:
+                    resultados_txt.append(f"- {titulo}: {snippet[:200]}")
     return "\n".join(resultados_txt) if resultados_txt else ""
 
 

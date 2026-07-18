@@ -211,18 +211,19 @@ def _obtener_partidos_ligamx(fecha: Optional[str] = None) -> List[Dict[str, Any]
 def _buscar_eventos_partido(home: str, away: str, fecha: str) -> List[Dict[str, Any]]:
     """Busca en web eventos detallados de un partido ya jugado."""
     consultas = [
-        f"{home} vs {away} {fecha} goles tarjetas",
-        f"{home} {away} Liga MX {fecha} resultado",
-        f"{home} vs {away} expulsiones lesion 2026",
+        f"{home} vs {away} {fecha} goles tarjetas resumen",
+        f"{home} {away} Liga MX {fecha} resultado completo",
+        f"{home} vs {away} expulsiones lesion amarillas 2026",
+        f"resumen {home} {away} Liga MX goles",
     ]
     eventos: List[Dict[str, Any]] = []
-    for q in consultas[:2]:
-        resultados = ia._buscar_web(q, max_results=3)
+    for q in consultas[:3]:
+        resultados = ia._buscar_web(q, max_results=4)
         for r in resultados:
             titulo = r.get("title", "")
             snippet = r.get("snippet", "")
             texto = f"{titulo} {snippet}".lower()
-            # Extraer goles
+            # Extraer goles con regex más flexible
             import re
             goles = re.findall(r"(\d+)\s*[-:]\s*(\d+)", texto)
             if goles:
@@ -234,7 +235,7 @@ def _buscar_eventos_partido(home: str, away: str, fecha: str) -> List[Dict[str, 
                     "detail": f"Resultado según búsqueda: {goles[0][0]}-{goles[0][1]}",
                     "source": r.get("url", ""),
                 })
-            # Extraer tarjetas rojas
+            # Extraer tarjetas rojas/expulsiones
             if "expuls" in texto or "roja" in texto or "red card" in texto:
                 eventos.append({
                     "type": "card_search",
@@ -254,7 +255,27 @@ def _buscar_eventos_partido(home: str, away: str, fecha: str) -> List[Dict[str, 
                     "detail": "Lesión/baja reportada en noticias",
                     "source": r.get("url", ""),
                 })
-    return eventos[:5]
+            # Extraer cambios importantes
+            if "cambio" in texto or "sustitucion" in texto or "substitution" in texto:
+                eventos.append({
+                    "type": "substitution_search",
+                    "team": home if home.lower() in texto else away if away.lower() in texto else "",
+                    "player": "",
+                    "minute": "",
+                    "detail": "Cambio decisivo reportado",
+                    "source": r.get("url", ""),
+                })
+            # Extraer penal
+            if "penal" in texto or "penalty" in texto:
+                eventos.append({
+                    "type": "penalty_search",
+                    "team": home if home.lower() in texto else away if away.lower() in texto else "",
+                    "player": "",
+                    "minute": "",
+                    "detail": "Penal reportado en noticias",
+                    "source": r.get("url", ""),
+                })
+    return eventos[:8]
 
 
 def obtener_detalle_partido(home: str, away: str, event_id: Optional[str] = None, fecha: str = "") -> Dict[str, Any]:
@@ -424,21 +445,24 @@ def _conclusion_ia(home: str, away: str, detalle: Dict[str, Any], hg: Optional[i
     if web_txt:
         user += f"Información de fuentes web:\n{web_txt}\n\n"
     user += (
-        "Genera una conclusión DETALLADA (máx 6 líneas) de por qué ganó/perdió/empató "
-        "cada equipo. Incluye: goles clave, expulsiones, alineación mermada, cambios "
-        "decisivos, contexto del partido. Usa TODA la información disponible, "
-        "incluyendo las fuentes web. Si no hay datos suficientes, igual genera "
-        "una conclusión basada en el marcador y el contexto."
+        "Genera un análisis PROFESIONAL y DETALLADO (máx 10 líneas) de este partido de Liga MX. "
+        "Estructura tu respuesta así:\n"
+        "1. Resumen general del partido (estilo, intensidad, contexto)\n"
+        "2. Momentos clave: goles, expulsiones, cambios decisivos, penales\n"
+        "3. Análisis por equipo: qué funcionó, qué falló, jugadores destacados\n"
+        "4. Impacto en la tabla de posiciones y próximos retos\n"
+        "Usa TODA la información disponible, incluyendo las fuentes web. "
+        "Si no hay eventos detallados, igual genera un análisis completo basado en el marcador y contexto."
     )
 
     payload = {
         "model": ia._modelo(),
         "messages": [
-            {"role": "system", "content": "Eres analista de Liga MX. Resumen detallado y objetivo."},
+            {"role": "system", "content": "Eres analista profesional de Liga MX con acceso a información detallada de partidos. Tus análisis son precisos, objetivos y ricos en detalles tácticos y contextuales."},
             {"role": "user", "content": user},
         ],
-        "temperature": 0.2,
-        "max_tokens": 400,
+        "temperature": 0.3,
+        "max_tokens": 600,
     }
 
     backend = ia._backend()
