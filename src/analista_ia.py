@@ -88,29 +88,55 @@ def _modelo() -> str:
 
 
 def _buscar_web(query: str, max_results: int = 5) -> List[Dict[str, str]]:
-    """Busca en DuckDuckGo HTML sin API key. Retorna [{title, url, snippet}]."""
+    """Busca en ESPN y otras fuentes deportivas info actualizada. Retorna [{title, url, snippet}]."""
+    resultados: List[Dict[str, str]] = []
     try:
-        resp = requests.post(
-            "https://html.duckduckgo.com/html/",
-            data={"q": query},
+        # ESPN site search
+        resp = requests.get(
+            "https://site.api.espn.com/apis/v2/sports/search",
+            params={"query": query, "limit": max_results},
             timeout=10,
             headers={"User-Agent": "Mozilla/5.0 (compatible; LigaMXBot/1.0)"},
         )
-        if resp.status_code != 200:
-            return []
-        texto = resp.text
-        resultados: List[Dict[str, str]] = []
-        import re as _re
-        bloques = _re.findall(r'<a[^>]+class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>', texto, _re.DOTALL)
-        snippets = _re.findall(r'<[^>]+class="result__snippet"[^>]*>(.*?)</[^>]+>', texto, _re.DOTALL)
-        for i, (url, titulo_html) in enumerate(bloques[:max_results]):
-            titulo = _re.sub(r'<[^>]+>', '', titulo_html).strip()
-            snippet = _re.sub(r'<[^>]+>', '', snippets[i]).strip() if i < len(snippets) else ""
-            if titulo and url and not url.startswith("javascript"):
-                resultados.append({"title": titulo, "url": url, "snippet": snippet})
-        return resultados
+        if resp.status_code == 200:
+            data = resp.json()
+            for item in (data.get("items") or [])[:max_results]:
+                if isinstance(item, dict):
+                    resultados.append({
+                        "title": item.get("headline", "") or item.get("title", ""),
+                        "url": item.get("links", {}).get("web", {}).get("href", "") or item.get("url", ""),
+                        "snippet": item.get("description", "") or item.get("summary", ""),
+                    })
     except Exception:
-        return []
+        pass
+    # Fallback: Google News RSS via requests
+    if not resultados:
+        try:
+            resp = requests.get(
+                "https://news.google.com/rss/search",
+                params={"q": query, "hl": "es", "gl": "MX"},
+                timeout=10,
+                headers={"User-Agent": "Mozilla/5.0"},
+            )
+            if resp.status_code == 200:
+                import re as _re
+                items = _re.findall(r'<item>(.*?)</item>', resp.text, _re.DOTALL)
+                for item in items[:max_results]:
+                    titulo = _re.search(r'<title>(.*?)</title>', item, _re.DOTALL)
+                    link = _re.search(r'<link/>(.*?)$', item, _re.MULTILINE)
+                    desc = _re.search(r'<description>(.*?)</description>', item, _re.DOTALL)
+                    url = ""
+                    if link:
+                        url = link.group(1).strip()
+                    if titulo:
+                        resultados.append({
+                            "title": _re.sub(r'<[^>]+>', '', titulo.group(1)).strip(),
+                            "url": url,
+                            "snippet": _re.sub(r'<[^>]+>', '', desc.group(1)).strip() if desc else "",
+                        })
+        except Exception:
+            pass
+    return resultados
 
 
 def _texto_noticias(noticias: List[Dict[str, Any]], max_n: int = 12) -> str:
@@ -129,11 +155,24 @@ def _texto_noticias(noticias: List[Dict[str, Any]], max_n: int = 12) -> str:
 def _enriquecer_con_busqueda_web(equipos: List[str], noticias: List[Dict[str, Any]]) -> str:
     """Busca en web info actualizada sobre lesiones/suspensiones y la agrega al contexto."""
     consultas = []
+    # Búsquedas generales por equipo
     for eq in (equipos or [])[:2]:
-        consultas.append(f"{eq} lesion suspension duda 2026")
-        consultas.append(f"Liga MX {eq} bajas rotacion alineacion")
+        consultas.append(f"Liga MX {eq} lesion suspension baja 2026")
+        consultas.append(f"Liga MX {eq} alineacion probable rotacion 2026")
+    # Búsquedas específicas por jugadores mencionados en las noticias
+    jugadores_mencionados: set = set()
+    for n in (noticias or []):
+        if not isinstance(n, dict):
+            continue
+        titulo = n.get("titulo") or n.get("title") or ""
+        for token in titulo.replace("_", " ").replace("-", " ").split():
+            if len(token) >= 4 and token[0].isupper():
+                jugadores_mencionados.add(token)
+    for jug in list(jugadores_mencionados)[:4]:
+        consultas.append(f"{jug} equipo actual 2026 Liga MX")
+        consultas.append(f"{jug} lesion suspension 2026")
     resultados_txt = []
-    for q in consultas[:4]:
+    for q in consultas[:6]:
         resultados = _buscar_web(q, max_results=3)
         if resultados:
             resultados_txt.append(f"\n🔍 Búsqueda web: {q}")
@@ -158,10 +197,6 @@ def analizar_noticias(equipos: List[str], noticias: List[Dict[str, Any]]) -> Dic
     user = (
         f"Equipos del partido: {', '.join(equipos)}.\n\n"
         f"Noticias recientes (úsalas SOLO como fuente, no inventes):\n{texto}\n\n"
-        "Si las noticias son insuficientes o parecen desactualizadas, "
-        "usa la herramienta web_search para buscar información actual "
-        "sobre lesiones, suspensiones, dudas o rotación de estos equipos. "
-        "Devuelve el JSON con las señales de riesgo relevantes."
     )
     
     # Enriquecer con búsqueda web si hay equipos definidos
@@ -169,7 +204,9 @@ def analizar_noticias(equipos: List[str], noticias: List[Dict[str, Any]]) -> Dic
     if equipos:
         web_ctx = _enriquecer_con_busqueda_web(equipos, noticias)
     if web_ctx:
-        user += f"\n\nInformaci adicional de búsqueda web (también usala SOLO como fuente):\n{web_ctx}"
+        user += f"Información adicional de búsqueda web (también usala SOLO como fuente):\n{web_ctx}\n\n"
+    
+    user += "Devuelve el JSON con las señales de riesgo relevantes a esos equipos."
     
     payload = {
         "model": _modelo(),
