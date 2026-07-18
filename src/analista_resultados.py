@@ -336,7 +336,7 @@ def obtener_detalle_partido(home: str, away: str, event_id: Optional[str] = None
 
 
 def _formatear_eventos(eventos: List[Dict[str, Any]]) -> List[str]:
-    """Convierte eventos a líneas legibles."""
+    """Convierte eventos a líneas legibles. Ignora eventos de baja calidad."""
     lineas: List[str] = []
     for e in (eventos or [])[:15]:
         if not isinstance(e, dict):
@@ -346,6 +346,9 @@ def _formatear_eventos(eventos: List[Dict[str, Any]]) -> List[str]:
         equipo = e.get("team", "") or ""
         jugador = e.get("player", "") or e.get("playerName", "") or ""
         detalle = e.get("detail", "") or ""
+        # Ignorar eventos basura de búsqueda web
+        if "search" in tipo or "goal_search" in tipo or "card_search" in tipo or "injury_search" in tipo or "substitution_search" in tipo or "penalty_search" in tipo:
+            continue
         if "goal" in tipo:
             lineas.append(f"⚽ {minuto}' {equipo} — {jugador} {detalle}")
         elif "card" in tipo:
@@ -431,32 +434,12 @@ def _conclusion_ia(home: str, away: str, detalle: Dict[str, Any], hg: Optional[i
 
     marcador_txt = f"Marcador final: {home} {hg or '?'} - {ag or '?'} {away}" if hg is not None and ag is not None else "Marcador final no disponible."
 
-    # Búsqueda web agresiva para obtener detalles del partido
-    web_txt = ""
-    try:
-        consultas = [
-            f"{home} vs {away} Liga MX goles tarjetas",
-            f"{home} vs {away} resumen partido",
-            f"{home} {away} Liga MX 2026 resultado",
-        ]
-        for q in consultas[:2]:
-            resultados = ia._buscar_web(q, max_results=3)
-            for r in resultados:
-                if r.get("snippet"):
-                    web_txt += f"\n- {r.get('title', '')}: {r.get('snippet', '')}"
-    except Exception:
-        pass
-
     user = (
         f"Partido: {home} vs {away}\n\n"
         f"{marcador_txt}\n\n"
         f"Eventos del partido:\n{eventos_txt}\n\n"
         f"{alineacion_txt}\n\n"
         f"{impacto_txt}\n\n"
-    )
-    if web_txt:
-        user += f"Información de fuentes web:\n{web_txt}\n\n"
-    user += (
         "Genera un análisis LARGO, PROFESIONAL y COMPLETO de este partido de Liga MX. "
         "NO TE LIMITES a pocas líneas. Desarrolla cada punto con detalles.\n\n"
         "Estructura tu respuesta así:\n"
@@ -466,8 +449,8 @@ def _conclusion_ia(home: str, away: str, detalle: Dict[str, Any], hg: Optional[i
         "Lista goles, expulsiones, penales, cambios decisivos y cualquier momento que cambió el rumbo del partido. "
         "Si no hay eventos detallados, describe cómo se pudo haber desarrollado el partido según el marcador.\n\n"
         "## 3. Análisis por equipo\n"
-        "- {home}: puntos fuertes, errores, jugadores destacados, qué cambió respecto a partidos anteriores.\n"
-        "- {away}: mismo análisis.\n\n"
+        f"- {home}: puntos fuertes, errores, jugadores destacados, qué cambió respecto a partidos anteriores.\n"
+        f"- {away}: mismo análisis.\n\n"
         "## 4. Impacto en la tabla y próximos retos\n"
         "Cómo afecta este resultado a la tabla de posiciones y qué deben mejorar cada uno para los próximos partidos.\n\n"
         "## 5. Veredicto final\n"
