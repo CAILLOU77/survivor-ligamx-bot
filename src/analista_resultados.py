@@ -451,7 +451,7 @@ def _formatear_eventos(eventos: List[Dict[str, Any]]) -> List[str]:
     # Ordenar por minuto (los eventos de 365scores ya vienen ordenados, pero por si acaso)
     def _sort_key(linea: str) -> int:
         import re
-        m = re.search(r"(\d+)'", linea)
+        m = re.search(r"(\d+)", linea)
         return int(m.group(1)) if m else 9999
     lineas.sort(key=_sort_key)
     return lineas
