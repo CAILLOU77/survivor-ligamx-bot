@@ -2281,14 +2281,24 @@ def enviar_analisis_jornada() -> Dict[str, Any]:
 
     resultado = ar.analizar_jornada(picks_anteriores=picks_anteriores)
     resumen = resultado.get("resumen", "")
+    resumen_2 = resultado.get("resumen_2", "")
+    
     if not resumen:
         resumen = "⚠️ No se pudo generar el análisis de la jornada."
 
-    enviado = enviar_mensaje(resumen)
+    # Enviar primer mensaje
+    enviado1 = enviar_mensaje(resumen)
+    
+    # Enviar segundo mensaje si existe
+    enviado2 = False
+    if resumen_2:
+        enviado2 = enviar_mensaje(resumen_2)
+    
     return {
-        "enviado": enviado,
+        "enviado": enviado1 and enviado2,
         "total_partidos": len(resultado.get("partidos", [])),
         "resumen": resumen,
+        "resumen_2": resumen_2,
     }
 
 

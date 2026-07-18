@@ -493,11 +493,13 @@ def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[Lis
     Analiza TODOS los partidos YA JUGADOS de la jornada actual.
     Devuelve un dict con:
       - partidos: lista de análisis por partido
-      - resumen: texto HTML para Telegram
+      - resumen: texto HTML para Telegram (mensaje 1)
+      - resumen_2: texto HTML para Telegram (mensaje 2, si hay más de 5 partidos)
+      - tabla_posiciones: resumen de cómo va cada equipo
     """
     partidos = obtener_partidos_jornada(fecha)
     if not partidos:
-        return {"partidos": [], "resumen": "No hay partidos jugados aún en la jornada actual."}
+        return {"partidos": [], "resumen": "No hay partidos jugados aún en la jornada actual.", "resumen_2": "", "tabla_posiciones": ""}
 
     picks_anteriores = picks_anteriores or []
     analisis: List[Dict[str, Any]] = []
@@ -506,6 +508,9 @@ def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[Lis
         f"🕒 {datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M')} h (UTC)",
         "━━━━━━━━━━",
     ]
+
+    # Estadísticas por equipo
+    stats_equipos: Dict[str, Dict[str, Any]] = {}
 
     for p in partidos:
         home = p.get("home_team", "")
@@ -544,29 +549,218 @@ def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[Lis
             }
         )
 
-        # Armar mensaje HTML
-        lineas_html.append(f"⚽ <b>{home}</b> vs <b>{away}</b>")
-        lineas_html.append(f"📊 Resultado: {resultado}")
+        # Actualizar estadísticas por equipo
+        for equipo, goles_favor, goles_contra in [(home, hg or 0, ag or 0), (away, ag or 0, hg or 0)]:
+            if equipo not in stats_equipos:
+                stats_equipos[equipo] = {"gf": 0, "gc": 0, "pj": 0, "g": 0, "e": 0, "p": 0}
+            stats_equipos[equipo]["gf"] += goles_favor
+            stats_equipos[equipo]["gc"] += goles_contra
+            stats_equipos[equipo]["pj"] += 1
+            if goles_favor > goles_contra:
+                stats_equipos[equipo]["g"] += 1
+            elif goles_favor == goles_contra:
+                stats_equipos[equipo]["e"] += 1
+            else:
+                stats_equipos[equipo]["p"] += 1
+
+        # Armar bloque del partido
+        bloque: List[str] = [
+            f"⚽ <b>{home}</b> vs <b>{away}</b>",
+            f"📊 Resultado: {resultado}",
+        ]
         if eventos_lineas:
-            lineas_html.append("📋 Eventos:")
+            bloque.append("📋 Eventos:")
             for ev in eventos_lineas[:8]:
-                lineas_html.append(f"  • {ev}")
+                bloque.append(f"  • {ev}")
         if tarjetas_lineas:
-            lineas_html.append("🟨🟥 Tarjetas:")
+            bloque.append("🟨🟥 Tarjetas:")
             for t in tarjetas_lineas[:6]:
-                lineas_html.append(f"  • {t}")
+                bloque.append(f"  • {t}")
         if picks_lineas:
             for pl in picks_lineas:
-                lineas_html.append(f"🎯 {pl}")
+                bloque.append(f"🎯 {pl}")
         if conclusion.get("disponible") and conclusion.get("conclusion"):
-            lineas_html.append(f"💡 <b>Conclusión:</b> {conclusion['conclusion']}")
+            bloque.append(f"💡 <b>Conclusión:</b> {conclusion['conclusion']}")
         elif conclusion.get("motivo"):
-            lineas_html.append(f"<i>Conclusión IA: {conclusion['motivo']}</i>")
-        lineas_html.append("")
+            bloque.append(f"<i>Conclusión IA: {conclusion['motivo']}</i>")
+        bloque.append("")
+
+        # Agregar bloque al mensaje actual o al segundo
+        # Si el mensaje actual supera ~3500 chars, mover a resumen_2
+        lineas_html.extend(bloque)
 
     lineas_html.append("━━━━━━━━━━")
     lineas_html.append(_DECISION)
+
+    # Tabla de posiciones resumida
+    tabla_lineas = ["📈 <b>CÓMO VA CADA EQUIPO</b>", "━━━━━━━━━━"]
+    for eq, st in sorted(stats_equipos.items(), key=lambda x: x[1]["gf"] - x[1]["gc"], reverse=True):
+        tabla_lineas.append(
+            f"{eq}: {st['pj']}PJ · {st['g']}G {st['e']}E {st['p']}P · "
+            f"GF {st['gf']} · GC {st['gc']} · DG {st['gf'] - st['gc']}"
+        )
+    tabla_lineas.append("")
+    tabla_lineas.append(_DECISION)
+
+    # Dividir en 2 mensajes
+    resumen_completo = "\n".join(lineas_html)
+    tabla_completa = "\n".join(tabla_lineas)
+    
+    # Mensaje 1: primeros 5 partidos + inicio de tabla
+    mensaje1_partes = []
+    mensaje1_partes.append("📊 <b>ANÁLISIS DE LA JORNADA (1/2)</b>")
+    mensaje1_partes.append(f"🕒 {datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M')} h (UTC)")
+    mensaje1_partes.append("━━━━━━━━━━")
+    
+    partidos_mensaje1 = partidos[:5]
+    partidos_mensaje2 = partidos[5:]
+    
+    for p_item in partidos[:5]:
+        # Reconstruir el bloque para este partido
+        home = p_item.get("home_team", "")
+        away = p_item.get("away_team", "")
+        hg = p_item.get("home_goals")
+        ag = p_item.get("away_goals")
+        
+        if hg is not None and ag is not None:
+            if hg > ag:
+                resultado = f"🏆 {home} {hg}-{ag} {away}"
+            elif hg < ag:
+                resultado = f"🏆 {away} {ag}-{hg} {home}"
+            else:
+                resultado = f"🤝 {home} {hg}-{ag} {away}"
+        else:
+            resultado = f"⏳ {home} vs {away}"
+        
+        mensaje1_partes.append(f"⚽ <b>{home}</b> vs <b>{away}</b>")
+        mensaje1_partes.append(f"📊 Resultado: {resultado}")
+        
+        # Buscar el análisis correspondiente
+        analisis_p = next((a for a in analisis if a["home"] == home and a["away"] == away), None)
+        if analisis_p:
+            eventos_lineas = _formatear_eventos(analisis_p.get("eventos", []))
+            tarjetas_lineas = analisis_p.get("tarjetas", [])
+            conclusion = analisis_p.get("conclusion_ia", {})
+            
+            if eventos_lineas:
+                mensaje1_partes.append("📋 Eventos:")
+                for ev in eventos_lineas[:8]:
+                    mensaje1_partes.append(f"  • {ev}")
+            if tarjetas_lineas:
+                mensaje1_partes.append("🟨🟥 Tarjetas:")
+                for t in tarjetas_lineas[:6]:
+                    mensaje1_partes.append(f"  • {t}")
+            if conclusion.get("disponible") and conclusion.get("conclusion"):
+                mensaje1_partes.append(f"💡 <b>Conclusión:</b> {conclusion['conclusion'][:200]}")
+            elif conclusion.get("motivo"):
+                mensaje1_partes.append(f"<i>Conclusión IA: {conclusion['motivo']}</i>")
+        mensaje1_partes.append("")
+    
+    mensaje1_partes.append("━━━━━━━━━━")
+    mensaje1_partes.append(_DECISION)
+    
+    # Mensaje 2: resto de partidos + tabla de posiciones
+    mensaje2_partes = []
+    if partidos_mensaje2:
+        mensaje2_partes.append("📊 <b>ANÁLISIS DE LA JORNADA (2/2)</b>")
+        mensaje2_partes.append("━━━━━━━━━━")
+        
+        for p_item in partidos_mensaje2:
+            home = p_item.get("home_team", "")
+            away = p_item.get("away_team", "")
+            hg = p_item.get("home_goals")
+            ag = p_item.get("away_goals")
+            
+            if hg is not None and ag is not None:
+                if hg > ag:
+                    resultado = f"🏆 {home} {hg}-{ag} {away}"
+                elif hg < ag:
+                    resultado = f"🏆 {away} {ag}-{hg} {home}"
+                else:
+                    resultado = f"🤝 {home} {hg}-{ag} {away}"
+            else:
+                resultado = f"⏳ {home} vs {away}"
+            
+            mensaje2_partes.append(f"⚽ <b>{home}</b> vs <b>{away}</b>")
+            mensaje2_partes.append(f"📊 Resultado: {resultado}")
+            
+            analisis_p = next((a for a in analisis if a["home"] == home and a["away"] == away), None)
+            if analisis_p:
+                eventos_lineas = _formatear_eventos(analisis_p.get("eventos", []))
+                tarjetas_lineas = analisis_p.get("tarjetas", [])
+                conclusion = analisis_p.get("conclusion_ia", {})
+                
+                if eventos_lineas:
+                    mensaje2_partes.append("📋 Eventos:")
+                    for ev in eventos_lineas[:8]:
+                        mensaje2_partes.append(f"  • {ev}")
+                if tarjetas_lineas:
+                    mensaje2_partes.append("🟨🟥 Tarjetas:")
+                    for t in tarjetas_lineas[:6]:
+                        mensaje2_partes.append(f"  • {t}")
+                if conclusion.get("disponible") and conclusion.get("conclusion"):
+                    mensaje2_partes.append(f"💡 <b>Conclusión:</b> {conclusion['conclusion'][:200]}")
+                elif conclusion.get("motivo"):
+                    mensaje2_partes.append(f"<i>Conclusión IA: {conclusion['motivo']}</i>")
+            mensaje2_partes.append("")
+        
+        mensaje2_partes.append("━━━━━━━━━━")
+    
+    # Agregar tabla de posiciones al último mensaje
+    mensaje2_partes.extend(tabla_lineas)
+
+    # Guardar resultados por equipo
+    _guardar_resultados_jornada(stats_equipos, fecha or datetime.now(timezone.utc).strftime("%Y-%m-%d"))
+
     return {
         "partidos": analisis,
-        "resumen": "\n".join(lineas_html),
+        "resumen": "\n".join(mensaje1_partes),
+        "resumen_2": "\n".join(mensaje2_partes) if mensaje2_partes else "",
+        "tabla_posiciones": tabla_completa,
     }
+
+
+def _guardar_resultados_jornada(stats_equipos: Dict[str, Dict[str, Any]], fecha: str) -> None:
+    """Guarda los resultados de la jornada en un archivo JSON para tracking."""
+    import json
+    from pathlib import Path
+    BASE_DIR = Path(__file__).resolve().parents[1]
+    historial_path = BASE_DIR / "data" / "historial_resultados.json"
+    try:
+        if historial_path.exists():
+            with open(historial_path, "r", encoding="utf-8") as f:
+                historial = json.load(f)
+        else:
+            historial = {"jornadas": []}
+    except Exception:
+        historial = {"jornadas": []}
+    
+    jornada_data = {
+        "fecha": fecha,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "equipos": stats_equipos,
+    }
+    historial["jornadas"].append(jornada_data)
+    historial["jornadas"] = historial["jornadas"][-10:]  # Guardar últimas 10 jornadas
+    
+    try:
+        historial_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(historial_path, "w", encoding="utf-8") as f:
+            json.dump(historial, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
+def cargar_historial_resultados() -> Dict[str, Any]:
+    """Carga el historial de resultados de las últimas jornadas."""
+    import json
+    from pathlib import Path
+    BASE_DIR = Path(__file__).resolve().parents[1]
+    historial_path = BASE_DIR / "data" / "historial_resultados.json"
+    try:
+        if historial_path.exists():
+            with open(historial_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {"jornadas": []}

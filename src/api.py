@@ -685,18 +685,23 @@ def analisis_jornada(request: Request, fecha: Optional[str] = None, api_key: str
     Analiza TODOS los partidos YA JUGADOS de la jornada actual (o de `fecha`).
     Incluye: goles, tarjetas, alineaciones, eventos y conclusión IA por partido.
     Compara con picks anteriores del bot.
+    Devuelve hasta 2 mensajes para Telegram.
     """
     try:
         from src import analista_resultados as ar
     except ImportError:  # pragma: no cover
-        from src.analista_resultados import analizar_jornada  # type: ignore
+        from src.analista_resultados import analizar_jornada, cargar_historial_resultados  # type: ignore
 
     resultado = ar.analizar_jornada(fecha=fecha)
+    historial = ar.cargar_historial_resultados()
     return {
         "status": "success",
         "total_partidos": len(resultado.get("partidos", [])),
         "partidos": resultado.get("partidos", []),
-        "resumen_html": resultado.get("resumen", ""),
+        "resumen_mensaje_1": resultado.get("resumen", ""),
+        "resumen_mensaje_2": resultado.get("resumen_2", ""),
+        "tabla_posiciones": resultado.get("tabla_posiciones", ""),
+        "historial_jornadas": historial.get("jornadas", [])[-5:],
     }
 
 
