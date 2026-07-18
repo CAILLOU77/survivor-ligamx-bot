@@ -913,7 +913,7 @@ def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[Lis
 
 
 def _bloque_partido(a: Dict[str, Any]) -> List[str]:
-    """Arma el bloque de un partido para Telegram (móvil‑friendly, con contexto)."""
+    """Arma el bloque de un partido para Telegram (con contexto)."""
     home = a["home"]; away = a["away"]
     hg = a.get("home_goals"); ag = a.get("away_goals")
 
@@ -936,7 +936,7 @@ def _bloque_partido(a: Dict[str, Any]) -> List[str]:
 
     eventos_lineas = a.get("eventos_lineas") or []
 
-    # Goles - mostrar hasta 4 golpes clave
+    # Goles - mostrar hasta 4
     if eventos_lineas:
         goles = [e for e in eventos_lineas if any(emoji in e for emoji in ["⚽", "🥅"])]
         if goles:
@@ -954,15 +954,17 @@ def _bloque_partido(a: Dict[str, Any]) -> List[str]:
             for t in tarjetas_rojas[:2]:
                 bloque.append(t)
 
-    # Señales detectadas - hasta 3 (underdog, local que pierde, expulsión)
+    # Señales detectadas - hasta 3 (explicadas brevemente)
     senales = a.get("senales") or []
     if senales:
         bloque.append("")
         bloque.append("🚦 <b>Señales clave:</b>")
         for s in senales[:3]:
-            bloque.append(f"  {s}")
+            # Añadir explicación breve
+            senal_explicada = f"  • {s}"  # Ej: "  • Local vencido por bajo marcador"
+            bloque.append(senal_explicada)
 
-    # Conclusión IA - hasta 250 caracteres (más contexto)
+    # Conclusión IA - 250 caracteres (ejemplos)
     conclusion = a.get("conclusion_ia", {})
     if conclusion.get("disponible") and conclusion.get("conclusion"):
         texto = conclusion["conclusion"]

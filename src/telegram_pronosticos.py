@@ -2289,15 +2289,23 @@ def enviar_analisis_jornada() -> Dict[str, Any]:
     for mensaje_partido in resultado.get("mensajes_individuales", []):
         if not mensaje_partido.strip():
             continue
-        # Si el mensaje supera los 3000 caracteres, dividirlo
+        # Si el mensaje supera los 3000 caracteres, dividirlo inteligentemente
         if len(mensaje_partido) > 3000:
-            # Dividir por la conclusión
-            partes = mensaje_partido.split("💡 <b>Conclusión:</b>")
+            # Dividir por bloques: encabezado, goles, tarjetas, señales, conclusión
+            partes = mensaje_partido.split("💡 <b>Análisis:</b>")
             if len(partes) == 2:
-                parte1 = partes[0] + "💡 <b>Conclusión (1/2):</b>"
-                parte2 = "💡 <b>Conclusión (2/2):</b>" + partes[1]
-                enviado = enviado and enviar_mensaje(parte1)
-                enviado = enviado and enviar_mensaje(parte2)
+                parte1 = partes[0]
+                parte2 = partes[1]
+                # Dividir parte1 si sigue siendo muy largo
+                if len(parte1) > 2800:
+                    mitad = len(parte1) // 2
+                    enviado = enviado and enviar_mensaje(parte1[:mitad] + "...")
+                    enviado = enviado and enviar_mensaje("..." + parte1[mitad:])
+                else:
+                    enviado = enviado and enviar_mensaje(parte1)
+                enviado = enviado and enviar_mensaje("💡 <b>Análisis:</b>" + parte2[:2800])
+                if len(parte2) > 2800:
+                    enviado = enviado and enviar_mensaje("..." + parte2[2800:])
             else:
                 # Fallback: dividir por la mitad
                 mitad = len(mensaje_partido) // 2
