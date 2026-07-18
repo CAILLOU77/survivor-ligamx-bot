@@ -1,0 +1,9 @@
+def _jornada_actual_num() -> Optional[int]:
+    """Número de la próxima jornada por jugar (según data/calendario.json)."""
+    try:
+        j = proxima_jornada()
+        return int(j.get("jornada")) if j else None
+    except Exception:  # pragma: no cover
+        return None
+
+
