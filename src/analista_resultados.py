@@ -263,73 +263,95 @@ def _obtener_partidos_ligamx(fecha: Optional[str] = None) -> List[Dict[str, Any]
 
 
 def _buscar_eventos_partido(home: str, away: str, fecha: str) -> List[Dict[str, Any]]:
-    """Busca en web eventos detallados de un partido ya jugado."""
-    consultas = [
-        f"{home} vs {away} {fecha} goles tarjetas resumen",
-        f"{home} {away} Liga MX {fecha} resultado completo",
-        f"{home} vs {away} expulsiones lesion amarillas 2026",
-        f"resumen {home} {away} Liga MX goles",
-    ]
+    """Busca eventos detallados del partido en múltiples fuentes web."""
     eventos: List[Dict[str, Any]] = []
-    for q in consultas[:3]:
-        resultados = ia._buscar_web(q, max_results=4)
-        for r in resultados:
-            titulo = r.get("title", "")
-            snippet = r.get("snippet", "")
-            texto = f"{titulo} {snippet}".lower()
-            # Extraer goles con regex más flexible
-            import re
-            goles = re.findall(r"(\d+)\s*[-:]\s*(\d+)", texto)
-            if goles:
-                eventos.append({
-                    "type": "goal_search",
-                    "team": home if home.lower() in texto else away if away.lower() in texto else "",
-                    "player": "",
-                    "minute": "",
-                    "detail": f"Resultado según búsqueda: {goles[0][0]}-{goles[0][1]}",
-                    "source": r.get("url", ""),
-                })
-            # Extraer tarjetas rojas/expulsiones
-            if "expuls" in texto or "roja" in texto or "red card" in texto:
-                eventos.append({
-                    "type": "card_search",
-                    "team": home if home.lower() in texto else away if away.lower() in texto else "",
-                    "player": "",
-                    "minute": "",
-                    "detail": "Expulsión reportada en noticias",
-                    "source": r.get("url", ""),
-                })
-            # Extraer lesiones
-            if "lesion" in texto or "baja" in texto or "injury" in texto:
-                eventos.append({
-                    "type": "injury_search",
-                    "team": home if home.lower() in texto else away if away.lower() in texto else "",
-                    "player": "",
-                    "minute": "",
-                    "detail": "Lesión/baja reportada en noticias",
-                    "source": r.get("url", ""),
-                })
-            # Extraer cambios importantes
-            if "cambio" in texto or "sustitucion" in texto or "substitution" in texto:
-                eventos.append({
-                    "type": "substitution_search",
-                    "team": home if home.lower() in texto else away if away.lower() in texto else "",
-                    "player": "",
-                    "minute": "",
-                    "detail": "Cambio decisivo reportado",
-                    "source": r.get("url", ""),
-                })
-            # Extraer penal
-            if "penal" in texto or "penalty" in texto:
-                eventos.append({
-                    "type": "penalty_search",
-                    "team": home if home.lower() in texto else away if away.lower() in texto else "",
-                    "player": "",
-                    "minute": "",
-                    "detail": "Penal reportado en noticias",
-                    "source": r.get("url", ""),
-                })
-    return eventos[:8]
+    
+    # Fuente 1: ESPN resumen
+    try:
+        from ligamx_api import _get as lmx_get
+        resp = requests.get(
+            "https://site.api.espn.com/apis/site/v2/sports/soccer/mex.1/scoreboard",
+            params={"dates": fecha.replace("-", "")},
+            timeout=15,
+            headers={"User-Agent": "Mozilla/5.0"},
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            for ev in data.get("events", []):
+                if not isinstance(ev, dict):
+                    continue
+                comps = ev.get("competitions") or [{}]
+                comp = comps[0] if comps else {}
+                competitors = comp.get("competitors", [])
+                h_name = a_name = ""
+                for c in competitors:
+                    if not isinstance(c, dict):
+                        continue
+                    team_name = (c.get("team") or {}).get("displayName", "")
+                    if c.get("homeAway") == "home":
+                        h_name = team_name
+                    elif c.get("homeAway") == "away":
+                        a_name = team_name
+                if home.lower() in h_name.lower() and away.lower() in a_name.lower():
+                    for e in (comp.get("events") or []):
+                        if not isinstance(e, dict):
+                            continue
+                        tipo = ((e.get("type") or {}).get("text") or "").lower()
+                        minuto = (e.get("clock") or {}).get("displayValue", "") or ""
+                        equipo = ""
+                        team_data = e.get("team")
+                        if isinstance(team_data, dict):
+                            equipo = team_data.get("displayName", "")
+                        athletes = e.get("athletesInvolved") or []
+                        jugador = ""
+                        if athletes and isinstance(athletes[0], dict):
+                            jugador = athletes[0].get("displayName", "")
+                        detalle = e.get("text", "") or ""
+                        if "goal" in tipo or "gol" in tipo:
+                            eventos.append({"type": "goal", "minute": minuto, "team": equipo, "player": jugador, "detail": detalle})
+                        elif "yellow" in tipo or "tarjeta amarilla" in tipo:
+                            eventos.append({"type": "yellow_card", "minute": minuto, "team": equipo, "player": jugador, "detail": detalle})
+                        elif "red" in tipo or "tarjeta roja" in tipo:
+                            eventos.append({"type": "red_card", "minute": minuto, "team": equipo, "player": jugador, "detail": detalle})
+                        elif "substitution" in tipo or "cambio" in tipo:
+                            eventos.append({"type": "substitution", "minute": minuto, "team": equipo, "player": jugador, "detail": detalle})
+    except Exception:
+        pass
+    
+    # Fuente 2: buscar en web
+    if len(eventos) < 2:
+        consultas = [
+            f"{home} vs {away} {fecha} goles tarjetas resumen",
+            f"{home} {away} Liga MX {fecha} resultado completo",
+        ]
+        for q in consultas[:2]:
+            resultados = ia._buscar_web(q, max_results=4)
+            for r in resultados:
+                titulo = r.get("title", "")
+                snippet = r.get("snippet", "")
+                texto = f"{titulo} {snippet}".lower()
+                import re
+                goles = re.findall(r"(\d+)\s*[-:]\s*(\d+)", texto)
+                if goles:
+                    eventos.append({
+                        "type": "goal_search",
+                        "team": home if home.lower() in texto else away if away.lower() in texto else "",
+                        "player": "",
+                        "minute": "",
+                        "detail": f"Resultado según búsqueda: {goles[0][0]}-{goles[0][1]}",
+                        "source": r.get("url", ""),
+                    })
+                if "expuls" in texto or "roja" in texto or "red card" in texto:
+                    eventos.append({
+                        "type": "card_search",
+                        "team": home if home.lower() in texto else away if away.lower() in texto else "",
+                        "player": "",
+                        "minute": "",
+                        "detail": "Expulsión reportada",
+                        "source": r.get("url", ""),
+                    })
+    
+    return eventos[:15]
 
 
 def obtener_detalle_partido(home: str, away: str, event_id: Optional[str] = None, fecha: str = "") -> Dict[str, Any]:
@@ -338,7 +360,7 @@ def obtener_detalle_partido(home: str, away: str, event_id: Optional[str] = None
     - eventos (goles, tarjetas, cambios)
     - alineación confirmada
     - impacto del XI
-    Usa Liga MX API como fuente principal y búsqueda web como fallback.
+    Usa 365scores como fuente principal, ESPN como fallback y búsqueda web como último recurso.
     """
     out: Dict[str, Any] = {
         "home": home,
@@ -355,15 +377,17 @@ def obtener_detalle_partido(home: str, away: str, event_id: Optional[str] = None
             eventos_365 = lmx.eventos_365_partido(eid)
             if eventos_365:
                 out["eventos"] = eventos_365
-    except Exception:
+    except Exception as exc:
         pass
-    # Intentar obtener eventos desde Liga MX API
+    # Si 365scores no tiene eventos, buscar en ESPN
     if not out["eventos"]:
         try:
             mid = lmx.match_id_de_partido(home, away)
             if mid:
                 try:
-                    out["eventos"] = lmx.eventos_partido(mid) or []
+                    eventos_lmx = lmx.eventos_partido(mid) or []
+                    if eventos_lmx:
+                        out["eventos"] = eventos_lmx
                 except Exception:
                     pass
                 try:
@@ -376,7 +400,7 @@ def obtener_detalle_partido(home: str, away: str, event_id: Optional[str] = None
                     pass
         except Exception:
             pass
-    # Si no hay eventos, buscar en web
+    # Si no hay eventos en absoluto, buscar en web
     if not out["eventos"] and fecha:
         out["eventos"] = _buscar_eventos_partido(home, away, fecha)
     # Noticias
@@ -433,15 +457,26 @@ def _formatear_tarjetas(eventos: List[Dict[str, Any]]) -> List[str]:
     for e in (eventos or []):
         if not isinstance(e, dict):
             continue
-        tipo = str(e.get("type", "")).lower()
-        if "card" not in tipo:
-            continue
-        color = "🟨" if "yellow" in tipo else "🟥"
-        minuto = e.get("minute") or e.get("time", "")
-        equipo = e.get("team", "") or ""
-        jugador = e.get("player", "") or e.get("playerName", "") or ""
-        out.append(f"{color} {minuto}' {equipo} — {jugador}")
+        tipo = str(e.get("type", "") or e.get("category", "") or "").lower()
+        if any(k in tipo for k in ["card", "yellow", "red", "tarjeta", "amonest"]):
+            minuto = str(e.get("minute", "") or e.get("time", "") or e.get("clock", "") or "")
+            equipo = str(e.get("team", "") or e.get("team_name", "") or e.get("home_team", "") or "")
+            jugador = str(e.get("player", "") or e.get("playerName", "") or e.get("athlete", "") or e.get("name", "") or "")
+            color = "🟨" if any(k in tipo for k in ["yellow", "amarilla", "yellow_card"]) else "🟥"
+            out.append(f"{color} {minuto}' {equipo} — {jugador}".strip())
     return out[:10]
+
+
+def _goles_desde_marcador(home: str, away: str, hg: Optional[int], ag: Optional[int]) -> List[str]:
+    """Genera líneas de goles a partir del marcador si no hay eventos detallados."""
+    if hg is None or ag is None:
+        return []
+    lineas: List[str] = []
+    for i in range(hg):
+        lineas.append(f"⚽ {home} — Gol {i + 1}")
+    for i in range(ag):
+        lineas.append(f"⚽ {away} — Gol {i + 1}")
+    return lineas
 
 
 def _conclusion_ia(home: str, away: str, detalle: Dict[str, Any], hg: Optional[int] = None, ag: Optional[int] = None) -> Dict[str, Any]:
@@ -742,8 +777,14 @@ def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[Lis
             
             if eventos_lineas:
                 mensaje1_partes.append("📋 Eventos:")
-                for ev in eventos_lineas[:8]:
+                for ev in eventos_lineas[:10]:
                     mensaje1_partes.append(f"  • {ev}")
+            else:
+                goles_marcador = _goles_desde_marcador(home, away, hg, ag)
+                if goles_marcador:
+                    mensaje1_partes.append("📋 Goles:")
+                    for g in goles_marcador:
+                        mensaje1_partes.append(f"  • {g}")
             if tarjetas_lineas:
                 mensaje1_partes.append("🟨🟥 Tarjetas:")
                 for t in tarjetas_lineas[:6]:
@@ -793,8 +834,14 @@ def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[Lis
                 
                 if eventos_lineas:
                     mensaje2_partes.append("📋 Eventos:")
-                    for ev in eventos_lineas[:8]:
+                    for ev in eventos_lineas[:10]:
                         mensaje2_partes.append(f"  • {ev}")
+                else:
+                    goles_marcador = _goles_desde_marcador(home, away, hg, ag)
+                    if goles_marcador:
+                        mensaje2_partes.append("📋 Goles:")
+                        for g in goles_marcador:
+                            mensaje2_partes.append(f"  • {g}")
                 if tarjetas_lineas:
                     mensaje2_partes.append("🟨🟥 Tarjetas:")
                     for t in tarjetas_lineas[:6]:
@@ -845,10 +892,19 @@ def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[Lis
             tarjetas_lineas = analisis_p.get("tarjetas", [])
             conclusion = analisis_p.get("conclusion_ia", {})
             
+            # Mostrar eventos si hay
             if eventos_lineas:
                 mensaje_partido.append("📋 Eventos:")
-                for ev in eventos_lineas[:8]:
+                for ev in eventos_lineas[:10]:
                     mensaje_partido.append(f"  • {ev}")
+            else:
+                # Si no hay eventos pero hay marcador, mostrar goles básicos
+                goles_marcador = _goles_desde_marcador(home, away, hg, ag)
+                if goles_marcador:
+                    mensaje_partido.append("📋 Goles:")
+                    for g in goles_marcador:
+                        mensaje_partido.append(f"  • {g}")
+            
             if tarjetas_lineas:
                 mensaje_partido.append("🟨🟥 Tarjetas:")
                 for t in tarjetas_lineas[:6]:
