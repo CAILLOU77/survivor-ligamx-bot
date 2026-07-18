@@ -136,6 +136,18 @@ def _buscar_web(query: str, max_results: int = 5) -> List[Dict[str, str]]:
                         })
         except Exception:
             pass
+    # Tercer fallback: intentar obtener contenido de las URLs encontradas
+    for r in resultados[:3]:
+        if r.get("url") and not r.get("snippet"):
+            try:
+                page_resp = requests.get(r["url"], timeout=8, headers={"User-Agent": "Mozilla/5.0"})
+                if page_resp.status_code == 200:
+                    import re as _re2
+                    texto = _re2.sub(r'<[^>]+>', ' ', page_resp.text)
+                    texto = ' '.join(texto.split())
+                    r["snippet"] = texto[:300]
+            except Exception:
+                pass
     return resultados
 
 

@@ -255,6 +255,9 @@ def _buscar_eventos_partido(home: str, away: str, fecha: str) -> List[Dict[str, 
                     "source": r.get("url", ""),
                 })
     return eventos[:5]
+
+
+def obtener_detalle_partido(home: str, away: str, event_id: Optional[str] = None, fecha: str = "") -> Dict[str, Any]:
     """
     Obtiene detalle completo de un partido ya jugado:
     - eventos (goles, tarjetas, cambios)
@@ -395,27 +398,47 @@ def _conclusion_ia(home: str, away: str, detalle: Dict[str, Any], hg: Optional[i
 
     marcador_txt = f"Marcador final: {home} {hg or '?'} - {ag or '?'} {away}" if hg is not None and ag is not None else "Marcador final no disponible."
 
+    # Búsqueda web agresiva para obtener detalles del partido
+    web_txt = ""
+    try:
+        consultas = [
+            f"{home} vs {away} Liga MX goles tarjetas",
+            f"{home} vs {away} resumen partido",
+            f"{home} {away} Liga MX 2026 resultado",
+        ]
+        for q in consultas[:2]:
+            resultados = ia._buscar_web(q, max_results=3)
+            for r in resultados:
+                if r.get("snippet"):
+                    web_txt += f"\n- {r.get('title', '')}: {r.get('snippet', '')}"
+    except Exception:
+        pass
+
     user = (
         f"Partido: {home} vs {away}\n\n"
         f"{marcador_txt}\n\n"
         f"Eventos del partido:\n{eventos_txt}\n\n"
         f"{alineacion_txt}\n\n"
         f"{impacto_txt}\n\n"
-        "Genera una conclusión BREVE (máx 4 líneas) de por qué ganó/perdió/empató "
-        "cada equipo, enfocándote en: goles clave, expulsiones, alineación mermada, "
-        "cambios decisivos. SIEMPRE genera una conclusión, incluso si no hay eventos "
-        "detallados: usa el marcador y el contexto de alineaciones para inferir. "
-        "NUNCA digas 'Datos insuficientes'."
+    )
+    if web_txt:
+        user += f"Información de fuentes web:\n{web_txt}\n\n"
+    user += (
+        "Genera una conclusión DETALLADA (máx 6 líneas) de por qué ganó/perdió/empató "
+        "cada equipo. Incluye: goles clave, expulsiones, alineación mermada, cambios "
+        "decisivos, contexto del partido. Usa TODA la información disponible, "
+        "incluyendo las fuentes web. Si no hay datos suficientes, igual genera "
+        "una conclusión basada en el marcador y el contexto."
     )
 
     payload = {
         "model": ia._modelo(),
         "messages": [
-            {"role": "system", "content": "Eres analista de Liga MX. Resumen breve y objetivo."},
+            {"role": "system", "content": "Eres analista de Liga MX. Resumen detallado y objetivo."},
             {"role": "user", "content": user},
         ],
         "temperature": 0.2,
-        "max_tokens": 300,
+        "max_tokens": 400,
     }
 
     backend = ia._backend()
