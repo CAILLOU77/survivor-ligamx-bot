@@ -67,9 +67,9 @@ def base_url() -> str:
 
 def _timeout() -> float:
     try:
-        return float(os.getenv("LIGAMX_API_TIMEOUT", "12"))
+        return float(os.getenv("LIGAMX_API_TIMEOUT", "5"))
     except (TypeError, ValueError):
-        return 12.0
+        return 5.0
 
 
 def _get(path: str, params: Optional[Dict[str, Any]] = None, timeout: Optional[float] = None) -> Any:

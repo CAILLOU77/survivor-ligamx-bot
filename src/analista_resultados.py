@@ -354,14 +354,23 @@ def _buscar_eventos_partido(home: str, away: str, fecha: str) -> List[Dict[str, 
     return eventos[:15]
 
 
+_CACHE_EVENTOS_365: Dict[str, int] = {}
+_CACHE_DETALLES: Dict[str, Any] = {}
+
+
+def _cache_key_365(home: str, away: str) -> str:
+    return f"{canonical_team_key(home)}:{canonical_team_key(away)}"
+
+
 def obtener_detalle_partido(home: str, away: str, event_id: Optional[str] = None, fecha: str = "") -> Dict[str, Any]:
     """
-    Obtiene detalle completo de un partido ya jugado:
-    - eventos (goles, tarjetas, cambios)
-    - alineación confirmada
-    - impacto del XI
-    Usa 365scores como fuente principal, ESPN como fallback y búsqueda web como último recurso.
+    Obtiene detalle completo de un partido ya jugado.
+    Usa cache para no repetir consultas.
     """
+    key = _cache_key_365(home, away)
+    if key in _CACHE_DETALLES:
+        return _CACHE_DETALLES[key]
+
     out: Dict[str, Any] = {
         "home": home,
         "away": away,
@@ -370,16 +379,23 @@ def obtener_detalle_partido(home: str, away: str, event_id: Optional[str] = None
         "impacto_xi": None,
         "noticias": [],
     }
-    # Intentar obtener eventos desde 365scores primero
-    try:
-        eid = lmx.evento_365_id(home, away)
-        if eid:
+    # Intentar obtener eventos desde 365scores primero (con cache)
+    eid = _CACHE_EVENTOS_365.get(key)
+    if eid is None:
+        try:
+            eid = lmx.evento_365_id(home, away)
+            if eid:
+                _CACHE_EVENTOS_365[key] = eid
+        except Exception:
+            eid = None
+    if eid:
+        try:
             eventos_365 = lmx.eventos_365_partido(eid)
             if eventos_365:
                 out["eventos"] = eventos_365
-    except Exception as exc:
-        pass
-    # Si 365scores no tiene eventos, buscar en ESPN
+        except Exception:
+            pass
+    # Si 365scores no tiene eventos, buscar en ESPN/liga MX (solo si hay pocos partidos)
     if not out["eventos"]:
         try:
             mid = lmx.match_id_de_partido(home, away)
@@ -400,14 +416,22 @@ def obtener_detalle_partido(home: str, away: str, event_id: Optional[str] = None
                     pass
         except Exception:
             pass
-    # Si no hay eventos en absoluto, buscar en web
+    # Si no hay eventos en absoluto, buscar en web (solo para partidos recientes)
     if not out["eventos"] and fecha:
-        out["eventos"] = _buscar_eventos_partido(home, away, fecha)
+        try:
+            from datetime import datetime as _dt
+            fecha_dt = _dt.strptime(fecha, "%Y-%m-%d")
+            ahora = _dt.now()
+            if (ahora - fecha_dt).days <= 7:
+                out["eventos"] = _buscar_eventos_partido(home, away, fecha)
+        except Exception:
+            pass
     # Noticias
     try:
-        out["noticias"] = lmx.noticias_de_equipos([home, away], limit=5, dias=7)
+        out["noticias"] = lmx.noticias_de_equipos([home, away], limit=3, dias=7)
     except Exception:
         pass
+    _CACHE_DETALLES[key] = out
     return out
 
 
