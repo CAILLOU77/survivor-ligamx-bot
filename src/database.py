@@ -17,6 +17,7 @@ settle_pick) funcionan igual en ambos backends.
 import os
 import unicodedata
 from contextlib import contextmanager
+from typing import Any, Dict, List
 
 DATABASE_URL = os.getenv("DATABASE_URL", "") or ""
 
