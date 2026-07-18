@@ -388,42 +388,42 @@ def obtener_detalle_partido(home: str, away: str, event_id: Optional[str] = None
 
 
 def _formatear_eventos(eventos: List[Dict[str, Any]]) -> List[str]:
-    """Convierte eventos a líneas legibles. Ignora eventos de baja calidad."""
+    """Convierte eventos a líneas legibles."""
     lineas: List[str] = []
     for e in (eventos or [])[:20]:
         if not isinstance(e, dict):
             continue
-        tipo = str(e.get("type", "")).lower()
+        tipo_raw = str(e.get("type", "") or e.get("category", "") or "").lower()
         minuto = str(e.get("minute", "") or e.get("time", "") or e.get("clock", "") or "")
         equipo = str(e.get("team", "") or e.get("team_name", "") or e.get("home_team", "") or "")
         jugador = str(e.get("player", "") or e.get("playerName", "") or e.get("athlete", "") or e.get("name", "") or "")
         detalle = str(e.get("detail", "") or e.get("description", "") or e.get("text", "") or "")
         # Ignorar eventos basura de búsqueda web
-        if "search" in tipo or "goal_search" in tipo or "card_search" in tipo or "injury_search" in tipo or "substitution_search" in tipo or "penalty_search" in tipo:
+        if any(k in tipo_raw for k in ["search", "goal_search", "card_search", "injury_search", "substitution_search", "penalty_search"]):
             continue
-        if not tipo:
+        if not tipo_raw and not jugador:
             continue
         # Goal variants
-        if any(k in tipo for k in ["goal", "gol", "score", "point"]):
+        if any(k in tipo_raw for k in ["goal", "gol", "score", "point", "cancha"]):
             lineas.append(f"⚽ {minuto}' {equipo} — {jugador} {detalle}".strip())
         # Card variants
-        elif any(k in tipo for k in ["card", "yellow", "red", "tarjeta", "amonest"]):
-            color = "🟨" if any(k in tipo for k in ["yellow", "amarilla", "yellow_card"]) else "🟥"
-            lineas.append(f"{color} {minuto}' {equipo} — {jugador} {detalle}".strip())
+        elif any(k in tipo_raw for k in ["card", "yellow", "red", "tarjeta", "amonest", "foul"]):
+            color = "🟨" if any(k in tipo_raw for k in ["yellow", "amarilla", "yellow_card"]) else "🟥"
+            lineas.append(f"{color} {minuto}' {equipo} — {jugador}".strip())
         # Substitution variants
-        elif any(k in tipo for k in ["substitution", "sub", "cambio", "change"]):
+        elif any(k in tipo_raw for k in ["substitution", "sub", "cambio", "change"]):
             entra = str(e.get("playerIn", "") or e.get("substitute", "") or e.get("player_in", "") or "")
             sale = str(e.get("playerOut", "") or e.get("player_out", "") or jugador)
             if entra:
-                lineas.append(f"🔄 {minuto}' {equipo} — entra {entra}, sale {sale}")
+                lineas.append(f"🔄 {minuto}' {equipo} — entra {entra}, sale {sale}".strip())
             else:
-                lineas.append(f"🔄 {minuto}' {equipo} — {sale}")
+                lineas.append(f"🔄 {minuto}' {equipo} — {sale}".strip())
         # Penalty variants
-        elif any(k in tipo for k in ["penalty", "penal"]):
+        elif any(k in tipo_raw for k in ["penalty", "penal"]):
             lineas.append(f"🎯 {minuto}' {equipo} — {jugador} {detalle}".strip())
-        # Other events
-        elif jugador or detalle:
-            lineas.append(f"ℹ️ {minuto}' {equipo} — {jugador} {detalle}".strip())
+        # Woodwork / other notable
+        elif any(k in tipo_raw for k in ["woodwork", "poste", "palo", "save", "salvada"]):
+            lineas.append(f"🥅 {minuto}' {equipo} — {jugador} {detalle}".strip())
     return lineas
 
 
@@ -446,8 +446,7 @@ def _formatear_tarjetas(eventos: List[Dict[str, Any]]) -> List[str]:
 
 def _conclusion_ia(home: str, away: str, detalle: Dict[str, Any], hg: Optional[int] = None, ag: Optional[int] = None) -> Dict[str, Any]:
     """
-    Pide a la IA una conclusión BREVE y honesta del partido.
-    Solo usa datos reales (marcador + eventos confirmados). NO inventa.
+    Pide a la IA una conclusión del partido basada SOLO en datos reales.
     """
     if not ia.habilitado():
         return {
@@ -457,30 +456,70 @@ def _conclusion_ia(home: str, away: str, detalle: Dict[str, Any], hg: Optional[i
         }
 
     eventos_txt = "\n".join(_formatear_eventos(detalle.get("eventos", []))) or "Sin eventos detallados disponibles."
-    
-    marcador_txt = ""
-    if hg is not None and ag is not None:
-        marcador_txt = f"Marcador final: {home} {hg}-{ag} {away}"
+    alineacion_txt = ""
+    if detalle.get("alineacion") and detalle["alineacion"].get("disponible"):
+        equipos = detalle["alineacion"].get("equipos", [])
+        partes = []
+        for eq in equipos:
+            if not isinstance(eq, dict):
+                continue
+            nombre = eq.get("equipo", "")
+            titulares = ", ".join(eq.get("titulares", [])[:4])
+            if titulares:
+                partes.append(f"{nombre}: {titulares}...")
+        if partes:
+            alineacion_txt = "Alineaciones:\n" + "\n".join(partes)
+    else:
+        alineacion_txt = "Alineación no disponible."
+
+    impacto_txt = ""
+    if detalle.get("impacto_xi") and detalle["impacto_xi"].get("disponible"):
+        equipos_imp = detalle["impacto_xi"].get("equipos", {})
+        partes = []
+        for eq, info in (equipos_imp or {}).items():
+            if not isinstance(info, dict):
+                continue
+            fuerza = info.get("fuerza_xi_pct")
+            ausentes = info.get("ausentes_clave") or []
+            if fuerza is not None:
+                partes.append(f"{eq}: fuerza XI {fuerza}%")
+            if ausentes:
+                nombres = ", ".join(str(a.get("jugador", "")) for a in ausentes[:3] if isinstance(a, dict))
+                if nombres:
+                    partes.append(f"  Ausentes clave: {nombres}")
+        if partes:
+            impacto_txt = "Impacto XI:\n" + "\n".join(partes)
+    else:
+        impacto_txt = "Impacto XI no disponible."
+
+    marcador_txt = f"Marcador final: {home} {hg or '?'} - {ag or '?'} {away}" if hg is not None and ag is not None else "Marcador final no disponible."
 
     user = (
         f"Partido: {home} vs {away}\n"
         f"Torneo: Liga MX Apertura 2026, Jornada 1 (inició 16 julio, hoy 18 julio).\n"
         f"{marcador_txt}\n\n"
         f"Eventos confirmados del partido:\n{eventos_txt}\n\n"
-        "Genera un análisis BREVE (máximo 4 líneas) basado SOLO en el marcador y eventos confirmados arriba. "
-        "NO inventes goles, tarjetas, expulsiones, minutos ni detalles que no estén en los eventos. "
-        "Si no hay eventos detallados, di solo qué mostró el marcador y cómo pudo haberse dado. "
-        "No generes secciones como 'Cronología' si no tienes datos."
+        f"{alineacion_txt}\n\n"
+        f"{impacto_txt}\n\n"
+        "Genera un análisis completo pero HONESTO basado SOLO en los datos de arriba. "
+        "NO inventes jugadores, minutos, tarjetas ni detalles que no estén en los eventos. "
+        "Si no hay eventos detallados, enfócate en el marcador y la lógica del fútbol.\n\n"
+        "Estructura:\n"
+        "1. Resumen del partido (marcador y qué mostró)\n"
+        "2. Momentos clave (solo los que están en eventos)\n"
+        "3. Por qué ganó/perdió/empató cada equipo\n"
+        "4. Próximos retos\n\n"
+        "Sé concreto, evita frases genéricas, no repitas el marcador."
     )
 
     payload = {
         "model": ia._modelo(),
         "messages": [
-            {"role": "system", "content": "Eres analista de Liga MX. Conciso y honesto. Nunca inventes datos. Si no hay información, dilo."},
+            {"role": "system", "content": "Eres analista de Liga MX. Conciso, objetivo y honesto. Nunca inventes datos. Si no hay información, dilo."},
             {"role": "user", "content": user},
         ],
         "temperature": 0.3,
-        "max_tokens": 300,
+        "max_tokens": 600,
     }
 
     backend = ia._backend()
