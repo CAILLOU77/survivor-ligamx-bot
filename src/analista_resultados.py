@@ -208,13 +208,59 @@ def _obtener_partidos_ligamx(fecha: Optional[str] = None) -> List[Dict[str, Any]
     return partidos
 
 
-def obtener_detalle_partido(home: str, away: str, event_id: Optional[str] = None) -> Dict[str, Any]:
+def _buscar_eventos_partido(home: str, away: str, fecha: str) -> List[Dict[str, Any]]:
+    """Busca en web eventos detallados de un partido ya jugado."""
+    consultas = [
+        f"{home} vs {away} {fecha} goles tarjetas",
+        f"{home} {away} Liga MX {fecha} resultado",
+        f"{home} vs {away} expulsiones lesion 2026",
+    ]
+    eventos: List[Dict[str, Any]] = []
+    for q in consultas[:2]:
+        resultados = ia._buscar_web(q, max_results=3)
+        for r in resultados:
+            titulo = r.get("title", "")
+            snippet = r.get("snippet", "")
+            texto = f"{titulo} {snippet}".lower()
+            # Extraer goles
+            import re
+            goles = re.findall(r"(\d+)\s*[-:]\s*(\d+)", texto)
+            if goles:
+                eventos.append({
+                    "type": "goal_search",
+                    "team": home if home.lower() in texto else away if away.lower() in texto else "",
+                    "player": "",
+                    "minute": "",
+                    "detail": f"Resultado según búsqueda: {goles[0][0]}-{goles[0][1]}",
+                    "source": r.get("url", ""),
+                })
+            # Extraer tarjetas rojas
+            if "expuls" in texto or "roja" in texto or "red card" in texto:
+                eventos.append({
+                    "type": "card_search",
+                    "team": home if home.lower() in texto else away if away.lower() in texto else "",
+                    "player": "",
+                    "minute": "",
+                    "detail": "Expulsión reportada en noticias",
+                    "source": r.get("url", ""),
+                })
+            # Extraer lesiones
+            if "lesion" in texto or "baja" in texto or "injury" in texto:
+                eventos.append({
+                    "type": "injury_search",
+                    "team": home if home.lower() in texto else away if away.lower() in texto else "",
+                    "player": "",
+                    "minute": "",
+                    "detail": "Lesión/baja reportada en noticias",
+                    "source": r.get("url", ""),
+                })
+    return eventos[:5]
     """
     Obtiene detalle completo de un partido ya jugado:
     - eventos (goles, tarjetas, cambios)
     - alineación confirmada
     - impacto del XI
-    Usa Liga MX API como fuente principal.
+    Usa Liga MX API como fuente principal y búsqueda web como fallback.
     """
     out: Dict[str, Any] = {
         "home": home,
@@ -242,6 +288,9 @@ def obtener_detalle_partido(home: str, away: str, event_id: Optional[str] = None
                 pass
     except Exception:
         pass
+    # Si no hay eventos, buscar en web
+    if not out["eventos"] and fecha:
+        out["eventos"] = _buscar_eventos_partido(home, away, fecha)
     # Noticias
     try:
         out["noticias"] = lmx.noticias_de_equipos([home, away], limit=5, dias=7)
@@ -440,7 +489,7 @@ def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[Lis
         away = p.get("away_team", "")
         hg = p.get("home_goals")
         ag = p.get("away_goals")
-        detalle = obtener_detalle_partido(home, away, event_id=p.get("event_id"))
+        detalle = obtener_detalle_partido(home, away, event_id=p.get("event_id"), fecha=p.get("fecha", ""))
         conclusion = _conclusion_ia(home, away, detalle, hg=hg, ag=ag)
 
         eventos_lineas = _formatear_eventos(detalle.get("eventos", []))
