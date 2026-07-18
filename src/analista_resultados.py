@@ -98,14 +98,14 @@ def obtener_partidos_jornada(fecha: Optional[str] = None) -> List[Dict[str, Any]
     return combinados
 
 
-def _obtener_detalles_fuera(home: str, away: str, fecha: str) -> Dict[str, Any]:
+def _obtener_detalles_fuera(home: str, away: str, fecha: str, hg: int = 0, ag: int = 0) -> Dict[str, Any]:
     """Obtiene detalles usando el scraper fuerte."""
     try:
         try:
             import scraper_resultados as sr
         except ImportError:  # pragma: no cover
             from src import scraper_resultados as sr  # type: ignore
-        return sr.analizar_partido_fuerte(home, away, 0, 0, fecha)
+        return sr.analizar_partido_fuerte(home, away, hg, ag, fecha)
     except Exception:
         return {}
 
@@ -566,7 +566,7 @@ def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[Lis
         
         # Si no hay eventos de las APIs normales, usar scraper fuerte
         if not detalle.get("eventos") and p.get("fecha"):
-            detalle_fuera = _obtener_detalles_fuera(home, away, p.get("fecha", ""))
+            detalle_fuera = _obtener_detalles_fuera(home, away, p.get("fecha", ""), hg=hg or 0, ag=ag or 0)
             if detalle_fuera:
                 detalle["eventos"] = detalle_fuera.get("eventos", [])
                 detalle["conclusion_ia"] = {
@@ -709,7 +709,10 @@ def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[Lis
                 for t in tarjetas_lineas[:6]:
                     mensaje1_partes.append(f"  • {t}")
             if conclusion.get("disponible") and conclusion.get("conclusion"):
-                mensaje1_partes.append(f"💡 <b>Conclusión:</b> {conclusion['conclusion'][:200]}")
+                texto_conclusion = conclusion['conclusion']
+                if len(texto_conclusion) > 2000:
+                    texto_conclusion = texto_conclusion[:2000] + "..."
+                mensaje1_partes.append(f"💡 <b>Conclusión:</b> {texto_conclusion}")
             elif conclusion.get("motivo"):
                 mensaje1_partes.append(f"<i>Conclusión IA: {conclusion['motivo']}</i>")
         mensaje1_partes.append("")
@@ -757,7 +760,10 @@ def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[Lis
                     for t in tarjetas_lineas[:6]:
                         mensaje2_partes.append(f"  • {t}")
                 if conclusion.get("disponible") and conclusion.get("conclusion"):
-                    mensaje2_partes.append(f"💡 <b>Conclusión:</b> {conclusion['conclusion'][:200]}")
+                    texto_conclusion = conclusion['conclusion']
+                    if len(texto_conclusion) > 2000:
+                        texto_conclusion = texto_conclusion[:2000] + "..."
+                    mensaje2_partes.append(f"💡 <b>Conclusión:</b> {texto_conclusion}")
                 elif conclusion.get("motivo"):
                     mensaje2_partes.append(f"<i>Conclusión IA: {conclusion['motivo']}</i>")
             mensaje2_partes.append("")
@@ -770,11 +776,64 @@ def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[Lis
     # Guardar resultados por equipo
     _guardar_resultados_jornada(stats_equipos, fecha or datetime.now(timezone.utc).strftime("%Y-%m-%d"))
 
+    # Generar mensajes individuales por partido para evitar cortes
+    mensajes_individuales = []
+    for p_item in partidos:
+        home = p_item.get("home_team", "")
+        away = p_item.get("away_team", "")
+        hg = p_item.get("home_goals")
+        ag = p_item.get("away_goals")
+        
+        if hg is not None and ag is not None:
+            if hg > ag:
+                resultado = f"🏆 {home} {hg}-{ag} {away}"
+            elif hg < ag:
+                resultado = f"🏆 {away} {ag}-{hg} {home}"
+            else:
+                resultado = f"🤝 {home} {hg}-{ag} {away}"
+        else:
+            resultado = f"⏳ {home} vs {away}"
+        
+        mensaje_partido = [
+            f"⚽ <b>{home}</b> vs <b>{away}</b>",
+            f"📊 Resultado: {resultado}",
+        ]
+        
+        analisis_p = next((a for a in analisis if a["home"] == home and a["away"] == away), None)
+        if analisis_p:
+            eventos_lineas = _formatear_eventos(analisis_p.get("eventos", []))
+            tarjetas_lineas = analisis_p.get("tarjetas", [])
+            conclusion = analisis_p.get("conclusion_ia", {})
+            
+            if eventos_lineas:
+                mensaje_partido.append("📋 Eventos:")
+                for ev in eventos_lineas[:8]:
+                    mensaje_partido.append(f"  • {ev}")
+            if tarjetas_lineas:
+                mensaje_partido.append("🟨🟥 Tarjetas:")
+                for t in tarjetas_lineas[:6]:
+                    mensaje_partido.append(f"  • {t}")
+            if conclusion.get("disponible") and conclusion.get("conclusion"):
+                texto_conclusion = conclusion['conclusion']
+                if len(texto_conclusion) > 1500:
+                    texto_conclusion = texto_conclusion[:1500] + "..."
+                mensaje_partido.append(f"💡 <b>Conclusión:</b> {texto_conclusion}")
+            elif conclusion.get("motivo"):
+                mensaje_partido.append(f"<i>Conclusión IA: {conclusion['motivo']}</i>")
+        
+        mensaje_partido.append("")
+        mensajes_individuales.append("\n".join(mensaje_partido))
+    
+    # Mensaje de resumen de tabla
+    mensaje_tabla = "\n".join(tabla_lineas)
+
     return {
         "partidos": analisis,
         "resumen": "\n".join(mensaje1_partes),
         "resumen_2": "\n".join(mensaje2_partes) if mensaje2_partes else "",
         "tabla_posiciones": tabla_completa,
+        "mensajes_individuales": mensajes_individuales,
+        "mensaje_tabla": mensaje_tabla,
     }
 
 
