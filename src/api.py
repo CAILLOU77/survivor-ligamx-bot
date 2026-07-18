@@ -134,6 +134,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.state.limiter = limiter
+
+
+# Autoprogramado semanal del análisis de jornada (solo si SCHEDULER_ENABLED=1).
+# Arranca un hilo daemon; es idempotente (no se duplica con reload de uvicorn).
+try:
+    if not getattr(app.state, "_scheduler_started", False):
+        from src.scheduler import arrancar as _arrancar_scheduler
+        _arrancar_scheduler()
+        app.state._scheduler_started = True
+except Exception:  # pragma: no cover - el scheduler es opcional
+    pass
+
+
+
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 from src.routers.cron_router import router as cron_router
 
@@ -703,6 +717,37 @@ def analisis_jornada(request: Request, fecha: Optional[str] = None, api_key: str
         "tabla_posiciones": resultado.get("tabla_posiciones", ""),
         "historial_jornadas": historial.get("jornadas", [])[-5:],
     }
+
+
+@app.post("/cron/analisis-semanal")
+def cron_analisis_semanal(
+    background_tasks: BackgroundTasks,
+    request: Request,
+    api_key: str = Depends(verify_api_key),
+):
+    """
+    Disparador SEMANAL del análisis de jornada.
+    Pensado para ser llamado por un Cron Job de Render (o cualquier scheduler)
+    cada domingo tras cerrar la jornada. No bloquea: encola el envío por Telegram
+    en segundo plano y responde 202 de inmediato.
+    """
+    background_tasks.add_task(_enviar_analisis_jornada_bg)
+    return {
+        "status": "accepted",
+        "detail": "Análisis de jornada encolado para envío por Telegram.",
+    }
+
+
+def _enviar_analisis_jornada_bg() -> None:
+    """Ejecuta enviar_analisis_jornada() en segundo plano (no rompe el request)."""
+    try:
+        from src.telegram_pronosticos import enviar_analisis_jornada
+    except ImportError:  # pragma: no cover
+        from telegram_pronosticos import enviar_analisis_jornada  # type: ignore
+    try:
+        enviar_analisis_jornada()
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":
