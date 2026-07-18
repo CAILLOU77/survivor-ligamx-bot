@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
 """
-scheduler.py — Autoprogramado SEMANAL del análisis de jornada.
+scheduler.py — Autoprogramado SEMANAL del análisis de jornada (GRATIS).
 
 Arranca un hilo en segundo plano (librería estándar, sin dependencias extra)
 que cada domingo a las 23:00 hora de CDMX corre `enviar_analisis_jornada()`
 que analiza la jornada y la manda por Telegram.
 
-Esto es un RESPALDO cómodo si no querés crear un Cron Job de Render. Lo más
-robusto sigue siendo un Cron Job de Render que llame a POST /cron/analisis-semanal.
+Para sortear que el free tier de Render se duerme: ~10 min antes del disparo
+hace un "wake-up ping" a /health (localhost y API_BASE) para que el Web Service
+y la API de 365scores (que también se duermen) estén calientes a la hora de analizar.
 
+Activado por defecto. Para APAGARLO: SCHEDULER_ENABLED=false.
 Config (entorno, opcional):
-    SCHEDULER_ENABLED   "1"/"true" para activar (default: off, para no sorprender).
     SCHEDULER_HOUR     hora local CDMX de disparo (default 23).
     SCHEDULER_MINUTE   minuto de disparo (default 0).
-    SCHEDULER_WEEKDAY  día de la semana 0= Lun ... 6= Dom (default 6 = domingo).
+    SCHEDULER_WEEKDAY  día 0=Lun..6=Dom (default 6 = domingo).
+    SCHEDULER_WAKEUP_MINUTES  minutos antes del disparo para el ping (default 10).
 """
 
 from __future__ import annotations
@@ -21,7 +23,7 @@ from __future__ import annotations
 import os
 import threading
 import time
-from datetime import datetime, time as dtime
+from datetime import datetime, timedelta
 
 try:
     from zoneinfo import ZoneInfo
@@ -30,11 +32,11 @@ except Exception:  # pragma: no cover - muy viejo
 
 
 def _habilitado() -> bool:
-    return os.getenv("SCHEDULER_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+    # ON por defecto; solo se apaga con "false"/"0"/"off".
+    return os.getenv("SCHEDULER_ENABLED", "1").strip().lower() not in ("false", "0", "off", "no")
 
 
-def _zona() :
-    """Zona horaria CDMX (America/Mexico_City)."""
+def _zona():
     if ZoneInfo is not None:
         try:
             return ZoneInfo("America/Mexico_City")
@@ -50,27 +52,46 @@ def _proximo_disparo() -> float:
     dia = int(os.getenv("SCHEDULER_WEEKDAY", "6") or "6")  # domingo
     tz = _zona()
     ahora = datetime.now(tz) if tz else datetime.now()
-    # Calcular próximo día objetivo
     dias_espera = (dia - ahora.weekday()) % 7
     if dias_espera == 0 and (ahora.hour, ahora.minute, ahora.second) >= (hora, minuto, 0):
         dias_espera = 7
-    prox = ahora.replace(hour=hora, minute=minuto, second=0, microsecond=0)
-    from datetime import timedelta
-    prox = prox + timedelta(days=dias_espera)
+    prox = ahora.replace(hour=hora, minute=minuto, second=0, microsecond=0) + timedelta(days=dias_espera)
     return max(0.0, (prox - ahora).total_seconds())
+
+
+def _wake_up() -> None:
+    """Ping a /health para despertar el Web Service y la API de 365scores."""
+    import requests
+    port = os.getenv("PORT", "8000")
+    api_base = os.getenv("API_BASE", "").strip().rstrip("/")
+    urls = [f"http://127.0.0.1:{port}/health"]
+    if api_base:
+        urls.append(f"{api_base}/health")
+    for url in urls:
+        try:
+            requests.get(url, timeout=10)
+        except Exception:
+            pass
 
 
 def _loop() -> None:
     from src.telegram_pronosticos import enviar_analisis_jornada
+    wakeup = int(os.getenv("SCHEDULER_WAKEUP_MINUTES", "10") or "10")
     while True:
         espera = _proximo_disparo()
-        time.sleep(espera)
+        # Si falta más que el wakeup, dormir hasta el wakeup; si falta menos,
+        # dormir lo que falte y ya disparar.
+        if espera > wakeup * 60:
+            time.sleep(max(0.0, espera - wakeup * 60))
+            _wake_up()
+            time.sleep(wakeup * 60)
+        else:
+            time.sleep(espera)
         try:
             enviar_analisis_jornada()
         except Exception:
             pass
-        # Pequeña pausa para no disparar dos veces el mismo minuto
-        time.sleep(60)
+        time.sleep(120)  # evitar doble disparo en el mismo minuto
 
 
 def arrancar() -> None:
