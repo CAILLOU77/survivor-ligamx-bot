@@ -516,7 +516,7 @@ def _goles_desde_marcador(home: str, away: str, hg: Optional[int], ag: Optional[
     return lineas
 
 
-def _senales_partido(home: str, away: str, hg: Optional[int], ag: Optional[int], eventos: List[Dict[str, Any]]) -> Any:
+def _senales_partido(home: str, away: str, hg: Optional[int], ag: Optional[int], eventos: List[Dict[str, Any]]) -> Tuple[List[str], Set[str], Set[str]]:
     """
     Detecta señales relevantes del partido a partir de marcador + eventos:
     - Underdog visitante que gana
@@ -544,13 +544,18 @@ def _senales_partido(home: str, away: str, hg: Optional[int], ag: Optional[int],
 
     # Resultado base
     if ag > hg:
-        senales.append(f"{away} GANÓ COMO VISITANTE (underdog away win) contra {home}.")
-        bien.add(away); mal.add(home)
+        # Visitante ganó (posible underdog)
+        senales.append(f"{away} GANÓ COMO VISITANTE (underdog) vs {home}")
+        bien.add(away)
+        mal.add(home)
     elif hg > ag:
-        senales.append(f"{home} GANÓ DE LOCAL contra {away}.")
-        bien.add(home); mal.add(away)
+        # Local ganó
+        senales.append(f"{home} GANÓ DE LOCAL vs {away}")
+        bien.add(home)
+        mal.add(away)
     else:
-        senales.append(f"Empate {home} {hg}-{ag} {away}.")
+        # Empate
+        senales.append(f"Empate {home} {hg}-{ag} {away}")
 
     # Equipo con roja
     for eq, n in rojas.items():
@@ -560,12 +565,12 @@ def _senales_partido(home: str, away: str, hg: Optional[int], ag: Optional[int],
             continue
         if n >= 1:
             if gf > gc:
-                senales.append(f"{eq} ganó JUGANDO CON {n} HOMBRE(S) MENOS (expulsión).")
+                senales.append(f"{eq} ganó CON {n} roja(s)")
                 bien.add(eq)
             elif gf == gc:
-                senales.append(f"{eq} resistió con {n} hombre(s) menos (empate a pesar de la expulsión).")
+                senales.append(f"{eq} empató CON {n} roja(s)")
             else:
-                senales.append(f"{eq} PERDIÓ incluso con {n} hombre(s) menos por la expulsión (arranque muy malo).")
+                senales.append(f"{eq} perdió CON {n} roja(s) (arranque malo)")
                 mal.add(eq)
     return senales, bien, mal
 
@@ -654,7 +659,7 @@ def _conclusion_ia(home: str, away: str, detalle: Dict[str, Any], hg: Optional[i
             {"role": "user", "content": user},
         ],
         "temperature": 0.3,
-        "max_tokens": 600,
+        "max_tokens": 250,  # Límite reducido para mensajes cortos
     }
 
     backend = ia._backend()
@@ -908,7 +913,7 @@ def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[Lis
 
 
 def _bloque_partido(a: Dict[str, Any]) -> List[str]:
-    """Arma el bloque de un partido para Telegram (móvil‑friendly)."""
+    """Arma el bloque de un partido para Telegram (móvil‑friendly, optimizado para largo)."""
     home = a["home"]; away = a["away"]
     hg = a.get("home_goals"); ag = a.get("away_goals")
 
@@ -931,48 +936,38 @@ def _bloque_partido(a: Dict[str, Any]) -> List[str]:
 
     eventos_lineas = a.get("eventos_lineas") or []
 
-    # Goles
+    # Goles - mostrar solo los 3 primeros golpes clave
     if eventos_lineas:
-        # Los eventos pueden tener emojis de gol diferentes: ⚽ o 🥅
         goles = [e for e in eventos_lineas if any(emoji in e for emoji in ["⚽", "🥅"])]
         if goles:
             bloque.append("")
             bloque.append("⚽ <b>Goles:</b>")
-            for g in goles[:10]:
+            for g in goles[:3]:
                 bloque.append(g)
 
-    # Tarjetas
+    # Tarjetas rojas solo (máx 2)
     if eventos_lineas:
-        # Extraer tarjetas de los eventos (emojis 🟨 y 🟥)
-        tarjetas = [e for e in eventos_lineas if any(emoji in e for emoji in ["🟨", "🟥"])]
-        if tarjetas:
+        tarjetas_rojas = [e for e in eventos_lineas if "🟥" in e]
+        if tarjetas_rojas:
             bloque.append("")
-            bloque.append("🟨 <b>Tarjetas:</b>")
-            for t in tarjetas[:8]:
+            bloque.append("🟥 <b>Rojas:</b>")
+            for t in tarjetas_rojas[:2]:
                 bloque.append(t)
 
-    # Cambios (solo si hay muchos eventos)
-    cambios = [e for e in eventos_lineas if "🔄" in e]
-    if len(eventos_lineas) > 5 and cambios:
-        bloque.append("")
-        bloque.append(f"🔄 <b>Cambios ({len(cambios)}):</b>")
-        for c in cambios[:8]:
-            bloque.append(c)
-
-    # Señales detectadas
+    # Señales detectadas - priorizar las más impactantes (máx 2)
     senales = a.get("senales") or []
     if senales:
         bloque.append("")
-        bloque.append("🚦 <b>Señales:</b>")
-        for s in senales:
+        bloque.append("🚦 <b>Señales clave:</b>")
+        for s in senales[:2]:
             bloque.append(f"  {s}")
 
-    # Conclusión IA
+    # Conclusión IA - limitar a 200 caracteres y formato profesional
     conclusion = a.get("conclusion_ia", {})
     if conclusion.get("disponible") and conclusion.get("conclusion"):
         texto = conclusion["conclusion"]
-        if len(texto) > 800:
-            texto = texto[:800] + "..."
+        if len(texto) > 200:
+            texto = texto[:200] + "..."
         bloque.append("")
         bloque.append("💡 <b>Análisis:</b>")
         bloque.append(texto)
