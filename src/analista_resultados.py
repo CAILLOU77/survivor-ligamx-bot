@@ -390,31 +390,40 @@ def obtener_detalle_partido(home: str, away: str, event_id: Optional[str] = None
 def _formatear_eventos(eventos: List[Dict[str, Any]]) -> List[str]:
     """Convierte eventos a líneas legibles. Ignora eventos de baja calidad."""
     lineas: List[str] = []
-    for e in (eventos or [])[:15]:
+    for e in (eventos or [])[:20]:
         if not isinstance(e, dict):
             continue
-        tipo = e.get("type", "").lower()
-        minuto = e.get("minute") or e.get("time", "")
-        equipo = e.get("team", "") or ""
-        jugador = e.get("player", "") or e.get("playerName", "") or ""
-        detalle = e.get("detail", "") or ""
+        tipo = str(e.get("type", "")).lower()
+        minuto = str(e.get("minute", "") or e.get("time", "") or e.get("clock", "") or "")
+        equipo = str(e.get("team", "") or e.get("team_name", "") or e.get("home_team", "") or "")
+        jugador = str(e.get("player", "") or e.get("playerName", "") or e.get("athlete", "") or e.get("name", "") or "")
+        detalle = str(e.get("detail", "") or e.get("description", "") or e.get("text", "") or "")
         # Ignorar eventos basura de búsqueda web
         if "search" in tipo or "goal_search" in tipo or "card_search" in tipo or "injury_search" in tipo or "substitution_search" in tipo or "penalty_search" in tipo:
             continue
-        if "goal" in tipo:
-            lineas.append(f"⚽ {minuto}' {equipo} — {jugador} {detalle}")
-        elif "card" in tipo:
-            color = "🟨" if "yellow" in tipo else "🟥"
-            lineas.append(f"{color} {minuto}' {equipo} — {jugador}")
-        elif "substitution" in tipo or "sub" in tipo:
-            entra = e.get("playerIn", "") or e.get("substitute", "") or ""
-            sale = e.get("playerOut", "") or jugador
+        if not tipo:
+            continue
+        # Goal variants
+        if any(k in tipo for k in ["goal", "gol", "score", "point"]):
+            lineas.append(f"⚽ {minuto}' {equipo} — {jugador} {detalle}".strip())
+        # Card variants
+        elif any(k in tipo for k in ["card", "yellow", "red", "tarjeta", "amonest"]):
+            color = "🟨" if any(k in tipo for k in ["yellow", "amarilla", "yellow_card"]) else "🟥"
+            lineas.append(f"{color} {minuto}' {equipo} — {jugador} {detalle}".strip())
+        # Substitution variants
+        elif any(k in tipo for k in ["substitution", "sub", "cambio", "change"]):
+            entra = str(e.get("playerIn", "") or e.get("substitute", "") or e.get("player_in", "") or "")
+            sale = str(e.get("playerOut", "") or e.get("player_out", "") or jugador)
             if entra:
                 lineas.append(f"🔄 {minuto}' {equipo} — entra {entra}, sale {sale}")
             else:
                 lineas.append(f"🔄 {minuto}' {equipo} — {sale}")
-        elif "penalty" in tipo:
-            lineas.append(f"🎯 {minuto}' {equipo} — {jugador} {detalle}")
+        # Penalty variants
+        elif any(k in tipo for k in ["penalty", "penal"]):
+            lineas.append(f"🎯 {minuto}' {equipo} — {jugador} {detalle}".strip())
+        # Other events
+        elif jugador or detalle:
+            lineas.append(f"ℹ️ {minuto}' {equipo} — {jugador} {detalle}".strip())
     return lineas
 
 
