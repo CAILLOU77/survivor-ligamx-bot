@@ -40,10 +40,24 @@ class TestApi(unittest.TestCase):
         self.assertEqual(self.client.get("/stats").status_code, 403)
 
     def test_stats_con_key(self):
-        with mock.patch.object(apimod, "get_metrics", return_value={"total_picks": 0}):
+        mock_data = {
+            "total_picks": 5,
+            "wins": 3,
+            "win_rate": 60.0,
+            "total_profit": 12.5,
+            "accuracy_1x2": 0.6,
+            "accuracy_marcador": 0.2,
+            "brier_score": 0.25,
+            "accuracy_por_jornada": [],
+            "latencia_espn_promedio_ms": 450.0,
+            "total_predicciones": 5,
+            "ultima_actualizacion": "2026-07-17T22:00:00",
+        }
+        with mock.patch.object(apimod, "get_metrics", return_value=mock_data):
             r = self.client.get("/stats", headers={"X-API-Key": "testkey"})
         self.assertEqual(r.status_code, 200)
         self.assertIn("total_picks", r.json())
+        self.assertEqual(r.json()["total_picks"], 5)
 
     def test_usados_get_publico(self):
         with mock.patch("src.database.get_equipos_usados", return_value=["América"]):
@@ -161,6 +175,52 @@ class TestAuth(unittest.TestCase):
         data = r.json()
         self.assertEqual(data["status"], "degradado")
         self.assertIn("error", data["dependencias"]["espn"])
+
+
+    def test_healthcheck_espn_5xx_muestra_degradado(self):
+        """Si ESPN devuelve 502, status='degradado'"""
+        from unittest import mock as _mock
+        mock_resp = _mock.MagicMock()
+        mock_resp.status_code = 502
+        with (
+            _mock.patch("src.database.get_equipos_usados", return_value=[]),
+            _mock.patch("requests.get", return_value=mock_resp),
+        ):
+            r = self.client.get("/health")
+        self.assertEqual(r.status_code, 200)
+        data = r.json()
+        self.assertEqual(data["status"], "degradado")
+        self.assertIn("error", data["dependencias"]["espn"])
+        self.assertIn("502", data["dependencias"]["espn"])
+
+    def test_healthcheck_ligamxapi_5xx_muestra_degradado(self):
+        """Si ligamx-api devuelve 503, status='degradado'"""
+        from unittest import mock as _mock
+        mock_resp = _mock.MagicMock()
+        mock_resp.status_code = 503
+        with (
+            _mock.patch("src.database.get_equipos_usados", return_value=[]),
+            _mock.patch("requests.get", return_value=mock_resp),
+        ):
+            r = self.client.get("/health")
+        self.assertEqual(r.status_code, 200)
+        data = r.json()
+        self.assertEqual(data["status"], "degradado")
+        self.assertIn("error", data["dependencias"]["ligamx_api"])
+        self.assertIn("503", data["dependencias"]["ligamx_api"])
+
+    def test_healthcheck_espn_timeout_muestra_degradado(self):
+        """Timeout en ESPN debe dar degradado"""
+        from unittest import mock as _mock
+        with (
+            _mock.patch("src.database.get_equipos_usados", return_value=[]),
+            _mock.patch("requests.get", side_effect=Exception("Connection timeout")),
+        ):
+            r = self.client.get("/health")
+        self.assertEqual(r.status_code, 200)
+        data = r.json()
+        self.assertEqual(data["status"], "degradado")
+        self.assertIn("timeout", data["dependencias"]["espn"].lower())
 
 if __name__ == "__main__":
     unittest.main()

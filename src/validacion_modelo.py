@@ -122,3 +122,52 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+def metricas_rendimiento() -> dict:
+    """
+    Métricas de negocio del modelo predictivo.
+    
+    Returns:
+        dict con accuracy_1x2, accuracy_marcador, brier_score,
+        accuracy_por_jornada, latencia_espn_promedio_ms,
+        total_predicciones, ultima_actualizacion
+    """
+    import os
+    import json
+    from datetime import datetime, timezone
+
+    metrics = {
+        "accuracy_1x2": None,
+        "accuracy_marcador": None,
+        "brier_score": None,
+        "accuracy_por_jornada": [],
+        "latencia_espn_promedio_ms": None,
+        "total_predicciones": 0,
+        "ultima_actualizacion": None,
+    }
+
+    # Intentar cargar desde cache de métricas si existe
+    cache_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "metricas_cache.json")
+    try:
+        with open(cache_path, "r") as f:
+            cached = json.load(f)
+            metrics.update(cached)
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+
+    # Si no hay cache, calcular desde BD
+    if metrics["total_predicciones"] == 0:
+        try:
+            from src.database import get_history
+            history = get_history(limit=1000)
+            if history:
+                total = len(history)
+                wins = sum(1 for h in history if h.get("result", 0) > 0)
+                metrics["accuracy_1x2"] = round(wins / total, 4) if total > 0 else None
+                metrics["total_predicciones"] = total
+                metrics["ultima_actualizacion"] = datetime.now(timezone.utc).isoformat()
+        except Exception:
+            pass
+
+    return metrics

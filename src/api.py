@@ -19,6 +19,83 @@ except Exception:  # pragma: no cover - dotenv es opcional
 from src.database import init_db, get_metrics, get_history, settle_pick
 from src.rate_limit import limiter
 
+from pydantic import BaseModel
+from typing import Optional, Dict, List
+
+
+class HealthResponse(BaseModel):
+    """Respuesta del healthcheck del sistema."""
+    status: str  # "ok" o "degradado"
+    version: str
+    timestamp: str
+    dependencias: Dict[str, str]
+
+
+class ErrorResponse(BaseModel):
+    """Respuesta de error estándar."""
+    detail: str
+    error_code: Optional[str] = None
+    timestamp: Optional[str] = None
+
+
+class UsadosResponse(BaseModel):
+    """Lista de equipos usados en el Survivor."""
+    usados: List[str]
+    total: int
+    decision: str = "INFORMATIVO / REVISIÓN HUMANA"
+    error: Optional[str] = None
+
+
+class UsadoResponse(BaseModel):
+    """Resultado de agregar/quitar un equipo usado."""
+    equipo: str
+    agregado: Optional[bool] = None
+    quitado: Optional[bool] = None
+    ya_estaba: Optional[bool] = None
+    usados: List[str]
+
+
+class MetricsResponse(BaseModel):
+    """Métricas de rendimiento del modelo."""
+    total_picks: int
+    accuracy_1x2: Optional[float] = None
+    accuracy_marcador: Optional[float] = None
+    brier_score: Optional[float] = None
+    accuracy_por_jornada: List[dict]
+    latencia_espn_promedio_ms: Optional[float] = None
+    total_predicciones: int
+    ultima_actualizacion: Optional[str] = None
+
+
+class PrediccionItem(BaseModel):
+    """Una predicción individual."""
+    equipo_local: str
+    equipo_visitante: str
+    probabilidad_local: float
+    probabilidad_empate: float
+    probabilidad_visitante: float
+    no_perder_pct: Optional[float] = None
+    over_pct: Optional[float] = None
+    under_pct: Optional[float] = None
+    btts_pct: Optional[float] = None
+
+
+class PrediccionesResponse(BaseModel):
+    """Lista de predicciones."""
+    pronosticos: List[PrediccionItem]
+    fuente_datos: Optional[str] = None
+    generado_utc: Optional[str] = None
+    decision: str = "INFORMATIVO / REVISIÓN HUMANA"
+    error: Optional[str] = None
+
+
+class CronResponse(BaseModel):
+    """Respuesta de un endpoint CRON."""
+    status: str = "ok"
+    message: Optional[str] = None
+    timestamp: str
+
+
 # Sin default público: la clave DEBE venir del entorno (Render / GitHub secret).
 # Si no está configurada, los endpoints protegidos fallan en cerrado (503).
 API_KEY = os.getenv("API_KEY", "").strip()
@@ -92,7 +169,7 @@ def _predicciones_reales() -> dict:
         }
 
 
-@app.get("/health", summary="Estado del sistema", tags=["Status"])
+@app.get("/health", response_model=HealthResponse, summary="Estado del sistema", tags=["Status"])
 def health():
     """
     Healthcheck del sistema con estado de cada dependencia.
@@ -265,7 +342,7 @@ def get_fichajes(request: Request, equipo: str):
 # ---------------------------------------------------------------------------
 # Equipos usados en el Survivor (persisten en la BD; el pick los excluye).
 # ---------------------------------------------------------------------------
-@app.get("/survivor/usados", summary="Lista de equipos ya usados en el Survivor", tags=["Survivor"])
+@app.get("/survivor/usados", response_model=UsadosResponse, summary="Lista de equipos ya usados en el Survivor", tags=["Survivor"])
 @limiter.limit("30/minute")
 def survivor_usados_listar(request: Request):
     """Equipos que ya gastaste (se excluyen automáticamente del pick y del plan)."""
@@ -278,7 +355,7 @@ def survivor_usados_listar(request: Request):
     return {"usados": usados, "total": len(usados), "decision": "INFORMATIVO / REVISIÓN HUMANA"}
 
 
-@app.post("/survivor/usados", summary="Marcar un equipo como usado", tags=["Survivor"])
+@app.post("/survivor/usados", response_model=UsadoResponse, summary="Marcar un equipo como usado", tags=["Survivor"])
 @limiter.limit("30/minute")
 def survivor_usados_agregar(request: Request, equipo: str, api_key: str = Depends(verify_api_key)):
     """Registra el equipo que escogiste esta jornada para que ya no se sugiera."""
@@ -397,6 +474,41 @@ def get_history_endpoint(request: Request, limit: int = 20, offset: int = 0, api
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+
+@app.get("/metrics", response_model=MetricsResponse, summary="Métricas de rendimiento del modelo", tags=["Analytics"])
+@limiter.limit("10/minute")
+def get_metrics_endpoint(request: Request):
+    """
+    Métricas de negocio del modelo:
+    - Accuracy global (1X2 y marcador exacto)
+    - Accuracy por jornada (últimas 5)
+    - Total de predicciones
+    - Brier score (calibración)
+    - Latencia promedio de ESPN
+    """
+    try:
+        from src.database import get_metrics as _get_metrics
+        base = _get_metrics()
+    except Exception:
+        base = {"total_picks": 0, "wins": 0, "win_rate": 0.0, "total_profit": 0.0}
+
+    try:
+        from src.validacion_modelo import metricas_rendimiento
+        extra = metricas_rendimiento()
+    except Exception:
+        extra = {}
+
+    return {
+        "total_picks": base.get("total_picks", 0),
+        "accuracy_1x2": extra.get("accuracy_1x2", None),
+        "accuracy_marcador": extra.get("accuracy_marcador", None),
+        "brier_score": extra.get("brier_score", None),
+        "accuracy_por_jornada": extra.get("accuracy_por_jornada", []),
+        "latencia_espn_promedio_ms": extra.get("latencia_espn_promedio_ms", None),
+        "total_predicciones": extra.get("total_predicciones", base.get("total_picks", 0)),
+        "ultima_actualizacion": extra.get("ultima_actualizacion", None),
+    }
 
 @app.post("/backtest/settle/{pick_id}", summary="Validar resultado de pick", tags=["Analytics"])
 def settle_pick_endpoint(

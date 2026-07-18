@@ -109,3 +109,48 @@ Modelos: `poisson_model` (default) y `dixon_coles_mle` (alternativa opcional, va
 ---
 
 **Estado: sólido, limpio, moderno y monitoreable.** El gran trabajo está hecho; lo pendiente es **configurar las keys en Render/GitHub** y **recalibrar con datos reales** cuando arranque la liga.
+
+## Runbook Operativo
+
+### Arquitectura
+- **survivor-ligamx-bot** → Bot de Telegram + API REST (FastAPI en Render)
+- **ligamx-api** → API hermana con datos de Liga MX (también en Render free tier)
+- **ESPN** → Fuente principal de fixtures y resultados
+- **PostgreSQL** → Persistencia (Neon/Render Postgres)
+
+### Endpoints CRON (ejecutados por Render Cron Jobs)
+| Endpoint | Frecuencia | Descripción |
+|----------|-----------|-------------|
+| /alerts/pronosticos | Cada jornada | Genera y envía predicciones por Telegram |
+| /alerts/plan | Cada jornada | Envía plan óptimo de temporada |
+| /alerts/momios?flexible=true | Cada 12h | Refresca momios silenciosamente |
+| /alerts/recordatorio?dias_antes=1 | Diario | Recordatorio de jornada próxima |
+
+### Recuperación ante fallos
+
+#### Si ESPN falla (timeout/5xx)
+1. El healthcheck muestra "espn": "error"
+2. El bot usa datos cacheados de la última consulta exitosa
+3. Si el cache está vacío, devuelve mensaje informativo sin predicciones
+4. **Acción manual**: Verificar https://espn.com.mx/ y reintentar /alerts/pronosticos
+
+#### Si ligamx-api falla
+1. El healthcheck muestra "ligamx_api": "error"
+2. El bot funciona sin datos de la API hermana (usa ESPN directamente)
+3. **Acción manual**: Verificar https://ligamx-api.onrender.com/health
+
+#### Si la BD falla
+1. El healthcheck muestra "status": "degradado" con "base_de_datos": "error"
+2. El bot no puede operar comandos que requieren BD (/usado, /usados, /plan)
+3. **Acción manual**: Revisar conexión PostgreSQL en Render Dashboard
+
+#### Si el bot no responde en Telegram
+1. Verificar healthcheck en https://survivor-ligamx-bot.onrender.com/health
+2. Verificar logs en Render Dashboard
+3. Reintentar webhook via curl desde terminal
+
+### Mantenimiento
+- **Actualizar dependencias**: bash scripts/sync_deps.sh
+- **Correr tests**: pytest tests/ -v
+- **Nueva temporada**: /reset en Telegram para limpiar equipos usados
+- **Despliegue**: Push a main → Render deploy automático (~2-3 min)

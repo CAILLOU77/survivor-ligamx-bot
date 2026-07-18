@@ -1,3 +1,8 @@
+# GENERADO AUTOMÁTICAMENTE DESDE pyproject.toml
+# NO EDITES este archivo directamente.
+# Fuente canónica: pyproject.toml
+# Para regenerar: bash scripts/sync_deps.sh
+
 # Dependencias del bot Survivor Liga MX (versiones fijadas para builds reproducibles).
 # Probadas con Python 3.12 (ver runtime.txt). Actualiza con cuidado y corre
 # `pytest tests/` antes de subir.

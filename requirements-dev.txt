@@ -1,3 +1,8 @@
+# GENERADO AUTOMÁTICAMENTE DESDE pyproject.toml
+# NO EDITES este archivo directamente.
+# Fuente canónica: pyproject.toml
+# Para regenerar: bash scripts/sync_deps.sh
+
 # Dependencias solo para desarrollo/tests
 -r requirements.txt
 pytest>=8.0

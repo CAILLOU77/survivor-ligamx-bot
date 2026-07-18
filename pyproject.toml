@@ -1,3 +1,11 @@
+# ===================================================================
+# FUENTE CANÓNICA DE DEPENDENCIAS
+# ===================================================================
+# pyproject.toml es la ÚNICA fuente de verdad para dependencias.
+# requirements.txt y requirements-dev.txt se regeneran desde aquí.
+# Comando: pip-compile pyproject.toml (o usa scripts/sync_deps.sh)
+# ===================================================================
+
 [project]
 name = "survivor-ligamx-bot"
 version = "2.1.0"
