@@ -1,25 +1,24 @@
 #!/usr/bin/env python3
 """
-analista_ia.py — Capa de IA OPCIONAL (Groq) que analiza noticias REALES.
+analista_ia.py — Capa de IA OPCIONAL que analiza noticias REALES.
 
-Qué hace: toma las noticias que el bot YA baja (365Scores + Google News) para los
-equipos de un partido y le pide a un LLM (Groq, gratis) que EXTRAIGA señales de
-riesgo — lesiones, suspensiones, dudas, rotación — resumiéndolas y citando el
-titular fuente.
+Backends soportados (por orden de preferencia):
+1) Proxy local CLIProxyAPI (AntiGravity/Claude/OpenAI/Gemini): se activa si hay
+   PROXY_API_KEY en el entorno. Default: http://127.0.0.1:8317/v1
+2) Groq: se activa si hay GROQ_API_KEY y no hay proxy. Default Groq.
 
-Qué NO hace (regla máxima del proyecto): NO inventa datos. El modelo SOLO puede
-usar los titulares/notas provistos; si no hay señal, lo dice. No hace búsqueda
-libre en internet, no afirma hechos que no estén en las notas, y NUNCA cambia el
-pick por sí solo: es contexto informativo que se adjunta al dossier.
-
-Activación: OPCIONAL y apagada por defecto. Se activa si hay una API key de Groq
-en el entorno (GROQ_API_KEY / GROQ_API_KEY_PRIMARY / GROQ_API_KEY_BACKUP). Sin
-key, `habilitado()` es False y todo degrada a {disponible: False} sin romper.
+Reglas:
+- NO inventa datos. Solo usa los titulares provistos.
+- Si no hay señal, lo dice.
+- NUNCA cambia el pick por sí solo: es contexto informativo.
 
 Config:
-    GROQ_API_KEY | GROQ_API_KEY_PRIMARY | GROQ_API_KEY_BACKUP   (una basta)
-    GROQ_MODEL   (default 'meta-llama/llama-4-scout-17b-16e-instruct')
-    GROQ_ENABLED ('0'/'false' fuerza apagado aunque haya key)
+    PROXY_API_KEY      (obligatoria si querés usar el proxy local)
+    PROXY_BASE_URL     (default http://127.0.0.1:8317/v1)
+    PROXY_MODEL        (default claude-opus-4-6-thinking)
+    GROQ_API_KEY | GROQ_API_KEY_PRIMARY | GROQ_API_KEY_BACKUP
+    GROQ_MODEL         (default meta-llama/llama-4-scout-17b-16e-instruct)
+    GROQ_ENABLED       ('0'/'false' fuerza apagado aunque haya key)
 """
 
 from __future__ import annotations
@@ -33,6 +32,16 @@ try:
 except ImportError:  # pragma: no cover
     requests = None  # type: ignore[assignment]
 
+# ---------------------------------------------------------------------------
+# Backend 1: Proxy local (CLIProxyAPI / AntiGravity / OpenAI-compatible)
+# ---------------------------------------------------------------------------
+_PROXY_URL = os.getenv("PROXY_BASE_URL", "http://127.0.0.1:8317/v1").rstrip("/") + "/chat/completions"
+_PROXY_KEY = os.getenv("PROXY_API_KEY", "").strip()
+_PROXY_MODEL = os.getenv("PROXY_MODEL", "claude-opus-4-6-thinking").strip()
+
+# ---------------------------------------------------------------------------
+# Backend 2: Groq
+# ---------------------------------------------------------------------------
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 # Groq dio de baja los Llama 3.1 (jul 2026). Llama 4 Scout es el reemplazo vigente,
 # barato y con salida JSON. Se puede sobreescribir con la env GROQ_MODEL.
@@ -51,7 +60,7 @@ _SYSTEM = (
 )
 
 
-def _api_key() -> str:
+def _groq_api_key() -> str:
     for var in ("GROQ_API_KEY", "GROQ_API_KEY_PRIMARY", "GROQ_API_KEY_BACKUP"):
         v = os.getenv(var, "").strip()
         if v:
@@ -60,13 +69,23 @@ def _api_key() -> str:
 
 
 def habilitado() -> bool:
-    """True si hay key de Groq y no está desactivado por GROQ_ENABLED=0/false."""
+    """True si hay proxy local configurado O key de Groq activa."""
+    if _PROXY_KEY and requests is not None:
+        return True
     if os.getenv("GROQ_ENABLED", "").strip().lower() in ("0", "false", "no", "off"):
         return False
-    return bool(_api_key()) and requests is not None
+    return bool(_groq_api_key()) and requests is not None
+
+
+def _backend() -> str:
+    if _PROXY_KEY:
+        return "proxy"
+    return "groq"
 
 
 def _modelo() -> str:
+    if _backend() == "proxy":
+        return _PROXY_MODEL
     return os.getenv("GROQ_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
 
 
@@ -85,12 +104,13 @@ def _texto_noticias(noticias: List[Dict[str, Any]], max_n: int = 12) -> str:
 
 def analizar_noticias(equipos: List[str], noticias: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
-    Pide a Groq que extraiga señales de riesgo de las noticias dadas para los
-    `equipos`. Tolerante: si no hay key, no hay noticias o falla la llamada,
+    Pide al backend configurado que extraiga señales de riesgo de las noticias dadas
+    para los `equipos`. Backend: proxy local (preferido) o Groq (fallback).
+    Tolerante: si no hay key, no hay noticias o falla la llamada,
     devuelve {disponible: False}. NUNCA lanza.
     """
     if not habilitado():
-        return {"disponible": False, "motivo": "IA desactivada (sin GROQ_API_KEY)."}
+        return {"disponible": False, "motivo": "IA desactivada (sin PROXY_API_KEY ni GROQ_API_KEY)."}
     texto = _texto_noticias(noticias)
     if not texto:
         return {"disponible": False, "motivo": "Sin noticias para analizar."}
@@ -107,19 +127,52 @@ def analizar_noticias(equipos: List[str], noticias: List[Dict[str, Any]]) -> Dic
         "response_format": {"type": "json_object"},
         "max_tokens": 700,
     }
+
+    backend = _backend()
+    url = _PROXY_URL if backend == "proxy" else GROQ_URL
+    headers = {"Authorization": f"Bearer {_PROXY_KEY if backend == 'proxy' else _groq_api_key()}"}
+
     try:
         resp = requests.post(
-            GROQ_URL,
+            url,
             json=payload,
-            headers={"Authorization": f"Bearer {_api_key()}"},
-            timeout=30,
+            headers=headers,
+            timeout=60 if backend == "proxy" else 30,
         )
         if resp.status_code != 200:
-            return {"disponible": False, "motivo": f"Groq HTTP {resp.status_code}."}
-        contenido = resp.json()["choices"][0]["message"]["content"]
-        data = json.loads(contenido)
+            return {"disponible": False, "motivo": f"{backend.upper()} HTTP {resp.status_code}."}
+        contenido = ""
+        try:
+            contenido = resp.json()["choices"][0]["message"]["content"]
+        except Exception:
+            try:
+                contenido = resp.json().get("message", {}).get("content", "")
+            except Exception:
+                contenido = ""
+        if not contenido:
+            return {"disponible": False, "motivo": f"{backend.upper()} respuesta vacía."}
+        try:
+            data = json.loads(contenido)
+        except Exception:
+            texto_limpio = str(contenido).strip()
+            if "```json" in texto_limpio:
+                texto_limpio = texto_limpio.split("```json", 1)[1].split("```", 1)[0].strip()
+            elif "```" in texto_limpio:
+                texto_limpio = texto_limpio.split("```", 1)[1].split("```", 1)[0].strip()
+            try:
+                data = json.loads(texto_limpio)
+            except Exception:
+                return {
+                    "disponible": True,
+                    "modelo": _modelo(),
+                    "backend": backend,
+                    "riesgos": [],
+                    "sin_senales": True,
+                    "decision": DECISION,
+                    "motivo": "Respuesta no-JSON; sin señales.",
+                }
     except Exception as exc:  # pragma: no cover - red/parseo
-        return {"disponible": False, "motivo": f"Error IA: {str(exc)[:120]}"}
+        return {"disponible": False, "motivo": f"Error IA ({backend}): {str(exc)[:120]}"}
 
     riesgos = data.get("riesgos") if isinstance(data, dict) else None
     if not isinstance(riesgos, list):
@@ -141,6 +194,7 @@ def analizar_noticias(equipos: List[str], noticias: List[Dict[str, Any]]) -> Dic
     return {
         "disponible": True,
         "modelo": _modelo(),
+        "backend": backend,
         "riesgos": limpios,
         "sin_senales": bool(data.get("sin_senales")) if not limpios else False,
         "decision": DECISION,

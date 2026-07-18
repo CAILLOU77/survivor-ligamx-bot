@@ -725,31 +725,58 @@ def noticias_recientes(limit: int = 10) -> List[Dict[str, Any]]:
     return items[: max(0, limit)]
 
 
-def noticias_de_equipos(nombres: List[str], limit: int = 5) -> List[Dict[str, Any]]:
+def noticias_de_equipos(nombres: List[str], limit: int = 5, dias: int = 30) -> List[Dict[str, Any]]:
     """
     Noticias que MENCIONAN a alguno de los equipos dados (por título/descripción),
     en forma compacta. Útil para el dossier del pick: ahí aparecen lesiones,
     bajas y fichajes del equipo. Match tolerante por alias (team_normalizer),
     con guarda de longitud para evitar falsos positivos por alias muy cortos.
+
+    Filtros aplicados:
+    - Solo noticias de los últimos `dias` días (default 30).
+    - Ordenadas por fecha de publicación (recientes primero).
+    - Dedup por título normalizado.
     """
     aliases: set = set()
     for nombre in nombres:
         for a in team_aliases(nombre):
-            if len(a) >= 4:  # evita ruido con alias de 1-3 letras
+            if len(a) >= 4:
                 aliases.add(a)
     if not aliases:
         return []
+
+    from datetime import datetime, timezone
+
+    def _es_reciente(publicado: str, max_dias: int) -> bool:
+        if not publicado:
+            return True
+        try:
+            pub = datetime.fromisoformat(str(publicado).replace("Z", "+00:00"))
+            ahora = datetime.now(timezone.utc)
+            return (ahora - pub).days <= max_dias
+        except Exception:
+            return True
+
     out: List[Dict[str, Any]] = []
+    vistos: set = set()
     for n in noticias():
         if not isinstance(n, dict):
             continue
+        publicado = n.get("published_at", "")
+        if not _es_reciente(publicado, dias):
+            continue
         texto = clean_team_name(f"{n.get('title', '')} {n.get('description', '')}")
         if any(a in texto for a in aliases):
+            clave = _clave_titulo(n)
+            if clave and clave in vistos:
+                continue
+            if clave:
+                vistos.add(clave)
             out.append(
                 {
                     "titulo": n.get("title", ""),
                     "fuente": n.get("source", ""),
-                    "publicado": n.get("published_at", ""),
+                    "publicado": publicado,
                     "link": n.get("link", ""),
                 }
             )
