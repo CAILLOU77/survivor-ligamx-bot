@@ -512,9 +512,65 @@ def _goles_desde_marcador(home: str, away: str, hg: Optional[int], ag: Optional[
     return lineas
 
 
+def _senales_partido(home: str, away: str, hg: Optional[int], ag: Optional[int], eventos: List[Dict[str, Any]]) -> Any:
+    """
+    Detecta señales relevantes del partido a partir de marcador + eventos:
+    - Underdog visitante que gana
+    - Local que pierde en casa
+    - Equipo que jugó con un hombre menos (roja) y ganó/persistió
+    Devuelve tupla (lineas, bien_set, mal_set) donde bien/mal son sets de equipos
+    clasificados de forma determinista (el sujeto es siempre home/away explícito).
+    """
+    senales: List[str] = []
+    bien: set = set()
+    mal: set = set()
+    if hg is None or ag is None:
+        return senales, bien, mal
+
+    # Contar rojas por equipo
+    rojas: Dict[str, int] = {}
+    for e in (eventos or []):
+        if not isinstance(e, dict):
+            continue
+        tipo = str(e.get("type", "") or e.get("category", "") or "").lower()
+        if "red" in tipo or "tarjeta roja" in tipo:
+            eq = str(e.get("team", "") or e.get("team_name", "") or "")
+            if eq:
+                rojas[eq] = rojas.get(eq, 0) + 1
+
+    # Resultado base
+    if ag > hg:
+        senales.append(f"{away} GANÓ COMO VISITANTE (underdog away win) contra {home}.")
+        bien.add(away); mal.add(home)
+    elif hg > ag:
+        senales.append(f"{home} GANÓ DE LOCAL contra {away}.")
+        bien.add(home); mal.add(away)
+    else:
+        senales.append(f"Empate {home} {hg}-{ag} {away}.")
+
+    # Equipo con roja
+    for eq, n in rojas.items():
+        gf = hg if eq == home else (ag if eq == away else None)
+        gc = ag if eq == home else (hg if eq == away else None)
+        if gf is None:
+            continue
+        if n >= 1:
+            if gf > gc:
+                senales.append(f"{eq} ganó JUGANDO CON {n} HOMBRE(S) MENOS (expulsión).")
+                bien.add(eq)
+            elif gf == gc:
+                senales.append(f"{eq} resistió con {n} hombre(s) menos (empate a pesar de la expulsión).")
+            else:
+                senales.append(f"{eq} PERDIÓ incluso con {n} hombre(s) menos por la expulsión (arranque muy malo).")
+                mal.add(eq)
+    return senales, bien, mal
+
+
 def _conclusion_ia(home: str, away: str, detalle: Dict[str, Any], hg: Optional[int] = None, ag: Optional[int] = None) -> Dict[str, Any]:
     """
     Pide a la IA una conclusión del partido basada SOLO en datos reales.
+    Incluye señales detectadas (underdog, local que pierde, roja) para que la IA
+    las resalte en la conclusión.
     """
     if not ia.habilitado():
         return {
@@ -562,6 +618,10 @@ def _conclusion_ia(home: str, away: str, detalle: Dict[str, Any], hg: Optional[i
 
     marcador_txt = f"Marcador final: {home} {hg or '?'} - {ag or '?'} {away}" if hg is not None and ag is not None else "Marcador final no disponible."
 
+    # Señales detectadas automáticamente (underdog, local que pierde, roja)
+    senales, _, _ = _senales_partido(home, away, hg, ag, detalle.get("eventos", []))
+    senales_txt = "\n".join(f"  • {s}" for s in senales) if senales else "Sin señales especiales."
+
     user = (
         f"Partido: {home} vs {away}\n"
         f"Torneo: Liga MX Apertura 2026, Jornada 1 (inició 16 julio, hoy 18 julio).\n"
@@ -569,12 +629,15 @@ def _conclusion_ia(home: str, away: str, detalle: Dict[str, Any], hg: Optional[i
         f"Eventos confirmados del partido:\n{eventos_txt}\n\n"
         f"{alineacion_txt}\n\n"
         f"{impacto_txt}\n\n"
+        f"SEÑALES DETECTADAS (usar en la conclusión):\n{senales_txt}\n\n"
         "Genera un análisis completo pero HONESTO basado SOLO en los datos de arriba. "
         "NO inventes jugadores, minutos, tarjetas ni detalles que no estén en los eventos. "
         "Si no hay eventos detallados, enfócate en el marcador y la lógica del fútbol.\n\n"
         "Estructura:\n"
         "1. Resumen del partido (marcador y qué mostró)\n"
-        "2. Momentos clave (solo los que están en eventos)\n"
+        "2. Señales clave: menciona EXPLÍCITAMENTE las señales detectadas arriba "
+        "(underdog que ganó, local que perdió, equipo que jugó con un hombre menos por expulsión). "
+        "Esto es lo más importante del análisis.\n"
         "3. Por qué ganó/perdió/empató cada equipo\n"
         "4. Próximos retos\n\n"
         "Sé concreto, evita frases genéricas, no repitas el marcador."
@@ -681,7 +744,9 @@ def _procesar_partido(p: Dict[str, Any], picks_anteriores: List[Dict[str, Any]])
     else:
         resultado = f"⏳ {home} vs {away}"
 
-    return {
+    # Calcular señales una sola vez (lista + sets bien/mal)
+    _sen_list, _sen_bien, _sen_mal = _senales_partido(home, away, hg, ag, detalle.get("eventos", []))
+    ret = {
         "home": home,
         "away": away,
         "home_goals": hg,
@@ -693,8 +758,12 @@ def _procesar_partido(p: Dict[str, Any], picks_anteriores: List[Dict[str, Any]])
         "alineacion": detalle.get("alineacion"),
         "impacto_xi": detalle.get("impacto_xi"),
         "picks_lineas": picks_lineas,
+        "senales": _sen_list,
+        "bien": _sen_bien,
+        "mal": _sen_mal,
         "conclusion_ia": conclusion,
     }
+    return ret
 
 
 def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
@@ -773,6 +842,23 @@ def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[Lis
         )
     tabla_lineas.append("")
     tabla_lineas.append(_DECISION)
+
+    # Señales de la jornada: qué equipos empezaron bien / mal
+    bien_set: set = set()
+    mal_set: set = set()
+    for a in analisis:
+        bien_set |= (a.get("bien") or set())
+        mal_set |= (a.get("mal") or set())
+    # Un equipo no puede estar en ambos: si aparece en los dos, lo quitamos de MAL
+    mal_set -= bien_set
+    if bien_set or mal_set:
+        tabla_lineas.append("🚦 <b>SEÑALES DE LA JORNADA</b>")
+        tabla_lineas.append("━━━━━━━━━━")
+        if bien_set:
+            tabla_lineas.append("✅ Empezaron BIEN: " + ", ".join(sorted(bien_set)))
+        if mal_set:
+            tabla_lineas.append("❌ Empezaron MAL: " + ", ".join(sorted(mal_set)))
+        tabla_lineas.append("")
 
     # Mensaje 1: primeros 5 partidos
     mensaje1_partes = ["📊 <b>ANÁLISIS DE LA JORNADA (1/2)</b>",
