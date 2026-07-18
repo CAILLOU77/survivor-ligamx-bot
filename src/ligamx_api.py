@@ -870,6 +870,12 @@ def evento_365_id(home: str, away: str) -> Optional[int]:
     return None
 
 
+def eventos_365_partido(event_id: int) -> List[Dict[str, Any]]:
+    """/365scores/matches/{id}/events — goles, tarjetas y cambios de un partido."""
+    d = _get(f"/365scores/matches/{event_id}/events")
+    return d if isinstance(d, list) else []
+
+
 def _nombre_jugador(p: Dict[str, Any]) -> str:
     for k in ("name", "player", "player_name", "full_name", "short_name"):
         v = p.get(k) if isinstance(p, dict) else None

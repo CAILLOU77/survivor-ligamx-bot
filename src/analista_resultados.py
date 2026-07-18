@@ -306,24 +306,34 @@ def obtener_detalle_partido(home: str, away: str, event_id: Optional[str] = None
         "impacto_xi": None,
         "noticias": [],
     }
-    # Intentar obtener eventos desde Liga MX API
+    # Intentar obtener eventos desde 365scores primero
     try:
-        mid = lmx.match_id_de_partido(home, away)
-        if mid:
-            try:
-                out["eventos"] = lmx.eventos_partido(mid) or []
-            except Exception:
-                pass
-            try:
-                out["alineacion"] = lmx.alineacion_de_partido(home, away)
-            except Exception:
-                pass
-            try:
-                out["impacto_xi"] = lmx.lineup_impact_partido(home, away)
-            except Exception:
-                pass
+        eid = lmx.evento_365_id(home, away)
+        if eid:
+            eventos_365 = lmx.eventos_365_partido(eid)
+            if eventos_365:
+                out["eventos"] = eventos_365
     except Exception:
         pass
+    # Intentar obtener eventos desde Liga MX API
+    if not out["eventos"]:
+        try:
+            mid = lmx.match_id_de_partido(home, away)
+            if mid:
+                try:
+                    out["eventos"] = lmx.eventos_partido(mid) or []
+                except Exception:
+                    pass
+                try:
+                    out["alineacion"] = lmx.alineacion_de_partido(home, away)
+                except Exception:
+                    pass
+                try:
+                    out["impacto_xi"] = lmx.lineup_impact_partido(home, away)
+                except Exception:
+                    pass
+        except Exception:
+            pass
     # Si no hay eventos, buscar en web
     if not out["eventos"] and fecha:
         out["eventos"] = _buscar_eventos_partido(home, away, fecha)
