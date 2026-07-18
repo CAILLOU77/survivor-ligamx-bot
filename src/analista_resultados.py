@@ -659,7 +659,7 @@ def _conclusion_ia(home: str, away: str, detalle: Dict[str, Any], hg: Optional[i
             {"role": "user", "content": user},
         ],
         "temperature": 0.3,
-        "max_tokens": 250,  # Límite reducido para mensajes cortos
+        "max_tokens": 400,  # Más espacio para análisis IA completo
     }
 
     backend = ia._backend()
@@ -964,12 +964,12 @@ def _bloque_partido(a: Dict[str, Any]) -> List[str]:
             senal_explicada = f"  • {s}"  # Ej: "  • Local vencido por bajo marcador"
             bloque.append(senal_explicada)
 
-    # Conclusión IA - 250 caracteres (ejemplos)
+    # Conclusión IA - 350 caracteres (más contexto sin recortes)
     conclusion = a.get("conclusion_ia", {})
     if conclusion.get("disponible") and conclusion.get("conclusion"):
         texto = conclusion["conclusion"]
-        if len(texto) > 250:
-            texto = texto[:250] + "..."
+        if len(texto) > 350:
+            texto = texto[:350] + "..."
         bloque.append("")
         bloque.append("💡 <b>Análisis:</b>")
         bloque.append(texto)
