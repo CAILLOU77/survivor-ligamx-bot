@@ -110,6 +110,46 @@ def _obtener_detalles_fuera(home: str, away: str, fecha: str, hg: int = 0, ag: i
         return {}
 
 
+def _extraer_eventos_espn(ev: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Extrae eventos detallados (goles, tarjetas, cambios, penales) del response de ESPN."""
+    eventos: List[Dict[str, Any]] = []
+    comps = ev.get("competitions") or [{}]
+    comp = comps[0] if comps else {}
+    for e in (comp.get("events") or []):
+        if not isinstance(e, dict):
+            continue
+        tipo_raw = ((e.get("type") or {}).get("text") or (e.get("type") or {}).get("name") or "")
+        tipo = str(tipo_raw).lower()
+        minuto = (e.get("clock") or {}).get("displayValue", "") or ""
+        equipo = ""
+        team_data = e.get("team")
+        if isinstance(team_data, dict):
+            equipo = team_data.get("displayName", "") or team_data.get("name", "")
+        jugador = ""
+        athletes = e.get("athletesInvolved") or []
+        if athletes and isinstance(athletes[0], dict):
+            jugador = athletes[0].get("displayName", "") or athletes[0].get("name", "")
+        detalle = e.get("text", "") or ""
+
+        if "goal" in tipo:
+            eventos.append({"type": "goal", "minute": minuto, "team": equipo, "player": jugador, "detail": detalle})
+        elif "yellow" in tipo:
+            eventos.append({"type": "yellow_card", "minute": minuto, "team": equipo, "player": jugador, "detail": detalle})
+        elif "red" in tipo:
+            eventos.append({"type": "red_card", "minute": minuto, "team": equipo, "player": jugador, "detail": detalle})
+        elif "substitution" in tipo or "sub" in tipo:
+            sale = ""
+            entra = ""
+            if len(athletes) >= 1 and isinstance(athletes[0], dict):
+                sale = athletes[0].get("displayName", "") or athletes[0].get("name", "")
+            if len(athletes) >= 2 and isinstance(athletes[1], dict):
+                entra = athletes[1].get("displayName", "") or athletes[1].get("name", "")
+            eventos.append({"type": "substitution", "minute": minuto, "team": equipo, "player": sale, "playerIn": entra, "playerOut": sale, "detail": detalle})
+        elif "penalty" in tipo:
+            eventos.append({"type": "penalty", "minute": minuto, "team": equipo, "player": jugador, "detail": detalle})
+    return eventos
+
+
 def _obtener_partidos_espn(fecha: Optional[str] = None) -> List[Dict[str, Any]]:
     """Obtiene partidos jugados desde ESPN scoreboard."""
     if requests is None:
@@ -167,6 +207,7 @@ def _obtener_partidos_espn(fecha: Optional[str] = None) -> List[Dict[str, Any]]:
             if clave in partidos_vistos:
                 continue
             partidos_vistos.add(clave)
+            eventos_espn = _extraer_eventos_espn(ev)
             partidos.append(
                 {
                     "fecha": fecha_iso[:10],
@@ -176,6 +217,7 @@ def _obtener_partidos_espn(fecha: Optional[str] = None) -> List[Dict[str, Any]]:
                     "away_goals": away_goals,
                     "estado": estado,
                     "event_id": ev.get("id"),
+                    "eventos_espn": eventos_espn,
                 }
             )
     return partidos
@@ -395,8 +437,8 @@ def _formatear_tarjetas(eventos: List[Dict[str, Any]]) -> List[str]:
 
 def _conclusion_ia(home: str, away: str, detalle: Dict[str, Any], hg: Optional[int] = None, ag: Optional[int] = None) -> Dict[str, Any]:
     """
-    Pide a la IA una conclusión narrativa del partido.
-    Tolerante: si no hay IA, devuelve fallback.
+    Pide a la IA una conclusión BREVE y honesta del partido.
+    Solo usa datos reales (marcador + eventos confirmados). NO inventa.
     """
     if not ia.habilitado():
         return {
@@ -406,77 +448,30 @@ def _conclusion_ia(home: str, away: str, detalle: Dict[str, Any], hg: Optional[i
         }
 
     eventos_txt = "\n".join(_formatear_eventos(detalle.get("eventos", []))) or "Sin eventos detallados disponibles."
-    alineacion_txt = ""
-    if detalle.get("alineacion") and detalle["alineacion"].get("disponible"):
-        equipos = detalle["alineacion"].get("equipos", [])
-        partes = []
-        for eq in equipos:
-            if not isinstance(eq, dict):
-                continue
-            nombre = eq.get("equipo", "")
-            titulares = ", ".join(eq.get("titulares", [])[:4])
-            if titulares:
-                partes.append(f"{nombre}: {titulares}...")
-        if partes:
-            alineacion_txt = "Alineaciones:\n" + "\n".join(partes)
-    else:
-        alineacion_txt = "Alineación no disponible."
-
-    impacto_txt = ""
-    if detalle.get("impacto_xi") and detalle["impacto_xi"].get("disponible"):
-        equipos_imp = detalle["impacto_xi"].get("equipos", {})
-        partes = []
-        for eq, info in (equipos_imp or {}).items():
-            if not isinstance(info, dict):
-                continue
-            fuerza = info.get("fuerza_xi_pct")
-            ausentes = info.get("ausentes_clave") or []
-            if fuerza is not None:
-                partes.append(f"{eq}: fuerza XI {fuerza}%")
-            if ausentes:
-                nombres = ", ".join(str(a.get("jugador", "")) for a in ausentes[:3] if isinstance(a, dict))
-                if nombres:
-                    partes.append(f"  Ausentes clave: {nombres}")
-        if partes:
-            impacto_txt = "Impacto XI:\n" + "\n".join(partes)
-    else:
-        impacto_txt = "Impacto XI no disponible."
-
-    marcador_txt = f"Marcador final: {home} {hg or '?'} - {ag or '?'} {away}" if hg is not None and ag is not None else "Marcador final no disponible."
+    
+    marcador_txt = ""
+    if hg is not None and ag is not None:
+        marcador_txt = f"Marcador final: {home} {hg}-{ag} {away}"
 
     user = (
-        f"Partido: {home} vs {away}\n\n"
+        f"Partido: {home} vs {away}\n"
+        f"Torneo: Liga MX Apertura 2026, Jornada 1 (inició 16 julio, hoy 18 julio).\n"
         f"{marcador_txt}\n\n"
-        f"Eventos del partido:\n{eventos_txt}\n\n"
-        f"{alineacion_txt}\n\n"
-        f"{impacto_txt}\n\n"
-        "Genera un análisis LARGO, PROFESIONAL y COMPLETO de este partido de Liga MX. "
-        "NO TE LIMITES a pocas líneas. Desarrolla cada punto con detalles.\n\n"
-        "Estructura tu respuesta así:\n"
-        "## 1. Contexto y narrativa del partido\n"
-        "Describe el momento de la temporada, la importancia del rival, antecedentes recientes y el contexto general.\n\n"
-        "## 2. Cronología de eventos clave\n"
-        "Lista goles, expulsiones, penales, cambios decisivos y cualquier momento que cambió el rumbo del partido. "
-        "Si no hay eventos detallados, describe cómo se pudo haber desarrollado el partido según el marcador.\n\n"
-        "## 3. Análisis por equipo\n"
-        f"- {home}: puntos fuertes, errores, jugadores destacados, qué cambió respecto a partidos anteriores.\n"
-        f"- {away}: mismo análisis.\n\n"
-        "## 4. Impacto en la tabla y próximos retos\n"
-        "Cómo afecta este resultado a la tabla de posiciones y qué deben mejorar cada uno para los próximos partidos.\n\n"
-        "## 5. Veredicto final\n"
-        "Resumen de por qué ganó/perdió/empató cada equipo en 2-3 frases contundentes.\n\n"
-        "IMPORTANTE: Desarrolla CADA SECCIÓN con al menos 3-4 líneas de contenido real. "
-        "No repitas el marcador. Usa toda la información disponible."
+        f"Eventos confirmados del partido:\n{eventos_txt}\n\n"
+        "Genera un análisis BREVE (máximo 4 líneas) basado SOLO en el marcador y eventos confirmados arriba. "
+        "NO inventes goles, tarjetas, expulsiones, minutos ni detalles que no estén en los eventos. "
+        "Si no hay eventos detallados, di solo qué mostró el marcador y cómo pudo haberse dado. "
+        "No generes secciones como 'Cronología' si no tienes datos."
     )
 
     payload = {
         "model": ia._modelo(),
         "messages": [
-            {"role": "system", "content": "Eres analista profesional de Liga MX con acceso a información detallada de partidos. Tus análisis son extensos, precisos, objetivos y ricos en detalles tácticos y contextuales. NUNCA te limites a respuestas cortas."},
+            {"role": "system", "content": "Eres analista de Liga MX. Conciso y honesto. Nunca inventes datos. Si no hay información, dilo."},
             {"role": "user", "content": user},
         ],
         "temperature": 0.3,
-        "max_tokens": 1500,
+        "max_tokens": 300,
     }
 
     backend = ia._backend()
@@ -557,7 +552,11 @@ def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[Lis
         ag = p.get("away_goals")
         detalle = obtener_detalle_partido(home, away, event_id=p.get("event_id"), fecha=p.get("fecha", ""))
         
-        # Si no hay eventos de las APIs normales, usar scraper fuerte
+        # Prioridad 1: eventos reales de ESPN (goles, tarjetas, cambios confirmados)
+        if p.get("eventos_espn"):
+            detalle["eventos"] = p["eventos_espn"]
+        
+        # Si no hay eventos en absoluto, usar scraper fuerte como fallback
         if not detalle.get("eventos") and p.get("fecha"):
             detalle_fuera = _obtener_detalles_fuera(home, away, p.get("fecha", ""), hg=hg or 0, ag=ag or 0)
             if detalle_fuera:
