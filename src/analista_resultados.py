@@ -964,12 +964,12 @@ def _bloque_partido(a: Dict[str, Any]) -> List[str]:
             senal_explicada = f"  • {s}"  # Ej: "  • Local vencido por bajo marcador"
             bloque.append(senal_explicada)
 
-    # Conclusión IA - 500 caracteres máximo (análisis completo)
+    # Conclusión IA - 800 caracteres máximo (análisis completo con estructura)
     conclusion = a.get("conclusion_ia", {})
     if conclusion.get("disponible") and conclusion.get("conclusion"):
         texto = conclusion["conclusion"]
-        if len(texto) > 500:
-            texto = texto[:500] + "..."
+        if len(texto) > 800:
+            texto = texto[:800] + "..."
         bloque.append("")
         bloque.append("💡 <b>Análisis:</b>")
         bloque.append(texto)
