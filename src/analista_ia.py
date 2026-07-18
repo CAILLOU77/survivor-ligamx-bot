@@ -43,9 +43,10 @@ _PROXY_MODEL = os.getenv("PROXY_MODEL", "claude-opus-4-6-thinking").strip()
 # Backend 2: Groq
 # ---------------------------------------------------------------------------
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
-# Groq dio de baja los Llama 3.1 (jul 2026). Llama 4 Scout es el reemplazo vigente,
-# barato y con salida JSON. Se puede sobreescribir con la env GROQ_MODEL.
-DEFAULT_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
+# Modelo por defecto: llama-3.3-70b-versatile (gratis, rápido, buen JSON).
+# Si tu cuenta no tiene acceso, cambiá por otro de la lista de Groq:
+# https://console.groq.com/docs/models
+DEFAULT_MODEL = "llama-3.3-70b-versatile"
 DECISION = "INFORMATIVO / REVISIÓN HUMANA"
 
 _SYSTEM = (
