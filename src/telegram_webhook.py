@@ -28,6 +28,7 @@ AYUDA = (
     "/plan — ANÁLISIS INTELIGENTE + plan de temporada (revisa TODO lo que pasa y te dice qué hacer)"
     "/momios — baja los momios (1X2/OU/hándicap) y muestra la cobertura\n"
     "/seguir — lista de seguimiento: candidatos por hora para decidir secuencial\n"
+    "/analisis — análisis post-partido: goles, tarjetas, alineaciones y conclusión IA\n"
     "/prueba — pone a prueba la estrategia con torneos pasados (¿sobrevive?)\n"
     "/confianza — revisa si la confianza del bot es honesta o exagerada\n"
     "/derrotas — aprende de las derrotas pasadas (en qué partido cayó y por qué)\n"
@@ -68,6 +69,9 @@ CMDS_GANADORES = {"ganadores", "perfecto", "oraculo", "ideal"}
 
 # "Racha" = track-record REAL del pick de Survivor del bot (ligero -> lee la BD).
 CMDS_RACHA = {"racha", "rachas", "vivo", "trackrecord", "mirracha"}
+
+# "Analisis" = análisis post-partido de la jornada (pesado -> background).
+CMDS_ANALISIS = {"analisis", "analizar", "resultados", "post", "postpartido"}
 
 
 def parsear_comando(texto: str) -> Tuple[Optional[str], str]:

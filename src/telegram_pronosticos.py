@@ -2241,6 +2241,57 @@ def enviar_recordatorio_si_aplica(dias_antes: int = 1, hoy: Optional[date] = Non
     return {"enviado": enviado, "jornada": j.get("jornada"), "dias": dias}
 
 
+# ---------------------------------------------------------------------------
+# ANÁLISIS INTELIGENTE DE JORNADA (usa todas las piezas del bot)
+# ---------------------------------------------------------------------------
+
+def enviar_analisis_jornada() -> Dict[str, Any]:
+    """
+    Analiza TODOS los partidos YA JUGADOS de la jornada actual.
+    Incluye: goles, tarjetas, alineaciones, eventos y conclusión IA por partido.
+    Compara con picks anteriores del bot.
+    Devuelve el resumen HTML para enviar por Telegram.
+    """
+    try:
+        try:
+            import analista_resultados as ar
+        except ImportError:  # pragma: no cover
+            from src import analista_resultados as ar  # type: ignore
+    except Exception as exc:  # pragma: no cover
+        return {"enviado": False, "error": str(exc)}
+
+    # Obtener picks anteriores de la BD para comparar
+    picks_anteriores: List[Dict[str, Any]] = []
+    try:
+        try:
+            from database import get_survivor_picks_recientes
+        except ImportError:  # pragma: no cover
+            try:
+                from src.database import get_survivor_picks_recientes  # type: ignore
+            except ImportError:
+                try:
+                    import database as _db
+                except ImportError:  # pragma: no cover
+                    from src import database as _db  # type: ignore
+                picks_anteriores = _db.get_survivor_picks_recientes(limit=10) if hasattr(_db, 'get_survivor_picks_recientes') else []
+        else:
+            picks_anteriores = get_survivor_picks_recientes(limit=10)
+    except Exception:
+        picks_anteriores = []
+
+    resultado = ar.analizar_jornada(picks_anteriores=picks_anteriores)
+    resumen = resultado.get("resumen", "")
+    if not resumen:
+        resumen = "⚠️ No se pudo generar el análisis de la jornada."
+
+    enviado = enviar_mensaje(resumen)
+    return {
+        "enviado": enviado,
+        "total_partidos": len(resultado.get("partidos", [])),
+        "resumen": resumen,
+    }
+
+
 if __name__ == "__main__":
     res = enviar_pronosticos()
     print(f"Enviado: {res['enviado']} | pronósticos: {res['total_pronosticos']} | fuente: {res['fuente']}")

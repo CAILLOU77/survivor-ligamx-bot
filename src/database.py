@@ -462,8 +462,8 @@ def resumen_survivor() -> dict:
             elif estado == "empate":
                 empates += 1
             sobrevividas += 1
-            if vivo:  # racha antes de la primera caída
-                racha += 1
+        if vivo:
+            racha += 1
     return {
         "jugadas": jugadas,
         "pendientes": pendientes,
@@ -475,6 +475,24 @@ def resumen_survivor() -> dict:
         "racha": racha,
         "detalle": detalle,
     }
+
+
+def get_survivor_picks_recientes(limit: int = 10) -> List[Dict[str, Any]]:
+    """
+    Picks de Survivor recientes (pendientes o resueltos) para comparar
+    con resultados reales. Devuelve lista de dicts con:
+    {jornada, equipo, rival, condicion, local, visitante, ...}
+    """
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"SELECT jornada, equipo, rival, condicion, local, visitante, "
+            f"no_perder_pct, prob_victoria_pct, marcador_real, estado, resuelto "
+            f"FROM survivor_historial ORDER BY fecha DESC LIMIT {PH}",
+            (limit,),
+        )
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, fila)) for fila in cur.fetchall()]
 
 
 def save_pick(match_id, market, true_prob, momio, ev, kelly_pct):

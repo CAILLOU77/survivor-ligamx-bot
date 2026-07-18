@@ -451,9 +451,12 @@ async def telegram_webhook(
     elif cmd in tw.CMDS_DERROTAS:
         background_tasks.add_task(tp.enviar_derrotas)
         tp.enviar_mensaje("🔄 Revisando en qué partidos cayó el bot y por qué...")
-    elif cmd in tw.CMDS_GANADORES:
+    el    if cmd in tw.CMDS_GANADORES:
         background_tasks.add_task(tp.enviar_ganadores)
         tp.enviar_mensaje("🔄 Calculando el 'Survivor perfecto' y comparándolo con el bot...")
+    elif cmd in tw.CMDS_ANALISIS:
+        background_tasks.add_task(tp.enviar_analisis_jornada)
+        tp.enviar_mensaje("🔄 Analizando la jornada: goles, tarjetas, alineaciones y conclusiones...")
     else:
         tp.enviar_mensaje(tw.responder(cmd, arg))
     return {"ok": True}
@@ -673,6 +676,28 @@ def debug_api_response(request: Request):
         }
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
+
+@app.get("/analisis/jornada", summary="Análisis post-partido de la jornada", tags=["Analisis"])
+@limiter.limit("5/minute")
+def analisis_jornada(request: Request, fecha: Optional[str] = None, api_key: str = Depends(verify_api_key)):
+    """
+    Analiza TODOS los partidos YA JUGADOS de la jornada actual (o de `fecha`).
+    Incluye: goles, tarjetas, alineaciones, eventos y conclusión IA por partido.
+    Compara con picks anteriores del bot.
+    """
+    try:
+        from src import analista_resultados as ar
+    except ImportError:  # pragma: no cover
+        from src.analista_resultados import analizar_jornada  # type: ignore
+
+    resultado = ar.analizar_jornada(fecha=fecha)
+    return {
+        "status": "success",
+        "total_partidos": len(resultado.get("partidos", [])),
+        "partidos": resultado.get("partidos", []),
+        "resumen_html": resultado.get("resumen", ""),
+    }
 
 
 if __name__ == "__main__":
