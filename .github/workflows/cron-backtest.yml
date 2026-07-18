@@ -1,20 +1,19 @@
-name: Daily Backtest
+name: Análisis Semanal Jornada
 
 on:
   schedule:
-    - cron: '0 2 * * *'  # Cada día a las 2 AM UTC
-  workflow_dispatch:  # Permitir ejecución manual
+    - cron: '0 10 * * 0'  # Cada domingo 10:00 UTC (tras jornada dominical)
+  workflow_dispatch:
 
 jobs:
-  backtest:
+  analisis:
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger backtest
+      - name: Disparar análisis de jornada
         run: |
-          curl -X POST https://survivor-ligamx-bot.onrender.com/cron/backtest
+          curl -X POST https://survivor-ligamx-bot.onrender.com/cron/analisis-semanal
 
-      - name: Enviar resumen de rentabilidad por Telegram
+      - name: Verificar envío (opcional)
         run: |
-          curl -fsS -X POST https://survivor-ligamx-bot.onrender.com/alerts/resumen \
-            -H "X-API-Key: ${{ secrets.API_KEY }}" \
-            -H "Content-Type: application/json" || true
+          sleep 5
+          curl -sf https://survivor-ligamx-bot.onrender.com/health || echo "⏳ Bot despertando..."

@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """Prueba del análisis inteligente + plan de temporada."""
 import sys
-sys.path.insert(0, "src")
+import os
+
+# Usar ruta absoluta del proyecto para que funcione desde cualquier directorio (incluido cron)
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, PROJECT_ROOT)
+os.chdir(PROJECT_ROOT)
 
 from src import motor_pronosticos
 from src import fuentes_datos

@@ -491,12 +491,16 @@ def _formatear_tarjetas(eventos: List[Dict[str, Any]]) -> List[str]:
         if not isinstance(e, dict):
             continue
         tipo = str(e.get("type", "") or e.get("category", "") or "").lower()
-        if any(k in tipo for k in ["card", "yellow", "red", "tarjeta", "amonest"]):
-            minuto = str(e.get("minute", "") or e.get("time", "") or e.get("clock", "") or "")
-            equipo = str(e.get("team", "") or e.get("team_name", "") or e.get("home_team", "") or "")
-            jugador = str(e.get("player", "") or e.get("playerName", "") or e.get("athlete", "") or e.get("name", "") or "")
-            color = "🟨" if any(k in tipo for k in ["yellow", "amarilla", "yellow_card"]) else "🟥"
-            out.append(f"{color} {minuto}' {equipo} — {jugador}".strip())
+        if not any(k in tipo for k in ["card", "yellow", "red", "tarjeta", "amonest"]):
+            continue
+        minuto = str(e.get("minute", "") or e.get("time", "") or e.get("clock", "") or "")
+        minuto = minuto.replace("''", "'").strip()
+        if minuto and not minuto.endswith("'"):
+            minuto = minuto + "'"
+        equipo = str(e.get("team", "") or e.get("team_name", "") or e.get("home_team", "") or "")
+        jugador = str(e.get("player", "") or e.get("playerName", "") or e.get("athlete", "") or e.get("name", "") or "")
+        color = "🟨" if any(k in tipo for k in ["yellow", "amarilla", "yellow_card"]) else "🟥"
+        out.append(f"{color} {minuto}' {equipo} — {jugador}".strip())
     return out[:10]
 
 
@@ -828,20 +832,22 @@ def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[Lis
     tabla_torneo = _tabla_acumulada()
     total_jornadas = len((hist.get("por_fecha") or {})) if isinstance(hist, dict) else 0
 
-    # Tabla de posiciones resumida
-    tabla_lineas = [f"📈 <b>TABLA GENERAL ({total_jornadas} jornada(s))</b>", "━━━━━━━━━━"]
+    # Tabla de posiciones resumida (formato móvil)
+    tabla_lineas = [
+        "",
+        f"📈 <b>TABLA GENERAL ({total_jornadas} j.)</b>",
+        "━━━━━━━━━━━━━━━━━━",
+    ]
     if not tabla_torneo:
-        tabla_lineas.append("(sin datos acumulados aún)")
+        tabla_lineas.append("(sin datos aún)")
     for pos, (eq, st) in enumerate(sorted(tabla_torneo.items(), key=lambda x: (x[1]["puntos"], x[1]["gf"] - x[1]["gc"]), reverse=True), 1):
         dg = st['gf'] - st['gc']
         dg_str = f"+{dg}" if dg > 0 else str(dg)
-        tabla_lineas.append(
-            f"{pos}º {eq}\n"
-            f"   PJ:{st['pj']} · G:{st['g']} E:{st['e']} P:{st['p']} · "
-            f"GF:{st['gf']} GC:{st['gc']} DG:{dg_str} · PTS:{st['puntos']}"
-        )
-    tabla_lineas.append("")
-    tabla_lineas.append(_DECISION)
+        pts = st['puntos']
+        # Formato compacto: posición | equipo | pts | pj | dg
+        tabla_lineas.append(f"{pos}º {eq}")
+        tabla_lineas.append(f"   PTS:{pts}  PJ:{st['pj']}  DG:{dg_str}")
+    tabla_lineas.append("━━━━━━━━━━━━━━━━━━")
 
     # Señales de la jornada: qué equipos empezaron bien / mal
     bien_set: set = set()
@@ -852,26 +858,40 @@ def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[Lis
     # Un equipo no puede estar en ambos: si aparece en los dos, lo quitamos de MAL
     mal_set -= bien_set
     if bien_set or mal_set:
-        tabla_lineas.append("🚦 <b>SEÑALES DE LA JORNADA</b>")
-        tabla_lineas.append("━━━━━━━━━━")
-        if bien_set:
-            tabla_lineas.append("✅ Empezaron BIEN: " + ", ".join(sorted(bien_set)))
-        if mal_set:
-            tabla_lineas.append("❌ Empezaron MAL: " + ", ".join(sorted(mal_set)))
         tabla_lineas.append("")
+        tabla_lineas.append("🚦 <b>SEÑALES DE LA JORNADA</b>")
+        tabla_lineas.append("━━━━━━━━━━━━━━━━━━")
+        if bien_set:
+            tabla_lineas.append("✅ <b>Empezaron BIEN:</b>")
+            for eq in sorted(bien_set):
+                tabla_lineas.append(f"   {eq}")
+        if mal_set:
+            tabla_lineas.append("❌ <b>Empezaron MAL:</b>")
+            for eq in sorted(mal_set):
+                tabla_lineas.append(f"   {eq}")
+        tabla_lineas.append("━━━━━━━━━━━━━━━━━━")
+    tabla_lineas.append(f"<i>{_DECISION}</i>")
 
     # Mensaje 1: primeros 5 partidos
-    mensaje1_partes = ["📊 <b>ANÁLISIS DE LA JORNADA (1/2)</b>",
-                       f"🕒 {datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M')} h (UTC)", "━━━━━━━━━━"]
+    ahora_str = datetime.now(timezone.utc).strftime("%d/%m %H:%M UTC")
+    mensaje1_partes = [
+        "",
+        "📊 <b>ANÁLISIS DE LA JORNADA</b>",
+        f"🕒 {ahora_str}",
+        "━━━━━━━━━━━━━━━━━━",
+    ]
     for a in analisis[:5]:
         mensaje1_partes.extend(_bloque_partido(a))
-    mensaje1_partes.append("━━━━━━━━━━"); mensaje1_partes.append(_DECISION)
+    mensaje1_partes.append(f"<i>{_DECISION}</i>")
 
     # Mensaje 2: resto + tabla
-    mensaje2_partes = ["📊 <b>ANÁLISIS DE LA JORNADA (2/2)</b>", "━━━━━━━━━━"]
+    mensaje2_partes = [
+        "",
+        "📊 <b>ANÁLISIS (continuación)</b>",
+        "━━━━━━━━━━━━━━━━━━",
+    ]
     for a in analisis[5:]:
         mensaje2_partes.extend(_bloque_partido(a))
-    mensaje2_partes.append("━━━━━━━━━━")
     mensaje2_partes.extend(tabla_lineas)
 
     # Mensajes individuales (uno por partido)
@@ -888,41 +908,79 @@ def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[Lis
 
 
 def _bloque_partido(a: Dict[str, Any]) -> List[str]:
-    """Arma el bloque de un partido para Telegram (usa los campos ya calculados)."""
+    """Arma el bloque de un partido para Telegram (móvil‑friendly)."""
     home = a["home"]; away = a["away"]
     hg = a.get("home_goals"); ag = a.get("away_goals")
+
+    # Encabezado del partido
     if hg is not None and ag is not None:
-        resultado = f"🏆 {home} {hg}-{ag} {away}" if hg > ag else (f"🏆 {away} {ag}-{hg} {home}" if hg < ag else f"🤝 {home} {hg}-{ag} {away}")
+        if hg > ag:
+            marcador = f"🏆 <b>{home}</b> {hg}-{ag} {away}"
+        elif hg < ag:
+            marcador = f"🏆 <b>{away}</b> {ag}-{hg} {home}"
+        else:
+            marcador = f"🤝 <b>{home}</b> {hg}-{ag} {away}"
     else:
-        resultado = f"⏳ {home} vs {away}"
-    bloque = [f"⚽ <b>{home}</b> vs <b>{away}</b>", f"📊 Resultado: {resultado}"]
+        marcador = f"⏳ {home} vs {away}"
+
+    bloque = [
+        "",
+        f"⚽  <b>{home}</b>  vs  <b>{away}</b>",
+        marcador,
+    ]
+
     eventos_lineas = a.get("eventos_lineas") or []
-    tarjetas_lineas = a.get("tarjetas") or []
+
+    # Goles
     if eventos_lineas:
-        bloque.append("📋 Eventos:")
-        for ev in eventos_lineas[:20]:
-            bloque.append(f"  • {ev}")
-    else:
-        goles_marcador = _goles_desde_marcador(home, away, hg, ag)
-        if goles_marcador:
-            bloque.append("📋 Goles:")
-            for g in goles_marcador:
-                bloque.append(f"  • {g}")
-    if tarjetas_lineas:
-        bloque.append("🟨🟥 Tarjetas:")
-        for t in tarjetas_lineas[:10]:
-            bloque.append(f"  • {t}")
-    for pl in a.get("picks_lineas", []):
-        bloque.append(f"🎯 {pl}")
+        # Los eventos pueden tener emojis de gol diferentes: ⚽ o 🥅
+        goles = [e for e in eventos_lineas if any(emoji in e for emoji in ["⚽", "🥅"])]
+        if goles:
+            bloque.append("")
+            bloque.append("⚽ <b>Goles:</b>")
+            for g in goles[:10]:
+                bloque.append(g)
+
+    # Tarjetas
+    if eventos_lineas:
+        # Extraer tarjetas de los eventos (emojis 🟨 y 🟥)
+        tarjetas = [e for e in eventos_lineas if any(emoji in e for emoji in ["🟨", "🟥"])]
+        if tarjetas:
+            bloque.append("")
+            bloque.append("🟨 <b>Tarjetas:</b>")
+            for t in tarjetas[:8]:
+                bloque.append(t)
+
+    # Cambios (solo si hay muchos eventos)
+    cambios = [e for e in eventos_lineas if "🔄" in e]
+    if len(eventos_lineas) > 5 and cambios:
+        bloque.append("")
+        bloque.append(f"🔄 <b>Cambios ({len(cambios)}):</b>")
+        for c in cambios[:8]:
+            bloque.append(c)
+
+    # Señales detectadas
+    senales = a.get("senales") or []
+    if senales:
+        bloque.append("")
+        bloque.append("🚦 <b>Señales:</b>")
+        for s in senales:
+            bloque.append(f"  {s}")
+
+    # Conclusión IA
     conclusion = a.get("conclusion_ia", {})
     if conclusion.get("disponible") and conclusion.get("conclusion"):
         texto = conclusion["conclusion"]
-        if len(texto) > 1500:
-            texto = texto[:1500] + "..."
-        bloque.append(f"💡 <b>Conclusión:</b> {texto}")
+        if len(texto) > 800:
+            texto = texto[:800] + "..."
+        bloque.append("")
+        bloque.append("💡 <b>Análisis:</b>")
+        bloque.append(texto)
     elif conclusion.get("motivo"):
-        bloque.append(f"<i>Conclusión IA: {conclusion['motivo']}</i>")
-    bloque.append("")
+        bloque.append("")
+        bloque.append(f"<i>IA: {conclusion['motivo']}</i>")
+
+    bloque.append("━━━━━━━━━━")
     return bloque
 
 
