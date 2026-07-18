@@ -673,14 +673,20 @@ def _conclusion_ia(home: str, away: str, detalle: Dict[str, Any], hg: Optional[i
             return {"disponible": True, "conclusion": str(contenido).strip()}
     except Exception:
         pass
-    # Fallback: conclusión básica sin IA
+    # Fallback: conclusión descriptiva sin IA
     if hg is not None and ag is not None:
         if hg > ag:
-            return {"disponible": True, "conclusion": f"{home} ganó {hg}-{ag}."}
+            conclusion = (f"{home} ganó {hg}-{ag} a {away}. "
+                          f"Victoria local con {hg} goles. "
+                          f"Señales: {home} GANÓ DE LOCAL vs {away}.")
         elif hg < ag:
-            return {"disponible": True, "conclusion": f"{away} ganó {ag}-{hg}."}
+            conclusion = (f"{away} ganó {ag}-{hg} a {home}. "
+                          f"Victoria visitante (underdog) con {ag} goles. "
+                          f"Señales: {away} GANÓ COMO VISITANTE (underdog) vs {home}.")
         else:
-            return {"disponible": True, "conclusion": f"Empate {hg}-{ag}."}
+            conclusion = (f"Empate {hg}-{ag} entre {home} y {away}. "
+                          f"Reparto de puntos.")
+        return {"disponible": True, "conclusion": conclusion}
     return {
         "disponible": False,
         "motivo": "Error en llamada IA.",
