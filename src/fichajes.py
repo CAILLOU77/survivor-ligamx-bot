@@ -15,7 +15,9 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, cast
+import logging
+logger = logging.getLogger(__name__)
 
 try:
     from team_normalizer import canonical_team_key, display_team_name
@@ -32,7 +34,7 @@ def _cargar() -> Dict[str, Any]:
                 data = json.load(fh)
             return data if isinstance(data, dict) else {}
     except Exception:  # pragma: no cover - archivo malformado
-        pass
+        logger.debug("Exception silenciada en _cargar", exc_info=True)
     return {}
 
 
@@ -90,4 +92,4 @@ def guardar_equipo(nombre: str, altas: List[str], bajas: List[str]) -> Dict[str,
     }
     with open(_PATH, "w", encoding="utf-8") as fh:
         json.dump(data, fh, ensure_ascii=False, indent=2)
-    return data["equipos"][display]
+    return cast(Dict[str, Any], data["equipos"][display])

@@ -18,9 +18,11 @@ Activación: automática desde Telegram (/analisis) o endpoint API.
 
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
-from datetime import date, datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional, Set, Tuple, cast
+import logging
+logger = logging.getLogger(__name__)
 
 try:
     import requests
@@ -104,7 +106,7 @@ def _obtener_detalles_fuera(home: str, away: str, fecha: str, hg: int = 0, ag: i
             import scraper_resultados as sr
         except ImportError:  # pragma: no cover
             from src import scraper_resultados as sr  # type: ignore
-        return sr.analizar_partido_fuerte(home, away, hg, ag, fecha)
+        return cast(Dict[str, Any], sr.analizar_partido_fuerte(home, away, hg, ag, fecha))
     except Exception:
         return {}
 
@@ -264,10 +266,9 @@ def _obtener_partidos_ligamx(fecha: Optional[str] = None) -> List[Dict[str, Any]
 def _buscar_eventos_partido(home: str, away: str, fecha: str) -> List[Dict[str, Any]]:
     """Busca eventos detallados del partido en múltiples fuentes web."""
     eventos: List[Dict[str, Any]] = []
-    
+
     # Fuente 1: ESPN resumen
     try:
-        from ligamx_api import _get as lmx_get
         resp = requests.get(
             "https://site.api.espn.com/apis/site/v2/sports/soccer/mex.1/scoreboard",
             params={"dates": fecha.replace("-", "")},
@@ -315,8 +316,8 @@ def _buscar_eventos_partido(home: str, away: str, fecha: str) -> List[Dict[str, 
                         elif "substitution" in tipo or "cambio" in tipo:
                             eventos.append({"type": "substitution", "minute": minuto, "team": equipo, "player": jugador, "detail": detalle})
     except Exception:
-        pass
-    
+        logger.debug("Exception silenciada en _buscar_eventos_partido", exc_info=True)
+
     # Fuente 2: buscar en web
     if len(eventos) < 2:
         consultas = [
@@ -349,7 +350,7 @@ def _buscar_eventos_partido(home: str, away: str, fecha: str) -> List[Dict[str, 
                         "detail": "Expulsión reportada",
                         "source": r.get("url", ""),
                     })
-    
+
     return eventos[:15]
 
 
@@ -368,7 +369,7 @@ def obtener_detalle_partido(home: str, away: str, event_id: Optional[str] = None
     """
     key = _cache_key_365(home, away)
     if key in _CACHE_DETALLES:
-        return _CACHE_DETALLES[key]
+        return cast(Dict[str, Any], _CACHE_DETALLES[key])
 
     out: Dict[str, Any] = {
         "home": home,
@@ -393,7 +394,7 @@ def obtener_detalle_partido(home: str, away: str, event_id: Optional[str] = None
             if eventos_365:
                 out["eventos"] = eventos_365
         except Exception:
-            pass
+            logger.debug("Exception silenciada en obtener_detalle_partido", exc_info=True)
     # Si 365scores no tiene eventos, buscar en ESPN/liga MX (solo si hay pocos partidos)
     if not out["eventos"]:
         try:
@@ -404,17 +405,17 @@ def obtener_detalle_partido(home: str, away: str, event_id: Optional[str] = None
                     if eventos_lmx:
                         out["eventos"] = eventos_lmx
                 except Exception:
-                    pass
+                    logger.debug("Exception silenciada en obtener_detalle_partido", exc_info=True)
                 try:
                     out["alineacion"] = lmx.alineacion_de_partido(home, away)
                 except Exception:
-                    pass
+                    logger.debug("Exception silenciada en obtener_detalle_partido", exc_info=True)
                 try:
                     out["impacto_xi"] = lmx.lineup_impact_partido(home, away)
                 except Exception:
-                    pass
+                    logger.debug("Exception silenciada en obtener_detalle_partido", exc_info=True)
         except Exception:
-            pass
+            logger.debug("Exception silenciada en obtener_detalle_partido", exc_info=True)
     # Si no hay eventos en absoluto, buscar en web (solo para partidos recientes)
     if not out["eventos"] and fecha:
         try:
@@ -424,12 +425,12 @@ def obtener_detalle_partido(home: str, away: str, event_id: Optional[str] = None
             if (ahora - fecha_dt).days <= 7:
                 out["eventos"] = _buscar_eventos_partido(home, away, fecha)
         except Exception:
-            pass
+            logger.debug("Exception silenciada en obtener_detalle_partido", exc_info=True)
     # Noticias
     try:
         out["noticias"] = lmx.noticias_de_equipos([home, away], limit=3, dias=7)
     except Exception:
-        pass
+        logger.debug("Exception silenciada en obtener_detalle_partido", exc_info=True)
     _CACHE_DETALLES[key] = out
     return out
 
@@ -561,7 +562,7 @@ def _senales_partido(home: str, away: str, hg: Optional[int], ag: Optional[int],
     for eq, n in rojas.items():
         gf = hg if eq == home else (ag if eq == away else None)
         gc = ag if eq == home else (hg if eq == away else None)
-        if gf is None:
+        if gf is None or gc is None:
             continue
         if n >= 1:
             if gf > gc:
@@ -672,7 +673,7 @@ def _conclusion_ia(home: str, away: str, detalle: Dict[str, Any], hg: Optional[i
             contenido = resp.json()["choices"][0]["message"]["content"]
             return {"disponible": True, "conclusion": str(contenido).strip()}
     except Exception:
-        pass
+        logger.debug("Exception silenciada en _conclusion_ia", exc_info=True)
     # Fallback: conclusión descriptiva sin IA
     if hg is not None and ag is not None:
         if hg > ag:
@@ -1026,7 +1027,7 @@ def _guardar_resultados_jornada(stats_equipos: Dict[str, Dict[str, Any]], fecha:
         with open(historial_path, "w", encoding="utf-8") as f:
             json.dump(historial, f, ensure_ascii=False, indent=2)
     except Exception:
-        pass
+        logger.debug("Exception silenciada en _guardar_resultados_jornada", exc_info=True)
 
 
 def _tabla_acumulada() -> Dict[str, Dict[str, Any]]:
@@ -1071,5 +1072,5 @@ def cargar_historial_resultados() -> Dict[str, Any]:
                 data = json.load(f)
                 return data if isinstance(data, dict) else {"jornadas": []}
     except Exception:
-        pass
+        logger.debug("Exception silenciada en cargar_historial_resultados", exc_info=True)
     return {"jornadas": []}

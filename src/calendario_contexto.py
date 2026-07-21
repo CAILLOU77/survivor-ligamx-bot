@@ -25,7 +25,9 @@ from __future__ import annotations
 import json
 import os
 from datetime import date, datetime, timedelta
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, cast
+import logging
+logger = logging.getLogger(__name__)
 
 try:
     from team_normalizer import canonical_team_key
@@ -122,7 +124,7 @@ def _cargar_override() -> List[Dict[str, Any]]:
             if isinstance(data, list) and data:
                 return data
     except Exception:  # pragma: no cover - archivo malformado: usar embebidos
-        pass
+        logger.debug("Exception silenciada en _cargar_override", exc_info=True)
     return EVENTOS_EXTERNOS
 
 
@@ -179,7 +181,7 @@ def eventos_para_fecha(
         ev_fin = _parse_fecha(ev.get("fin")) or ev_ini
         if ev_ini is None:
             continue
-        if not _rangos_intersectan(ventana_ini, ventana_fin, ev_ini, ev_fin):
+        if not _rangos_intersectan(ventana_ini, ventana_fin, ev_ini, cast("date", ev_fin)):
             continue
         if not _evento_aplica_a_equipos(ev, equipos):
             continue

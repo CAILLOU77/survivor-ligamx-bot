@@ -38,7 +38,9 @@ Config (entorno, opcional):
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
+import logging
+logger = logging.getLogger(__name__)
 
 try:
     import requests
@@ -145,7 +147,7 @@ def estado_temporada() -> Dict[str, Any]:
     Ej.: {tournament_now, year, has_started, first_match_date, total_matches,
     finished_matches, ...}. `finished_matches` alimenta la cautela de arranque.
     """
-    return _get("/season")
+    return cast(Dict[str, Any], _get("/season"))
 
 
 # ---------------------------------------------------------------------------
@@ -153,7 +155,7 @@ def estado_temporada() -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 def obtener_calendario(season: Optional[str] = None) -> Dict[str, Any]:
     """/calendar — calendario completo agrupado por jornada (respuesta cruda)."""
-    return _get("/calendar", {"season": season} if season else None)
+    return cast(Dict[str, Any], _get("/calendar", {"season": season} if season else None))
 
 
 def calendario_para_planificador(season: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -235,12 +237,12 @@ def obtener_partidos(
         params["status"] = status
     if season:
         params["season"] = season
-    return _get("/matches", params)
+    return cast(List[Dict[str, Any]], _get("/matches", params))
 
 
 def partidos_proximos(limit: int = 10) -> List[Dict[str, Any]]:
     """/matches/upcoming — próximos partidos programados."""
-    return _get("/matches/upcoming", {"limit": limit})
+    return cast(List[Dict[str, Any]], _get("/matches/upcoming", {"limit": limit}))
 
 
 def resultados_historicos(season: Optional[str] = None, max_partidos: int = 1000) -> List[Dict[str, Any]]:
@@ -289,7 +291,7 @@ def resultados_historicos(season: Optional[str] = None, max_partidos: int = 1000
 # ---------------------------------------------------------------------------
 def obtener_equipos(limit: int = 20, offset: int = 0) -> List[Dict[str, Any]]:
     """/teams — lista de equipos con id, nombre y estadio."""
-    return _get("/teams", {"limit": limit, "offset": offset})
+    return cast(List[Dict[str, Any]], _get("/teams", {"limit": limit, "offset": offset}))
 
 
 def mapa_equipos() -> Dict[str, int]:
@@ -314,7 +316,7 @@ def id_de_equipo(nombre: str, mapa: Optional[Dict[str, int]] = None) -> Optional
 
 def obtener_tabla(season: Optional[str] = None) -> List[Dict[str, Any]]:
     """/standings — tabla general (posición, PJ, PG, PE, PP, GF, GC, DG, Pts)."""
-    return _get("/standings", {"season": season} if season else None)
+    return cast(List[Dict[str, Any]], _get("/standings", {"season": season} if season else None))
 
 
 def tabla_normalizada(season: Optional[str] = None) -> Dict[str, Any]:
@@ -362,7 +364,7 @@ def predecir(home_id: int, away_id: int, season: Optional[str] = None) -> Dict[s
     params: Dict[str, Any] = {"home": home_id, "away": away_id}
     if season:
         params["season"] = season
-    return _get("/predict", params)
+    return cast(Dict[str, Any], _get("/predict", params))
 
 
 # ---------------------------------------------------------------------------
@@ -370,12 +372,12 @@ def predecir(home_id: int, away_id: int, season: Optional[str] = None) -> Dict[s
 # ---------------------------------------------------------------------------
 def perfil_equipo(team_id: int, season: Optional[str] = None) -> Dict[str, Any]:
     """/teams/{id}/profile — ficha + posición, forma, xG, próximo partido."""
-    return _get(f"/teams/{team_id}/profile", {"season": season} if season else None)
+    return cast(Dict[str, Any], _get(f"/teams/{team_id}/profile", {"season": season} if season else None))
 
 
 def forma_equipo(team_id: int, limit: int = 5) -> Dict[str, Any]:
     """/teams/{id}/form — forma reciente (W/D/L de los últimos N) + racha texto."""
-    return _get(f"/teams/{team_id}/form", {"limit": limit})
+    return cast(Dict[str, Any], _get(f"/teams/{team_id}/form", {"limit": limit}))
 
 
 def disciplina_equipo(team_id: int, season: Optional[str] = None) -> Dict[str, Any]:
@@ -383,17 +385,17 @@ def disciplina_equipo(team_id: int, season: Optional[str] = None) -> Dict[str, A
     /teams/{id}/discipline — tarjetas del equipo + jugadores EN RIESGO de
     suspensión por acumulación (`at_risk`). Señal directa de riesgo Survivor.
     """
-    return _get(f"/teams/{team_id}/discipline", {"season": season} if season else None)
+    return cast(Dict[str, Any], _get(f"/teams/{team_id}/discipline", {"season": season} if season else None))
 
 
 def racha_equipo(team_id: int) -> Dict[str, Any]:
     """/teams/{id}/streak — rachas actuales (invicto, victorias, sin ganar, ...)."""
-    return _get(f"/teams/{team_id}/streak")
+    return cast(Dict[str, Any], _get(f"/teams/{team_id}/streak"))
 
 
 def stats_temporada_equipo(team_id: int, season: Optional[str] = None) -> Dict[str, Any]:
     """/teams/{id}/season-stats — ~100 métricas de temporada (ESPN)."""
-    return _get(f"/teams/{team_id}/season-stats", {"season": season} if season else None)
+    return cast(Dict[str, Any], _get(f"/teams/{team_id}/season-stats", {"season": season} if season else None))
 
 
 def xg_equipos(order: str = "over", season: Optional[str] = None) -> Any:
@@ -413,12 +415,12 @@ def proyeccion_tabla(season: Optional[str] = None) -> Dict[str, Any]:
     partidos restantes, Poisson). Requiere partidos jugados; en pretemporada
     puede responder error (se propaga).
     """
-    return _get("/standings/projection", {"season": season} if season else None)
+    return cast(Dict[str, Any], _get("/standings/projection", {"season": season} if season else None))
 
 
 def power_ranking() -> Dict[str, Any]:
     """/power-ranking — ranking de fuerza (ppg + dif. goles; xG informativo)."""
-    return _get("/power-ranking")
+    return cast(Dict[str, Any], _get("/power-ranking"))
 
 
 def goleadores(limit: int = 20, season: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -426,7 +428,7 @@ def goleadores(limit: int = 20, season: Optional[str] = None) -> List[Dict[str, 
     params: Dict[str, Any] = {"limit": limit}
     if season:
         params["season"] = season
-    return _get("/top-scorers", params)
+    return cast(List[Dict[str, Any]], _get("/top-scorers", params))
 
 
 def _campo(d: Dict[str, Any], *claves: str) -> Any:
@@ -565,7 +567,7 @@ def porteros_por_equipo() -> Dict[str, Dict[str, Any]]:
                 if (int(vallas or 0)) > int(prev.get("vallas_invictas") or 0):
                     mapa[clave] = entrada
             except (TypeError, ValueError):
-                pass
+                logger.debug("Exception silenciada en porteros_por_equipo", exc_info=True)
     return mapa
 
 
@@ -612,7 +614,7 @@ def jugadores_a_seguir_partido(home: str, away: str) -> Dict[str, List[str]]:
     Tolerante: si no hay match_id o datos, listas vacías. Parseo defensivo de
     varias formas posibles de respuesta.
     """
-    vacio = {"local": [], "visita": []}
+    vacio: Dict[str, List[Any]] = {"local": [], "visita": []}
     mid = match_id_de_partido(home, away)
     if mid is None:
         return vacio
@@ -680,12 +682,12 @@ def noticias_365() -> List[Dict[str, Any]]:
 
 def noticias_google() -> List[Dict[str, Any]]:
     """/news — noticias vía Google News RSS (ya viene en el esquema estándar)."""
-    return _get("/news")
+    return cast(List[Dict[str, Any]], _get("/news"))
 
 
 def _clave_titulo(item: Dict[str, Any]) -> str:
     """Clave de dedup por título (sin acentos, minúsculas, espacios colapsados)."""
-    return clean_team_name(str(item.get("title", "")))
+    return cast(str, clean_team_name(str(item.get("title", ""))))
 
 
 def noticias() -> List[Dict[str, Any]]:
@@ -815,12 +817,12 @@ def jugadores_en_riesgo_liga(limit: int = 20) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 def h2h(team1_id: int, team2_id: int) -> List[Dict[str, Any]]:
     """/h2h/{t1}/{t2} — historial de partidos entre dos equipos."""
-    return _get(f"/h2h/{team1_id}/{team2_id}")
+    return cast(List[Dict[str, Any]], _get(f"/h2h/{team1_id}/{team2_id}"))
 
 
 def h2h_resumen(team1_id: int, team2_id: int) -> Dict[str, Any]:
     """/h2h/{t1}/{t2}/summary — resumen: jugados, victorias c/u, empates, goles."""
-    return _get(f"/h2h/{team1_id}/{team2_id}/summary")
+    return cast(Dict[str, Any], _get(f"/h2h/{team1_id}/{team2_id}/summary"))
 
 
 # ---------------------------------------------------------------------------
@@ -828,27 +830,27 @@ def h2h_resumen(team1_id: int, team2_id: int) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 def alineaciones(match_id: int) -> Dict[str, Any]:
     """/matches/{id}/lineups — titulares, suplentes, formación (cuando existan)."""
-    return _get(f"/matches/{match_id}/lineups")
+    return cast(Dict[str, Any], _get(f"/matches/{match_id}/lineups"))
 
 
 def eventos_partido(match_id: int) -> Dict[str, Any]:
     """/matches/{id}/events — goles, tarjetas y cambios."""
-    return _get(f"/matches/{match_id}/events")
+    return cast(Dict[str, Any], _get(f"/matches/{match_id}/events"))
 
 
 def tarjetas_partido(match_id: int) -> Dict[str, Any]:
     """/matches/{id}/cards — solo tarjetas (amarillas y rojas)."""
-    return _get(f"/matches/{match_id}/cards")
+    return cast(Dict[str, Any], _get(f"/matches/{match_id}/cards"))
 
 
 def jugadores_a_seguir(match_id: int) -> Dict[str, Any]:
     """/matches/{id}/players-to-watch — jugadores a seguir del partido."""
-    return _get(f"/matches/{match_id}/players-to-watch")
+    return cast(Dict[str, Any], _get(f"/matches/{match_id}/players-to-watch"))
 
 
 def partido_full(match_id: int) -> Dict[str, Any]:
     """/matches/{id}/full — todo el detalle del partido en una respuesta."""
-    return _get(f"/matches/{match_id}/full")
+    return cast(Dict[str, Any], _get(f"/matches/{match_id}/full"))
 
 
 # ---------------------------------------------------------------------------
@@ -961,7 +963,7 @@ def alineacion_de_partido(home: str, away: str) -> Dict[str, Any]:
             "nota": "No se pudo leer la alineación (aún no publicada).",
         }
     r["event_id"] = eid
-    return r
+    return cast(Dict[str, Any], r)
 
 
 # ---------------------------------------------------------------------------

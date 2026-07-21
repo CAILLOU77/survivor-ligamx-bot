@@ -34,7 +34,7 @@ from __future__ import annotations
 
 import unicodedata
 from datetime import date, datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -67,7 +67,7 @@ _CACHE: Dict[str, Any] = {"datos": None, "fuerzas": None, "ts": None}
 # Helpers de datos (con caché)
 # ---------------------------------------------------------------------------
 def _fresco(ts: Optional[datetime], ttl_min: int = _TTL_MIN) -> bool:
-    return bool(ts) and (datetime.now(timezone.utc) - ts < timedelta(minutes=ttl_min))
+    return ts is not None and (datetime.now(timezone.utc) - ts < timedelta(minutes=ttl_min))
 
 
 def _datos_y_fuerzas() -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -85,7 +85,7 @@ def _datos_y_fuerzas() -> Tuple[Dict[str, Any], Dict[str, Any]]:
 
 
 def _calendario() -> List[Dict[str, Any]]:
-    return plan_mod.cargar_calendario()
+    return cast(List[Dict[str, Any]], plan_mod.cargar_calendario())
 
 
 # Resolución de nombres tolerante (ignora acentos + alias comunes). SOLO para

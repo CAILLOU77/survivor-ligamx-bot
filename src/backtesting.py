@@ -13,7 +13,7 @@ Sin red, sin I/O. NO cierra ni envía picks. Decisión operativa: ESPERAR / NO E
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Sequence
+from typing import Any, Dict, List, Sequence, cast
 
 DEC_ESPERAR = "ESPERAR / NO ENVIAR"
 
@@ -98,7 +98,7 @@ def evaluar_dataset(
     for fila in filas:
         resultado = fila.get("resultado")
         try:
-            resultado = int(resultado)
+            resultado = int(cast(Any, resultado))
         except (TypeError, ValueError):
             continue
         if resultado not in (1, 2, 3):

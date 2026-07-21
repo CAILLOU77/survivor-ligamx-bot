@@ -27,7 +27,7 @@ from __future__ import annotations
 import json
 import re
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 try:
     from team_normalizer import clean_team_name, strip_accents
@@ -153,12 +153,12 @@ _FUTURO_KEYWORDS = re.compile(
 # Helpers de normalización / validación
 # ---------------------------------------------------------------------------
 def _quitar_acentos(texto: str) -> str:
-    return strip_accents(str(texto or ""))
+    return cast(str, strip_accents(str(texto or "")))
 
 
 def _norm_equipo(nombre: str) -> str:
     """Normaliza nombre de equipo SOLO para comparar/deduplicar (no para mostrar)."""
-    return clean_team_name(str(nombre or ""))
+    return cast(str, clean_team_name(str(nombre or "")))
 
 
 def es_momio_americano_valido(momio: Any) -> bool:
@@ -521,8 +521,8 @@ def deduplicar(eventos: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], int
     duplicados = 0
     for ev in eventos:
         clave = (
-            _norm_equipo(ev.get("equipo_local")),
-            _norm_equipo(ev.get("equipo_visitante")),
+            _norm_equipo(cast(Any, ev.get("equipo_local"))),
+            _norm_equipo(cast(Any, ev.get("equipo_visitante"))),
             str(ev.get("fecha", "")).strip().lower(),
             str(ev.get("hora", "")).strip(),
         )

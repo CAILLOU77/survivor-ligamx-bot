@@ -14,7 +14,9 @@ modelo). Es una SEÑAL de cautela, no un veredicto.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, cast
+import logging
+logger = logging.getLogger(__name__)
 
 try:
     from team_normalizer import canonical_team_key, display_team_name
@@ -39,8 +41,8 @@ def resumen_h2h(resultados: Sequence[Dict[str, Any]], equipo_a: str, equipo_b: s
         if {h, v} != {na, nb}:
             continue
         try:
-            hg = int(m.get("home_goals"))
-            vg = int(m.get("away_goals"))
+            hg = int(cast(Any, m.get("home_goals")))
+            vg = int(cast(Any, m.get("away_goals")))
         except (TypeError, ValueError):
             continue
         # Resultado desde la perspectiva de A.
@@ -110,6 +112,6 @@ def anotar_h2h(pronosticos: Sequence[Dict[str, Any]], resultados: Sequence[Dict[
                 if nota:
                     q["h2h_nota"] = nota
         except Exception:  # pragma: no cover - nunca tumbar el pipeline
-            pass
+            logger.debug("Exception silenciada en anotar_h2h", exc_info=True)
         salida.append(q)
     return salida

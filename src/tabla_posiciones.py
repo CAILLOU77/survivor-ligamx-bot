@@ -19,7 +19,7 @@ ni envía picks.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 try:
     import requests
@@ -43,7 +43,7 @@ def _stat(entry: Dict[str, Any], nombre: str) -> float:
     for s in entry.get("stats", []) or []:
         if isinstance(s, dict) and s.get("name") == nombre:
             try:
-                return float(s.get("value"))
+                return float(cast(Any, s.get("value")))
             except (TypeError, ValueError):
                 return 0.0
     return 0.0
@@ -172,7 +172,7 @@ def _fetch_standings() -> Dict[str, Any]:
     resp = requests.get(STANDINGS_URL, timeout=20)
     if resp.status_code != 200:
         raise RuntimeError(f"ESPN standings respondió HTTP {resp.status_code}.")
-    return resp.json()
+    return cast(Dict[str, Any], resp.json())
 
 
 def obtener_tabla() -> Dict[str, Any]:
@@ -197,7 +197,7 @@ def _tabla_desde_ligamx() -> Dict[str, Any]:
     except ImportError:  # pragma: no cover
         from src import ligamx_api  # type: ignore
     try:
-        return ligamx_api.tabla_normalizada()
+        return cast(Dict[str, Any], ligamx_api.tabla_normalizada())
     except Exception:  # pragma: no cover - error de red
         return {"torneo": "", "tabla": []}
 

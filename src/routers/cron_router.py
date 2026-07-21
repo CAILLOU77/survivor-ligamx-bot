@@ -1,16 +1,28 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, Request
 
 try:
     from src.backtest_engine import run_backtest
 except ImportError:  # pragma: no cover
     from backtest_engine import run_backtest  # type: ignore
+try:
+    from src.auth import verify_api_key
+    from src.rate_limit import limiter
+except ImportError:  # pragma: no cover
+    from auth import verify_api_key  # type: ignore
+    from rate_limit import limiter  # type: ignore
 
 router = APIRouter()
 
 
 @router.post("/cron/backtest", summary="Validación diaria del modelo (real, sin inventar)")
-def cron_backtest():
-    """Corre la validación real del modelo vs ESPN y resuelve el historial de pronósticos."""
+@limiter.limit("5/minute")
+def cron_backtest(request: Request, api_key: str = Depends(verify_api_key)):
+    """Corre la validación real del modelo vs ESPN y resuelve el historial de pronósticos.
+
+    Protegido con ``X-API-Key`` (como el resto de endpoints sensibles) y con
+    rate-limit propio para que un atacante no pueda disparar el backtest pesado
+    (que consulta ESPN y la BD) sin autorización.
+    """
     resultado = {"status": "success", "validacion": run_backtest()}
     # Resolver el track-record de pronósticos con resultados reales frescos.
     try:

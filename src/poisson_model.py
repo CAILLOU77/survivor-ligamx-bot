@@ -22,7 +22,7 @@ Matemática pura: sin red, sin I/O, sin scipy. NO cierra ni envía picks.
 from __future__ import annotations
 
 import math
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple, cast
 
 # ---------------------------------------------------------------------------
 # Parámetros calibrados del modelo (validados por walk-forward sobre Liga MX,
@@ -205,7 +205,7 @@ def _peso_recencia(orden: Optional[int], ref: Optional[int], half_life_dias: Opt
     if not half_life_dias or half_life_dias <= 0 or orden is None or ref is None:
         return 1.0
     antiguedad = max(0, ref - orden)
-    return 0.5 ** (antiguedad / float(half_life_dias))
+    return cast(float, 0.5 ** (antiguedad / float(half_life_dias)))
 
 
 def calcular_fuerzas(
@@ -249,12 +249,12 @@ def calcular_fuerzas(
 
     for p in partidos:
         try:
-            hg = float(p.get("home_goals"))
-            ag = float(p.get("away_goals"))
+            hg = float(cast(Any, p.get("home_goals")))
+            ag = float(cast(Any, p.get("away_goals")))
         except (TypeError, ValueError):
             continue
-        h = _norm(p.get("home_team"))
-        a = _norm(p.get("away_team"))
+        h = _norm(cast(Any, p.get("home_team")))
+        a = _norm(cast(Any, p.get("away_team")))
         if not h or not a:
             continue
         w = _peso_recencia(_fecha_ordinal(p.get("fecha")), ref_ord, half_life_dias)

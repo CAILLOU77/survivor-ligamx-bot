@@ -19,7 +19,7 @@ Hechos (fuentes: Wikipedia "Liga MX" / squawka, junio 2026; reformulado):
 from __future__ import annotations
 
 import unicodedata
-from typing import Any, Dict
+from typing import Any, Dict, cast
 
 EQUIPOS_LIGA_MX = 18
 TORNEOS = ("Apertura", "Clausura")
@@ -83,7 +83,7 @@ def hay_play_in(torneo: str = "") -> bool:
 def clasifica_directo(posicion: int, torneo: str = "") -> bool:
     """True si esa posición clasifica DIRECTO a cuartos."""
     f = formato_liguilla(torneo)
-    return 1 <= int(posicion) <= f["clasificados_directo"]
+    return cast(bool, 1 <= int(posicion) <= f["clasificados_directo"])
 
 
 def va_play_in(posicion: int, torneo: str = "") -> bool:
@@ -92,7 +92,7 @@ def va_play_in(posicion: int, torneo: str = "") -> bool:
     if not f["play_in"]:
         return False
     lo, hi = f["play_in_rango"]
-    return lo <= int(posicion) <= hi
+    return cast(bool, lo <= int(posicion) <= hi)
 
 
 def fuera_de_liguilla(posicion: int, torneo: str = "") -> bool:

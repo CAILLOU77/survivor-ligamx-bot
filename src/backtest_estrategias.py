@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from collections import Counter
 from datetime import date
-from typing import Any, Callable, Dict, List, Optional, Sequence
+from typing import Any, Callable, Dict, List, Optional, Sequence, cast
 
 try:
     import poisson_model as pm
@@ -90,7 +90,7 @@ def estrategia_ingenua(
     cands = [c for c in _no_perder_candidatos(partidos, fuerzas) if pm._norm(c["equipo"]) not in usados]
     if not cands:
         return None
-    return max(cands, key=lambda c: c["no_perder_pct"])
+    return cast(Optional[Dict[str, Any]], max(cands, key=lambda c: c["no_perder_pct"]))
 
 
 def _localizar_partido(

@@ -20,7 +20,7 @@ el envío informativo. INFORMATIVO / REVISIÓN HUMANA.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, cast
 
 AYUDA = (
     "🤖 <b>Comandos Survivor</b>\n"
@@ -151,7 +151,7 @@ def responder(cmd: Optional[str], arg: str) -> str:
             import telegram_pronosticos as tp
         except ImportError:  # pragma: no cover
             from src import telegram_pronosticos as tp  # type: ignore
-        return tp.construir_mensaje_survivor_historial(resumen)
+        return cast(str, tp.construir_mensaje_survivor_historial(resumen))
 
     return "❓ Comando no reconocido. Usa /ayuda"
 

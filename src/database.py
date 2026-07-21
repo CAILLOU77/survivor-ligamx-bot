@@ -17,7 +17,9 @@ settle_pick) funcionan igual en ambos backends.
 import os
 import unicodedata
 from contextlib import contextmanager
-from typing import Any, Dict, List
+from typing import Any, Dict, List, cast, Optional
+import logging
+logger = logging.getLogger(__name__)
 
 DATABASE_URL = os.getenv("DATABASE_URL", "") or ""
 
@@ -59,7 +61,7 @@ def get_db():
         try:
             conn.rollback()
         except Exception:
-            pass
+            logger.debug("Exception silenciada en get_db", exc_info=True)
         raise
     finally:
         conn.close()
@@ -177,7 +179,7 @@ def remove_equipo_usado(equipo: str) -> int:
         cur = conn.cursor()
         cur.execute(f"DELETE FROM survivor_usados WHERE equipo_norm = {PH}", (norm,))
         conn.commit()
-        return cur.rowcount
+        return cast(int, cur.rowcount)
 
 
 def clear_equipos_usados() -> int:
@@ -186,7 +188,7 @@ def clear_equipos_usados() -> int:
         cur = conn.cursor()
         cur.execute("DELETE FROM survivor_usados")
         conn.commit()
-        return cur.rowcount
+        return cast(int, cur.rowcount)
 
 
 # ---------------------------------------------------------------------------
@@ -254,13 +256,14 @@ def settle_pronosticos(resultados) -> int:
     resultado (1/X/2), y aciertos (1X2 y marcador exacto). Devuelve # resueltos.
     """
     # Índice de resultados por clave (equipos+fecha) y por equipos (respaldo).
-    por_clave, por_equipos = {}, {}
+    por_clave: Dict[str, Any] = {}
+    por_equipos: Dict[str, Any] = {}
     for r in resultados:
         try:
             hg, ag = int(r.get("home_goals")), int(r.get("away_goals"))
         except (TypeError, ValueError):
             continue
-        info = {"hg": hg, "ag": ag, "home": r.get("home_team", ""), "away": r.get("away_team", "")}
+        info: Optional[Dict[str, Any]] = {"hg": hg, "ag": ag, "home": r.get("home_team", ""), "away": r.get("away_team", "")}
         por_clave[_clave_pronostico(r.get("home_team", ""), r.get("away_team", ""), r.get("fecha", ""))] = info
         por_equipos.setdefault(f"{_norm_equipo(r.get('home_team', ''))}|{_norm_equipo(r.get('away_team', ''))}", info)
     settled = 0
@@ -389,7 +392,7 @@ def settle_survivor(resultados) -> int:
     equipo elegido GANÓ (punto), EMPATÓ (sobrevive sin punto) o PERDIÓ (eliminado).
     Devuelve # resueltos.
     """
-    por_equipos = {}
+    por_equipos: Dict[str, Any] = {}
     for r in resultados:
         try:
             hg, ag = int(r.get("home_goals")), int(r.get("away_goals"))

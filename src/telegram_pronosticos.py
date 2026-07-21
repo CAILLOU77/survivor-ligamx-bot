@@ -16,7 +16,19 @@ import json
 import os
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
+import logging
+logger = logging.getLogger(__name__)
+try:
+    from telegram_formato import (
+        _pct, _norm_simple, _marcador_a_favor, _dividir_mensaje,
+        _totales_jornada, _fecha_mx, _cerca_de_jornada, _linea_goles,
+    )
+except ImportError:  # pragma: no cover
+    from src.telegram_formato import (  # type: ignore
+        _pct, _norm_simple, _marcador_a_favor, _dividir_mensaje,
+        _totales_jornada, _fecha_mx, _cerca_de_jornada, _linea_goles,
+    )
 
 try:
     import requests
@@ -50,7 +62,7 @@ def _usados_persistidos() -> Optional[List[str]]:
             from database import get_equipos_usados
         except ImportError:  # pragma: no cover
             from src.database import get_equipos_usados  # type: ignore
-        return get_equipos_usados()
+        return cast(Optional[List[str]], get_equipos_usados())
     except Exception:  # pragma: no cover - BD no disponible
         return None
 
@@ -108,7 +120,7 @@ def _formatear_contexto(ctx: Optional[Dict[str, Any]]) -> List[str]:
     if ali_ok:
         forms = " · ".join(
             f"{e.get('equipo', '')} {e.get('formacion') or ''}".strip()
-            for e in ali.get("equipos", [])
+            for e in (ali or {}).get("equipos", [])
             if e.get("equipo")
         )
         lineas.append(f"📋 XI CONFIRMADO — {forms}")
@@ -123,7 +135,7 @@ def _formatear_contexto(ctx: Optional[Dict[str, Any]]) -> List[str]:
     elif probable_ok:
         forms = " · ".join(
             f"{e.get('equipo', '')} {e.get('formacion') or ''}".strip()
-            for e in probable
+            for e in (probable or [])
             if isinstance(e, dict) and e.get("equipo")
         )
         lineas.append(f"🔮 XI PROBABLE (aún no confirmado) — {forms}")
@@ -247,14 +259,10 @@ def _pick_club(p: Dict[str, Any]) -> str:
     """Traduce el pick 1X2 al nombre real del club (o 'Empate')."""
     pick = p.get("pick_1x2", "")
     if pick == "Gana Local":
-        return p.get("local", pick)
+        return cast(str, p.get("local", pick))
     if pick == "Gana Visitante":
-        return p.get("visitante", pick)
-    return pick  # "Empate"
-
-
-def _norm_simple(s: str) -> str:
-    return " ".join(str(s or "").lower().split())
+        return cast(str, p.get("visitante", pick))
+    return cast(str, pick)  # "Empate"
 
 
 def _jugadores_seguir_partido(p: Dict[str, Any], goleadores_map: Dict[str, List[Dict[str, Any]]]) -> str:
@@ -319,10 +327,10 @@ def _porteros_partido(p: Dict[str, Any], porteros_map: Dict[str, Dict[str, Any]]
             return ""
         nom = gk["nombre"]
         try:
-            v = int(gk.get("vallas_invictas"))
-            return f"{nom} ({v} {'valla invicta' if v == 1 else 'vallas invictas'})"
+            vi = int(cast(Any, gk.get("vallas_invictas")))
+            return f"{nom} ({vi} {'valla invicta' if vi == 1 else 'vallas invictas'})"
         except (TypeError, ValueError):
-            return nom
+            return cast(str, nom)
 
     # Goles esperados del marcador probable ("2-1" -> 2,1).
     gl = gv = None
@@ -365,98 +373,6 @@ def _porteros_partido(p: Dict[str, Any], porteros_map: Dict[str, Dict[str, Any]]
             partes.append(f"partido cerrado — {mejor}: {g}")
 
     return " · ".join(partes)
-
-
-def _pct(v: Any) -> str:
-    """Porcentaje legible en móvil: sin decimales de ruido (55.0 -> '55')."""
-    try:
-        return str(int(round(float(v))))
-    except (TypeError, ValueError):
-        return str(v)
-
-
-def _fecha_mx(generado_utc: str) -> str:
-    """Fecha/hora en horario de Ciudad de México, sin segundos. Fallback a UTC."""
-    s = str(generado_utc or "")
-    try:
-        from datetime import datetime
-        from zoneinfo import ZoneInfo
-
-        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
-        return dt.astimezone(ZoneInfo("America/Mexico_City")).strftime("%d/%m/%Y %H:%M") + " h (CDMX)"
-    except Exception:
-        return s.replace("T", " ").replace("Z", " UTC")
-
-
-def _cerca_de_jornada(pronosticos, dias: int = 2) -> bool:
-    """
-    True si el partido más próximo de la jornada arranca dentro de `dias` (día de
-    jornada). En ese caso vale la pena DESPERTAR la API hermana y esperar por los
-    extras; lejos de la jornada, mejor responder rápido y sin enriquecer.
-    """
-    from datetime import date, datetime, timezone
-
-    hoy = datetime.now(timezone.utc).date()
-    fechas = []
-    for p in pronosticos or []:
-        s = str(p.get("fecha", ""))[:10]
-        try:
-            y, m, d = s.split("-")
-            fechas.append(date(int(y), int(m), int(d)))
-        except (ValueError, TypeError):
-            continue
-    if not fechas:
-        return False
-    return (min(fechas) - hoy).days <= dias
-
-
-def _linea_goles(p: Dict[str, Any]) -> str:
-    """Línea de goles: pick Over/Under con su %, BTTS y marcador más probable.
-
-    Over/Under (masa total de la matriz) y marcador más probable (moda, un solo
-    resultado) son métricas distintas y pueden diferir de forma legítima. Cuando
-    chocan a simple vista, lo aclaramos para que no parezca un error.
-    """
-    pick_ou = p.get("pick_ou", "")
-    over = p.get("prob_over_pct")
-    # % del lado elegido: si el pick es Over, es prob_over; si Under, el complemento.
-    pct_txt = ""
-    if over is not None:
-        pct = float(over) if pick_ou == "Over" else round(100.0 - float(over), 1)
-        pct_txt = f" ({_pct(pct)}%)"
-    # BTTS solo si hay dato (evita mostrar 'None').
-    btts = p.get("pick_btts")
-    btts_txt = f" · BTTS {btts}" if btts else ""
-    marcador = str(p.get("marcador_pick") or p.get("marcador_mas_probable", ""))
-    # Partido sin datos de goles (p.ej. pick solo-momios): no hay línea que mostrar.
-    if not pick_ou and not marcador:
-        return ""
-    partes = []
-    if pick_ou:
-        partes.append(f"⚽ Goles: {pick_ou} 2.5{pct_txt}{btts_txt}")
-    if marcador:
-        partes.append(f"🔢 Marcador probable: {marcador}")
-    linea = "\n".join(partes)
-    # ¿Choca la moda con el pick Over/Under?
-    total = None
-    if "-" in marcador:
-        try:
-            gl, gv = (int(x) for x in marcador.split("-", 1))
-            total = gl + gv
-        except (TypeError, ValueError):
-            total = None
-    if total is not None:
-        if pick_ou == "Over" and total <= 2:
-            linea += (
-                "\nℹ️ <i>La moda (2 goles) es baja, pero el grueso de "
-                "escenarios apunta a más goles: por eso el pick es Over.</i>"
-            )
-        elif pick_ou == "Under" and total >= 3:
-            linea += (
-                "\nℹ️ <i>Ese marcador exacto es el más probable, pero el "
-                "grueso de escenarios queda por debajo: por eso el pick es Under.</i>"
-            )
-    return linea
 
 
 def construir_mensaje(
@@ -623,65 +539,6 @@ def construir_mensaje(
 
     lineas += [div, DISCLAIMER]
     return "\n".join(lineas)
-
-
-_TELEGRAM_LIMITE = 4000  # tope real de Telegram es 4096; dejamos margen.
-
-
-def _dividir_mensaje(texto: str, limite: int = _TELEGRAM_LIMITE) -> List[str]:
-    """
-    Parte un mensaje largo en trozos <= `limite`, cortando SIEMPRE en saltos de
-    línea (nunca a media línea) para respetar el tope de Telegram (~4096) y no
-    romper etiquetas HTML (cada línea abre y cierra las suyas).
-    """
-    if len(texto) <= limite:
-        return [texto]
-    partes: List[str] = []
-    actual = ""
-    for linea in texto.split("\n"):
-        # Línea suelta más larga que el límite (muy raro): corte duro.
-        while len(linea) > limite:
-            if actual:
-                partes.append(actual)
-                actual = ""
-            partes.append(linea[:limite])
-            linea = linea[limite:]
-        if actual and len(actual) + 1 + len(linea) > limite:
-            partes.append(actual)
-            actual = linea
-        else:
-            actual = f"{actual}\n{linea}" if actual else linea
-    if actual:
-        partes.append(actual)
-    return partes
-
-
-def _totales_jornada(pronosticos: list) -> Dict[str, Any]:
-    """Calcula totales de la jornada: partidos, goles esperados, O/U, BTTS."""
-    if not pronosticos:
-        return {
-            "partidos": 0,
-            "goles_esperados_total": 0.0,
-            "promedio_goles_partido": 0.0,
-            "over_25_count": 0,
-            "under_25_count": 0,
-            "btts_si_count": 0,
-            "btts_no_count": 0,
-        }
-    total_goles = sum(p.get("goles_esperados_local", 0) + p.get("goles_esperados_visitante", 0) for p in pronosticos)
-    over_25 = sum(1 for p in pronosticos if p.get("pick_ou") == "Over")
-    under_25 = sum(1 for p in pronosticos if p.get("pick_ou") == "Under")
-    btts_si = sum(1 for p in pronosticos if p.get("pick_btts") == "Sí")
-    btts_no = sum(1 for p in pronosticos if p.get("pick_btts") == "No")
-    return {
-        "partidos": len(pronosticos),
-        "goles_esperados_total": round(total_goles, 1),
-        "promedio_goles_partido": round(total_goles / len(pronosticos), 2),
-        "over_25_count": over_25,
-        "under_25_count": under_25,
-        "btts_si_count": btts_si,
-        "btts_no_count": btts_no,
-    }
 
 
 def enviar_mensaje(mensaje: str) -> bool:
@@ -856,7 +713,7 @@ def _contexto_top_pick(
                     dossier.get("noticias", []),
                 )
         except Exception:  # pragma: no cover - IA nunca debe tumbar el pick
-            pass
+            logger.debug("Exception silenciada en _contexto_top_pick", exc_info=True)
         # Altas/bajas: primero la API 365Scores (automático), si no, archivo local (asistido).
         try:
             if isinstance(dossier, dict):
@@ -868,7 +725,7 @@ def _contexto_top_pick(
                     loc = _fmt_fichajes(tl)
                     vis = _fmt_fichajes(tv)
                 except Exception:  # pragma: no cover - API no disponible
-                    pass
+                    logger.debug("Exception silenciada en _contexto_top_pick", exc_info=True)
                 if not loc and not vis:  # fallback al modo asistido (data/fichajes.json)
                     try:
                         import fichajes as fich
@@ -879,7 +736,7 @@ def _contexto_top_pick(
                 if loc or vis:
                     dossier["fichajes"] = {"local": loc, "visita": vis}
         except Exception:  # pragma: no cover - nunca debe tumbar el pick
-            pass
+            logger.debug("Exception silenciada en _contexto_top_pick", exc_info=True)
         # Revisión de alineación: ¿falta un jugador clave en el XI confirmado?
         try:
             if isinstance(dossier, dict):
@@ -887,7 +744,7 @@ def _contexto_top_pick(
                 if alerta:
                     dossier["alerta_xi"] = alerta
         except Exception:  # pragma: no cover
-            pass
+            logger.debug("Exception silenciada en _contexto_top_pick", exc_info=True)
         # Impacto del XI (endpoint real: fuerza_xi_pct + ausentes clave por importancia).
         try:
             if isinstance(dossier, dict):
@@ -895,7 +752,7 @@ def _contexto_top_pick(
                 if isinstance(imp, dict) and imp.get("disponible"):
                     dossier["impacto_xi"] = imp.get("equipos") or {}
         except Exception:  # pragma: no cover
-            pass
+            logger.debug("Exception silenciada en _contexto_top_pick", exc_info=True)
         # XI PROBABLE (365Scores) si aún no hay confirmado — idea temprana de quién juega.
         try:
             ali = dossier.get("alineacion") if isinstance(dossier, dict) else None
@@ -905,8 +762,8 @@ def _contexto_top_pick(
                 if isinstance(prob, dict) and prob.get("disponible"):
                     dossier["alineacion_probable"] = prob.get("equipos") or []
         except Exception:  # pragma: no cover
-            pass
-        return dossier
+            logger.debug("Exception silenciada en _contexto_top_pick", exc_info=True)
+        return cast(Optional[Dict[str, Any]], dossier)
     except Exception:  # pragma: no cover - nunca debe tumbar el envío
         return None
 
@@ -1003,7 +860,7 @@ def _registrar_survivor_historial(picks, pronosticos) -> None:
             fecha=fecha,
         )
     except Exception:  # pragma: no cover - nunca tumbar el envío por el track-record
-        pass
+        logger.debug("Exception silenciada en _registrar_survivor_historial", exc_info=True)
 
 
 def enviar_pronosticos(equipos_usados: Optional[List[str]] = None, incluir_contexto: bool = True) -> Dict[str, Any]:
@@ -1057,16 +914,16 @@ def enviar_pronosticos(equipos_usados: Optional[List[str]] = None, incluir_conte
             if extra:
                 resultado["pronosticos"] = list(resultado.get("pronosticos", [])) + extra
         except Exception:  # pragma: no cover - nunca tumbar el envío
-            pass
+            logger.debug("Exception silenciada en enviar_pronosticos", exc_info=True)
         # Archiva el snapshot de momios en la Liga MX API (histórico), best-effort.
         try:
             snaps = cm.construir_snapshots_momios(pron_anotados, momios, source=fuente_m)
             if snaps:
                 lmx.archivar_momios(snaps)
         except Exception:  # pragma: no cover
-            pass
+            logger.debug("Exception silenciada en enviar_pronosticos", exc_info=True)
     except Exception:  # pragma: no cover - nunca debe tumbar el envío
-        pass
+        logger.debug("Exception silenciada en enviar_pronosticos", exc_info=True)
 
     # Motivación de la tabla (contexto/desempate Survivor).
     try:
@@ -1122,7 +979,7 @@ def enviar_pronosticos(equipos_usados: Optional[List[str]] = None, incluir_conte
             _resto = [p for p in _picks if _kp(p.get("equipo")) != _kp(_rec_plan.get("equipo"))]
             est["picks"] = [_rec_plan] + _resto
     except Exception:  # pragma: no cover - la unificación nunca debe tumbar el envío
-        pass
+        logger.debug("Exception silenciada en enviar_pronosticos", exc_info=True)
 
     # Dossier del pick #1 (ya unificado con el plan), solo si la API está despierta.
     contexto_pick = None
@@ -1135,12 +992,12 @@ def enviar_pronosticos(equipos_usados: Optional[List[str]] = None, incluir_conte
     try:
         _ajustar_pick_top(est.get("picks") or [], resultado.get("pronosticos", []), contexto_pick)
     except Exception:  # pragma: no cover - el ajuste nunca debe tumbar el envío
-        pass
+        logger.debug("Exception silenciada en enviar_pronosticos", exc_info=True)
     # Registra el pick de Survivor de la jornada para el track-record (racha).
     try:
         _registrar_survivor_historial(est.get("picks") or [], resultado.get("pronosticos", []))
     except Exception:  # pragma: no cover - nunca debe tumbar el envío
-        pass
+        logger.debug("Exception silenciada en enviar_pronosticos", exc_info=True)
     # Jugadores a seguir por partido (goleadores por equipo; una sola llamada).
     # Solo si la API hermana respondió el chequeo rápido (evita cold-start lento).
     goleadores_map = None
@@ -1288,7 +1145,7 @@ def _mapa_horarios(lmx) -> Dict[str, str]:
                 if nombre and fecha:
                     out[_k(str(nombre))] = str(fecha)
     except Exception:  # pragma: no cover
-        pass
+        logger.debug("Exception silenciada en _mapa_horarios", exc_info=True)
     return out
 
 
@@ -1308,9 +1165,7 @@ def _plan_temporada(equipos_usados: Optional[List[str]]) -> Dict[str, Any]:
         datos = fuentes_datos.obtener_resultados(meses=18)
         fuerzas = pm.calcular_fuerzas(datos["resultados"])
         odds = plan_mod.construir_odds_por_partido(calendario)
-        return plan_mod.planificar(
-            calendario, fuerzas, equipos_usados=equipos_usados, peso_victoria=0.5, odds_por_partido=odds
-        )
+        return cast(Dict[str, Any], plan_mod.planificar(calendario, fuerzas, equipos_usados=equipos_usados, peso_victoria=0.5, odds_por_partido=odds))
     except Exception:  # pragma: no cover - nunca debe tumbar /seguir
         return {}
 
@@ -1393,7 +1248,7 @@ def enviar_seguimiento(equipos_usados: Optional[List[str]] = None, n: int = 5) -
                     if isinstance(info, dict) and info.get("fuerza_xi_pct") is not None:
                         fuerza_xi[_k(eq)] = info["fuerza_xi_pct"]
         except Exception:  # pragma: no cover - nunca tumbar el envío
-            pass
+            logger.debug("Exception silenciada en enviar_seguimiento", exc_info=True)
     items = seg.lista_seguimiento(picks, horarios=horarios, fuerza_xi=fuerza_xi, n=n)
     usados_set = {_k(e) for e in (equipos_usados or [])}
     seguidos = {_k(it["equipo"]) for it in items}
@@ -1426,7 +1281,7 @@ def enviar_seguimiento(equipos_usados: Optional[List[str]] = None, n: int = 5) -
                 extra = seg.lista_seguimiento([rec_plan], horarios=horarios, fuerza_xi=fuerza_xi, n=1)
                 items = extra + items
     except Exception:  # pragma: no cover - nunca debe tumbar /seguir
-        pass
+        logger.debug("Exception silenciada en enviar_seguimiento", exc_info=True)
     mensaje = construir_mensaje_seguimiento(
         items, descartados=descartados, recomendado=recomendado, nota_plan=nota_plan
     )
@@ -1563,10 +1418,6 @@ def enviar_plan(
                     import ligamx_api as _rach_lmx
                 except ImportError:
                     from src import ligamx_api as _rach_lmx  # type: ignore
-                try:
-                    from team_normalizer import canonical_team_key as _rach_ctk
-                except ImportError:
-                    from src.team_normalizer import canonical_team_key as _rach_ctk  # type: ignore
                 _rach_mapa = _rach_lmx.mapa_equipos()
                 for _rach_i, _rach_pk in enumerate(picks[:3]):
                     _rach_tid = _rach_lmx.id_de_equipo(_rach_pk["equipo"], _rach_mapa)
@@ -1594,7 +1445,7 @@ def enviar_plan(
                                 _rach_label = "🎯" if _rach_i == 0 else f"{_rach_i + 1}️⃣"
                                 partes_mensaje.append(f"{_rach_label} {_rach_pk['equipo']}: {' · '.join(_rach_parts)}")
                         except Exception:
-                            pass
+                            logger.debug("Exception silenciada en enviar_plan", exc_info=True)
                 partes_mensaje.append("")
             trampas = [p for p in pronosticos if p.get("precaucion")]
             if trampas:
@@ -1641,7 +1492,7 @@ def enviar_plan(
                                 if isinstance(_info, dict) and _info.get("fuerza_xi_pct") is not None:
                                     fuerza_xi[_ctk(_eq)] = _info["fuerza_xi_pct"]
                     except Exception:
-                        pass
+                        logger.debug("Exception silenciada en enviar_plan", exc_info=True)
                 watch = _seg.lista_seguimiento(picks, horarios, fuerza_xi, n=5)
                 if watch:
                     partes_mensaje.append("🕐 <b>CUÁNDO JUEGAN (XI tracking)</b>")
@@ -1652,7 +1503,7 @@ def enviar_plan(
                         partes_mensaje.append(f"  {status} {w['equipo']} ({w.get('cuando', 'sin hora')}{xtra})")
                     partes_mensaje.append("")
             except Exception:
-                pass
+                logger.debug("Exception silenciada en enviar_plan", exc_info=True)
             if advertencia:
                 partes_mensaje.append(f"<i>{advertencia}</i>")
                 partes_mensaje.append("")
@@ -1686,7 +1537,7 @@ def enviar_plan(
     enviado = enviar_mensaje(mensaje_completo)
     return {
         "enviado": enviado,
-        "jornadas": len(plan.get("plan", [])),
+        "jornadas": len(cast(list, plan.get("plan", []))),
         "calendario_incompleto": bool(plan.get("calendario_incompleto")),
     }
 
@@ -1922,13 +1773,6 @@ def enviar_derrotas() -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 # "Racha Survivor": track-record real del pick del bot jornada a jornada
 # ---------------------------------------------------------------------------
-def _marcador_a_favor(marcador: str, es_local: bool) -> str:
-    """Orienta 'local-visitante' al lado del equipo elegido (equipo-rival)."""
-    try:
-        hg, ag = str(marcador or "").split("-")
-        return f"{hg.strip()}-{ag.strip()}" if es_local else f"{ag.strip()}-{hg.strip()}"
-    except Exception:
-        return str(marcador or "")
 
 
 def construir_mensaje_survivor_historial(resumen: Dict[str, Any]) -> str:
@@ -2171,7 +2015,7 @@ def _cargar_calendario_local() -> List[Dict[str, Any]]:
                 data = json.load(fh)
             return data if isinstance(data, list) else []
     except Exception:  # pragma: no cover
-        pass
+        logger.debug("Exception silenciada en _cargar_calendario_local", exc_info=True)
     return []
 
 
@@ -2280,11 +2124,11 @@ def enviar_analisis_jornada() -> Dict[str, Any]:
         picks_anteriores = []
 
     resultado = ar.analizar_jornada(picks_anteriores=picks_anteriores)
-    
+
     # Enviar mensaje de cabecera
     cabecera = resultado.get("resumen", "").split("\n")[0] if resultado.get("resumen") else "📊 ANÁLISIS DE LA JORNADA"
     enviado = enviar_mensaje(f"{cabecera}\n🕒 {datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M')} h (UTC)\n━━━━━━━━━━")
-    
+
     # Enviar cada partido como mensaje individual o dividido si es muy largo
     for mensaje_partido in resultado.get("mensajes_individuales", []):
         if not mensaje_partido.strip():
@@ -2313,12 +2157,12 @@ def enviar_analisis_jornada() -> Dict[str, Any]:
                 enviado = enviado and enviar_mensaje("..." + mensaje_partido[mitad:])
         else:
             enviado = enviado and enviar_mensaje(mensaje_partido)
-    
+
     # Enviar tabla de posiciones
     mensaje_tabla = resultado.get("mensaje_tabla", "")
     if mensaje_tabla:
         enviado = enviado and enviar_mensaje(mensaje_tabla)
-    
+
     return {
         "enviado": enviado,
         "total_partidos": len(resultado.get("partidos", [])),

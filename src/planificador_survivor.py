@@ -26,7 +26,7 @@ from __future__ import annotations
 import json
 import math
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple, cast
 
 try:
     import poisson_model as pm
@@ -83,7 +83,7 @@ def devig_americano(m_local: float, m_empate: float, m_visita: float) -> Tuple[f
 # Probabilidades por partido (modelo, opcionalmente mezclado con momios reales)
 # ---------------------------------------------------------------------------
 def _norm(t: str) -> str:
-    return pm._norm(t)
+    return cast(str, pm._norm(t))
 
 
 def _probs_partido(
@@ -243,11 +243,11 @@ def planificar(
     asignados: set = set()
     asign = dict(zip(filas.tolist(), cols.tolist()))
     for i, jnum in enumerate(jornadas):
-        k = asign.get(i)
-        if k is None or valor[i, k] <= NEG / 2:
+        ki: Optional[int] = asign.get(i)
+        if ki is None or valor[i, ki] <= NEG / 2:
             jornadas_sin_equipo.append(jnum)
             continue
-        eq = equipos[k]
+        eq = equipos[ki]
         c = celdas[(jnum, eq)]
         asignados.add(eq)
         es_local = c["condicion"] == "Local"
@@ -274,7 +274,7 @@ def planificar(
     emp_esp = sum(p["prob_empate_pct"] / 100.0 for p in plan)
     riesgosas = [p["jornada"] for p in plan if p["nivel"] == "RIESGOSA"]
     # Mapa nombre_normalizado -> nombre de display (para mostrar bonito al usuario).
-    display = {}
+    display: Dict[str, str] = {}
     for (_jnum, eq_norm), c in celdas.items():
         display.setdefault(eq_norm, c["equipo"])
     no_usados = [display.get(e, e) for e in equipos if e not in asignados]
