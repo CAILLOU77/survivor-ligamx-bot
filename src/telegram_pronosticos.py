@@ -1493,7 +1493,11 @@ def enviar_plan(
                     import ligamx_api as _rach_lmx
                 except ImportError:
                     from src import ligamx_api as _rach_lmx  # type: ignore
-                _rach_mapa = _rach_lmx.mapa_equipos()
+                try:
+                    _rach_mapa = _rach_lmx.mapa_equipos()
+                except Exception:
+                    logger.debug("LigaMX API no disponible para rachas, se omite (enviar_plan)")
+                    _rach_mapa = {}
                 for _rach_i, _rach_pk in enumerate(picks[:3]):
                     _rach_tid = _rach_lmx.id_de_equipo(_rach_pk["equipo"], _rach_mapa)
                     if _rach_tid is not None:
