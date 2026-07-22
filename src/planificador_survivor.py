@@ -350,7 +350,7 @@ def cargar_calendario(path: Optional[Path] = None) -> List[Dict[str, Any]]:
         path or CALENDARIO_PATH,
         Path("data/calendario.json"),
     ]
-    env_path = os.getenv("CALENDARIO_JSON_PATH")""".strip()
+    env_path = os.getenv("CALENDARIO_JSON_PATH", "").strip()
     if env_path:
         candidatos.append(Path(env_path))
     for p in candidatos:
