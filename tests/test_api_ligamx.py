@@ -88,5 +88,6 @@ class TestApiLigaMX(unittest.TestCase):
             api.head_to_head(local="América", visitante="Inexistente")
         self.assertEqual(ctx.exception.status_code, 404)
 
+
 if __name__ == "__main__":
     unittest.main()

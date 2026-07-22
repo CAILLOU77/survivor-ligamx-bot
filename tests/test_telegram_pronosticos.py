@@ -6,6 +6,7 @@ from __future__ import annotations
 import os
 import sys
 import unittest
+from datetime import date
 from pathlib import Path
 from unittest import mock
 
@@ -110,6 +111,7 @@ class TestEnviar(unittest.TestCase):
             mock.patch("src.ligamx_api.porteros_por_equipo", return_value={}),
             mock.patch("src.telegram.envio._contexto_top_pick", return_value=None),
             mock.patch("src.telegram.envio._partidos_jugados_torneo", return_value=100),
+            mock.patch("src.telegram.envio._registrar_survivor_historial"),
             mock.patch("src.telegram.envio.enviar_mensaje", return_value=True) as menv,
         ):
             r = tp.enviar_pronosticos()
@@ -119,7 +121,18 @@ class TestEnviar(unittest.TestCase):
 
     def test_enviar_pronosticos_pick_viene_del_plan(self):
         res = _resultado()
-        plan = {"pasos": [{"jornada": 1, "equipo": "Toluca", "rival": "América", "condicion": "Visita"}]}
+        plan = {
+            "plan": [
+                {
+                    "jornada": "1",
+                    "equipo": "Toluca",
+                    "rival": "América",
+                    "condicion": "Visitante",
+                    "no_perder_pct": 70.0,
+                    "prob_ganar_pct": 45.0,
+                }
+            ]
+        }
         with (
             mock.patch("src.telegram.envio.motor.generar_pronosticos", return_value=res),
             mock.patch("src.telegram.envio.motor.motivacion_por_equipo", return_value={}),
@@ -127,16 +140,105 @@ class TestEnviar(unittest.TestCase):
             mock.patch("src.telegram.envio._jornada_actual_num", return_value=1),
             mock.patch("src.ligamx_api.disponible", return_value=False),
             mock.patch("src.telegram.envio._partidos_jugados_torneo", return_value=100),
+            mock.patch("src.telegram.envio._registrar_survivor_historial"),
             mock.patch("src.telegram.envio.enviar_mensaje", return_value=True) as menv,
         ):
             tp.enviar_pronosticos()
         msg = menv.call_args[0][0]
         self.assertIn("PICK: Toluca", msg)
+        self.assertIn("Gana: <b>45%", msg)
+
+
+class TestHelpersPlanReal(unittest.TestCase):
+    def test_jornada_actual_num_usa_calendario_real(self):
+        self.assertEqual(tp._jornada_actual_num(date(2026, 7, 22)), 2)
+
+    def test_historial_usa_clave_unica_por_torneo(self):
+        from src import database
+        from src.telegram import envio
+
+        pick = {
+            "jornada": 2,
+            "equipo": "América",
+            "rival": "Toluca",
+            "condicion": "Local",
+            "no_perder_pct": 75.0,
+            "prob_victoria_pct": 55.0,
+        }
+        pronostico = {
+            "local": "América",
+            "visitante": "Toluca",
+            "fecha": "2026-07-22",
+        }
+        with mock.patch.object(database, "registrar_survivor_pick", return_value=True) as registrar:
+            envio._registrar_survivor_historial([pick], [pronostico])
+
+        self.assertEqual(registrar.call_args.kwargs["jornada"], "Apertura-2026-J2")
+
+    def test_plan_temporada_usa_api_real_del_planificador(self):
+        from src import fuentes_datos
+        from src import planificador_survivor as plan_mod
+        from src import poisson_model as pm
+
+        calendario = [
+            {"jornada": 1, "partidos": []},
+            {"jornada": 2, "partidos": []},
+        ]
+        calendario_vigente = [calendario[1]]
+        esperado = {"plan": [{"jornada": 2, "equipo": "América"}], "calendario_incompleto": False}
+        with (
+            mock.patch.object(plan_mod, "cargar_calendario", return_value=calendario),
+            mock.patch.object(fuentes_datos, "leer_cache", return_value=[]),
+            mock.patch.object(fuentes_datos, "obtener_resultados", return_value={"resultados": [{"real": True}]}),
+            mock.patch.object(pm, "calcular_fuerzas", return_value={"equipos": {}}),
+            mock.patch.object(plan_mod, "construir_odds_por_partido", return_value={}),
+            mock.patch.object(plan_mod, "planificar", return_value=esperado) as planificar,
+        ):
+            resultado = tp._plan_temporada(["Toluca"], jornada_desde=2)
+
+        self.assertEqual(resultado, esperado)
+        planificar.assert_called_once_with(
+            calendario_vigente,
+            {"equipos": {}},
+            equipos_usados=["Toluca"],
+            peso_victoria=0.5,
+            odds_por_partido={},
+        )
+
+    def test_plan_no_repite_descarga_si_el_motor_dejo_cache_vacio(self):
+        from src import fuentes_datos
+        from src import planificador_survivor as plan_mod
+
+        with (
+            mock.patch.object(plan_mod, "cargar_calendario", return_value=[{"jornada": 2, "partidos": []}]),
+            mock.patch.object(fuentes_datos, "leer_cache", return_value=[]),
+            mock.patch.object(fuentes_datos, "obtener_resultados") as descargar,
+        ):
+            resultado = tp._plan_temporada([], jornada_desde=2, permitir_descarga=False)
+
+        self.assertEqual(resultado["plan"], [])
+        self.assertIn("caché", resultado["error"])
+        descargar.assert_not_called()
+
+    def test_plan_no_reabre_jornadas_al_finalizar_temporada(self):
+        from src import planificador_survivor as plan_mod
+        from src.telegram import envio
+
+        with (
+            mock.patch.object(plan_mod, "cargar_calendario", return_value=[{"jornada": 17, "partidos": []}]),
+            mock.patch.object(envio, "_jornada_actual_num", return_value=None),
+        ):
+            resultado = envio._plan_temporada([])
+
+        self.assertEqual(resultado["plan"], [])
+        self.assertTrue(resultado["temporada_finalizada"])
+        self.assertIn("temporada ya finalizó", tp.construir_mensaje_plan(resultado))
 
 
 class TestNivelRiesgoYPlan(unittest.TestCase):
     def test_enviar_plan_sin_calendario(self):
         import src.planificador_survivor as ps
+
         with mock.patch.object(ps, "cargar_calendario", return_value=[]):
             with mock.patch("src.telegram.envio.enviar_mensaje", return_value=True) as menv:
                 r = tp.enviar_plan()
@@ -162,6 +264,7 @@ class TestDividirMensaje(unittest.TestCase):
                 ok = tp.enviar_mensaje(largo)
         self.assertTrue(ok)
         self.assertGreater(mreq.post.call_count, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

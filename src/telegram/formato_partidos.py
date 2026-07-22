@@ -1,6 +1,5 @@
 from __future__ import annotations
 from typing import Any, Dict, List, Optional
-from .formato_pick import _pct
 
 from src import calendario_contexto as calctx
 from .formato_pick import _pick_club
@@ -9,6 +8,7 @@ from .utils import _pct
 
 DISCLAIMER = "ℹ️ Informativo / revisión humana. No es consejo de apuesta."
 _MAX_PARTIDOS = 9
+
 
 def _resumen_mercado(mercado: Optional[Dict[str, Any]]) -> Optional[str]:
     """Línea concisa con lo que ve el mercado (favorito, O/U, hándicap, valor)."""
@@ -29,6 +29,7 @@ def _resumen_mercado(mercado: Optional[Dict[str, Any]]) -> Optional[str]:
     if h and h.get("favorito"):
         partes.append(f"hcp {h['favorito']} {h['linea']}")
     return " · ".join(partes) if partes else None
+
 
 def _lineas_mercado(p: Dict[str, Any]) -> List[str]:
     """Líneas con los momios reales del mercado (si hay) + lectura del mercado."""
@@ -51,6 +52,7 @@ def _lineas_mercado(p: Dict[str, Any]) -> List[str]:
     if resumen:
         out.append(f"📈 Mercado ve: {resumen}")
     return out
+
 
 def _linea_goles(p: Dict[str, Any]) -> str:
     """Línea de goles: pick Over/Under con su %, BTTS y marcador más probable."""
@@ -95,6 +97,7 @@ def _linea_goles(p: Dict[str, Any]) -> str:
             )
     return linea
 
+
 def _totales_jornada(pronosticos: list) -> Dict[str, Any]:
     """Calcula totales de la jornada: partidos, goles esperados, O/U, BTTS."""
     if not pronosticos:
@@ -122,6 +125,7 @@ def _totales_jornada(pronosticos: list) -> Dict[str, Any]:
         "btts_no_count": btts_no,
     }
 
+
 def construir_mensaje_momios(momios: Dict[str, Any], fuente: Optional[str]) -> str:
     """Mensaje (HTML) con el estado/cobertura de los momios por mercado."""
     if not momios:
@@ -148,6 +152,7 @@ def construir_mensaje_momios(momios: Dict[str, Any], fuente: Optional[str]) -> s
     ]
     return "\n".join(lineas)
 
+
 def construir_recordatorio(jornada: Dict[str, Any], dias: int) -> str:
     """Mensaje (HTML) de recordatorio de que se acerca una jornada."""
     n = jornada.get("jornada", "?")
@@ -171,6 +176,7 @@ def construir_recordatorio(jornada: Dict[str, Any], dias: int) -> str:
                 lineas.append(f"  • {h} vs {a}")
     lineas += ["", DISCLAIMER]
     return "\n".join(lineas)
+
 
 def render_partidos(
     pronosticos: List[Dict[str, Any]],

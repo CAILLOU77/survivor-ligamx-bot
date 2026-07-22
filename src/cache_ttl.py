@@ -1,6 +1,6 @@
 import time
 from functools import wraps
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict
 
 
 def ttl_cache(segundos: int = 600):

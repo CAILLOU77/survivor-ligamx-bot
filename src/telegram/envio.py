@@ -1,5 +1,7 @@
 from __future__ import annotations
+
 import json
+import logging
 import os
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -11,38 +13,49 @@ except ImportError:  # pragma: no cover
     requests = None  # type: ignore[assignment]
 
 from src import motor_pronosticos as motor
-from .formato_partidos import _totales_jornada, construir_mensaje_momios, construir_recordatorio
-from .formato_pick import (
-    _iso_week, construir_mensaje_rentabilidad,
-    construir_mensaje_plan, construir_mensaje_prueba,
-    construir_mensaje_confianza, construir_mensaje_derrotas,
-    construir_mensaje_survivor_historial, construir_mensaje_ganadores
-)
+from .contexto import _ajustar_pick_top, _contexto_top_pick
 from .formato import construir_mensaje, construir_mensaje_seguimiento
-from .contexto import _contexto_top_pick, _ajustar_pick_top
-from .utils import _fecha_mx
+from .formato_partidos import construir_mensaje_momios, construir_recordatorio
+from .formato_pick import (
+    construir_mensaje_confianza,
+    construir_mensaje_derrotas,
+    construir_mensaje_ganadores,
+    construir_mensaje_plan,
+    construir_mensaje_prueba,
+    construir_mensaje_rentabilidad,
+)
+
+logger = logging.getLogger(__name__)
 
 _MAX_PARTIDOS = 9
 _CALENDARIO_PATH = Path(__file__).resolve().parents[2] / "data" / "calendario.json"
 _TELEGRAM_LIMITE = 4000
 DISCLAIMER = "ℹ️ Informativo / revisión humana. No es consejo de apuesta."
 
+
 def _usados_persistidos() -> Optional[List[str]]:
     """Equipos usados guardados en la BD (para excluir del pick/plan). None si falla."""
     try:
         from src.database import get_equipos_usados
+
         return list(get_equipos_usados())
     except Exception:  # pragma: no cover - BD no disponible
         return None
+
 
 def _partidos_jugados_torneo() -> Optional[int]:
     """Partidos jugados del torneo actual (para la cautela de arranque). None si falla."""
     try:
         from src import ligamx_api as lmx
-        est = lmx.estado_temporada()
-        return int(est.get("finished_matches")) if est.get("finished_matches") is not None else None
-    except Exception:  # pragma: no cover - API no disponible
+
+        finished_matches = lmx.estado_temporada().get("finished_matches")
+        if finished_matches is None:
+            return None
+        return int(finished_matches)
+    except (RuntimeError, TypeError, ValueError):  # pragma: no cover - API no disponible
+        logger.warning("No se pudo obtener el total de partidos jugados", exc_info=True)
         return None
+
 
 def _cerca_de_jornada(pronosticos, dias: int = 2) -> bool:
     """
@@ -62,6 +75,7 @@ def _cerca_de_jornada(pronosticos, dias: int = 2) -> bool:
     if not fechas:
         return False
     return (min(fechas) - hoy).days <= dias
+
 
 def _dividir_mensaje(texto: str, limite: int = _TELEGRAM_LIMITE) -> List[str]:
     """
@@ -89,6 +103,7 @@ def _dividir_mensaje(texto: str, limite: int = _TELEGRAM_LIMITE) -> List[str]:
         partes.append(actual)
     return partes
 
+
 def enviar_mensaje(mensaje: str) -> bool:
     """
     Envía un mensaje a Telegram. Si excede el tope (~4096), lo parte en varios
@@ -115,6 +130,7 @@ def enviar_mensaje(mensaje: str) -> bool:
             ok = False
     return ok
 
+
 def _registrar_historial(pronosticos) -> None:
     """Guarda los pronósticos en el track-record (dedup por equipos+fecha). Tolerante."""
     try:
@@ -136,50 +152,159 @@ def _registrar_historial(pronosticos) -> None:
         except Exception:  # pragma: no cover
             continue
 
+
+def _clave_jornada_historial(jornada: Any, fecha: str = "") -> str:
+    """Clave estable por torneo para evitar colisiones entre jornadas 1..17."""
+    fecha_ref = _fecha(fecha) or datetime.now(timezone.utc).date()
+    torneo = "Apertura" if fecha_ref.month >= 7 else "Clausura"
+    return f"{torneo}-{fecha_ref.year}-J{jornada}"
+
+
 def _registrar_survivor_historial(picks, pronosticos) -> None:
     """Registra el pick #1 de Survivor de la jornada en el track-record."""
     if not picks:
         return
     try:
-        from src import database as _db
-    except Exception:  # pragma: no cover
+        from src.database import registrar_survivor_pick
+        from src.team_normalizer import canonical_team_key
+    except ImportError:  # pragma: no cover - instalación incompleta
+        logger.warning("No se pudo importar la persistencia del historial Survivor", exc_info=True)
         return
-    pk = picks[0]
-    equipo = pk.get("equipo")
+
+    pick = picks[0]
+    equipo = str(pick.get("equipo") or "").strip()
     if not equipo:
         return
-    # Lógica simplificada o movida si es necesario, pero mantenemos compatibilidad
-    # En el original era bastante larga, la copiaré íntegramente después si es vital.
-    # Por ahora asumo que llama a la DB.
 
-def _jornada_actual_num() -> Optional[int]:
-    """Número de la jornada actual (1..17). None si falla."""
+    local = ""
+    visitante = ""
+    fecha = ""
+    equipo_key = canonical_team_key(equipo)
+    for pronostico in pronosticos or []:
+        local_candidato = str(pronostico.get("local") or "")
+        visitante_candidato = str(pronostico.get("visitante") or "")
+        if equipo_key in {
+            canonical_team_key(local_candidato),
+            canonical_team_key(visitante_candidato),
+        }:
+            local = local_candidato
+            visitante = visitante_candidato
+            fecha = str(pronostico.get("fecha") or "")
+            break
+
+    condicion = str(pick.get("condicion") or "")
+    rival = str(pick.get("rival") or "")
+    if not local or not visitante:
+        if condicion.lower().startswith("local"):
+            local, visitante = equipo, rival
+        else:
+            local, visitante = rival, equipo
+
+    jornada = pick.get("jornada") or _jornada_actual_num()
+    if jornada is None:
+        logger.warning("No se registró el pick Survivor porque no se pudo determinar la jornada")
+        return
+
     try:
-        from src import ligamx_api as lmx
-        return lmx.jornada_actual_num()
-    except Exception:  # pragma: no cover
+        registrar_survivor_pick(
+            jornada=_clave_jornada_historial(jornada, fecha),
+            equipo=equipo,
+            rival=rival,
+            condicion=condicion,
+            local=local,
+            visitante=visitante,
+            no_perder_pct=float(pick.get("no_perder_pct") or 0.0),
+            prob_victoria_pct=float(pick.get("prob_victoria_pct") or pick.get("prob_ganar_pct") or 0.0),
+            fecha=fecha,
+        )
+    except Exception:  # pragma: no cover - BD no disponible
+        logger.warning("No se pudo registrar el pick en el historial Survivor", exc_info=True)
+
+
+def _jornada_actual_num(hoy: Optional[date] = None) -> Optional[int]:
+    """Número de la jornada actual o próxima (1..17), según el calendario local."""
+    jornada = proxima_jornada(hoy)
+    if not jornada:
         return None
-
-def _plan_temporada(equipos_usados: Optional[List[str]]) -> Dict[str, Any]:
-    """Carga el plan de temporada (data/plan_survivor.json)."""
     try:
-        from src import planificador_survivor as plan
-        return plan.cargar_plan(equipos_usados)
-    except Exception:  # pragma: no cover
-        return {}
+        numero = int(str(jornada.get("jornada")))
+    except (TypeError, ValueError):
+        logger.warning("El calendario contiene una jornada inválida: %r", jornada.get("jornada"))
+        return None
+    return numero if 1 <= numero <= 17 else None
+
+
+def _plan_temporada(
+    equipos_usados: Optional[List[str]],
+    peso_victoria: float = 0.5,
+    usar_momios: bool = True,
+    jornada_desde: Optional[int] = None,
+    permitir_descarga: bool = True,
+) -> Dict[str, Any]:
+    """Reconstruye el plan desde la jornada vigente con datos reales disponibles."""
+    from src import fuentes_datos
+    from src import planificador_survivor as plan_mod
+    from src import poisson_model as pm
+
+    calendario = plan_mod.cargar_calendario()
+    jornada_desde = jornada_desde if jornada_desde is not None else _jornada_actual_num()
+    if jornada_desde is None:
+        return {"calendario_incompleto": False, "temporada_finalizada": True, "plan": []}
+    calendario_filtrado = []
+    for jornada in calendario:
+        try:
+            if int(str(jornada.get("jornada"))) >= jornada_desde:
+                calendario_filtrado.append(jornada)
+        except (TypeError, ValueError):
+            logger.warning("Se ignoró una jornada inválida del calendario: %r", jornada.get("jornada"))
+    calendario = calendario_filtrado
+    if not calendario:
+        return {"calendario_incompleto": True, "plan": []}
+
+    try:
+        resultados = fuentes_datos.leer_cache()
+        if not resultados and permitir_descarga:
+            datos = fuentes_datos.obtener_resultados(meses=18)
+            datos_resultados = datos.get("resultados")
+            resultados = datos_resultados if isinstance(datos_resultados, list) else []
+        if not resultados:
+            raise ValueError("No hay resultados históricos en caché para calcular fuerzas")
+        fuerzas = pm.calcular_fuerzas(resultados)
+        odds = plan_mod.construir_odds_por_partido(calendario) if usar_momios else None
+        resultado = plan_mod.planificar(
+            calendario,
+            fuerzas,
+            equipos_usados=equipos_usados,
+            peso_victoria=peso_victoria,
+            odds_por_partido=odds,
+        )
+        return resultado if isinstance(resultado, dict) else {"calendario_incompleto": True, "plan": []}
+    except Exception as exc:  # la fuente o el modelo pueden no estar disponibles
+        logger.warning("No se pudo construir el plan de temporada", exc_info=True)
+        return {"calendario_incompleto": True, "plan": [], "error": str(exc)}
+
 
 def _rec_desde_plan(plan: Dict[str, Any], jornada_num: Optional[int]) -> Optional[Dict[str, Any]]:
     """Extrae el pick recomendado para la jornada X según el plan."""
-    if not plan or not jornada_num:
+    if not plan or jornada_num is None:
         return None
-    try:
-        pasos = plan.get("pasos") or []
-        for p in pasos:
-            if p.get("jornada") == jornada_num:
-                return p
-    except Exception:  # pragma: no cover
-        pass
+    pasos = plan.get("plan")
+    if not isinstance(pasos, list):
+        return None
+    for paso in pasos:
+        if not isinstance(paso, dict):
+            continue
+        try:
+            misma_jornada = int(str(paso.get("jornada"))) == jornada_num
+        except (TypeError, ValueError):
+            continue
+        if misma_jornada:
+            recomendacion = dict(paso)
+            if "prob_victoria_pct" not in recomendacion and recomendacion.get("prob_ganar_pct") is not None:
+                recomendacion["prob_victoria_pct"] = recomendacion["prob_ganar_pct"]
+            return recomendacion
     return None
+
 
 def _cargar_calendario_local() -> List[Dict[str, Any]]:
     """Lee data/calendario.json."""
@@ -192,11 +317,13 @@ def _cargar_calendario_local() -> List[Dict[str, Any]]:
         pass
     return []
 
+
 def _fecha(valor: Any) -> Optional[date]:
     try:
         return datetime.strptime(str(valor)[:10], "%Y-%m-%d").date()
     except (TypeError, ValueError):
         return None
+
 
 def proxima_jornada(hoy: Optional[date] = None) -> Optional[Dict[str, Any]]:
     """Jornada cuya fecha cubre a hoy (o la más próxima futura)."""
@@ -215,6 +342,7 @@ def proxima_jornada(hoy: Optional[date] = None) -> Optional[Dict[str, Any]]:
         return candidatas[0][1]
     return None
 
+
 def enviar_pronosticos(equipos_usados: Optional[List[str]] = None, incluir_contexto: bool = True) -> Dict[str, Any]:
     """Genera pronósticos reales y los envía por Telegram."""
     resultado = motor.generar_pronosticos()
@@ -228,6 +356,7 @@ def enviar_pronosticos(equipos_usados: Optional[List[str]] = None, incluir_conte
     try:
         from src import comparador_mercado as cm
         from src import ligamx_api as lmx
+
         try:
             momios, fuente_m = cm.momios_para_uso()
         except Exception:
@@ -235,25 +364,32 @@ def enviar_pronosticos(equipos_usados: Optional[List[str]] = None, incluir_conte
         pron_anotados = cm.anotar_pronosticos(pronosticos, momios)
         resultado["pronosticos"] = cm.mezclar_pronosticos_con_mercado(pron_anotados, momios=momios)
         con_momios = sum(1 for m in (momios or {}).values() if isinstance(m, dict) and m.get("ml"))
-        
+
         # Fallback fixtures_sin_modelo
         try:
             faltantes = resultado.get("fixtures_sin_modelo") or []
             extra = []
             for fx in faltantes:
                 merc = cm.buscar_mercado_partido(fx.get("home_team", ""), fx.get("away_team", ""), momios or {})
-                pr = cm.pronostico_desde_momios(fx.get("home_team", ""), fx.get("away_team", ""), merc, fx.get("fecha", ""))
-                if pr: extra.append(pr)
+                pr = cm.pronostico_desde_momios(
+                    fx.get("home_team", ""), fx.get("away_team", ""), merc, fx.get("fecha", "")
+                )
+                if pr:
+                    extra.append(pr)
             if extra:
                 resultado["pronosticos"] = list(resultado.get("pronosticos", [])) + extra
-        except Exception: pass
+        except Exception:
+            pass
 
         # Archivo momios
         try:
             snaps = cm.construir_snapshots_momios(pron_anotados, momios, source=fuente_m)
-            if snaps: lmx.archivar_momios(snaps)
-        except Exception: pass
-    except Exception: pass
+            if snaps:
+                lmx.archivar_momios(snaps)
+        except Exception:
+            pass
+    except Exception:
+        pass
 
     try:
         motivacion = motor.motivacion_por_equipo()
@@ -264,6 +400,7 @@ def enviar_pronosticos(equipos_usados: Optional[List[str]] = None, incluir_conte
     api_ok = False
     try:
         from src import ligamx_api as _lmx_probe
+
         api_ok = _lmx_probe.disponible(timeout=45 if cerca else 5)
     except Exception:
         api_ok = False
@@ -279,39 +416,53 @@ def enviar_pronosticos(equipos_usados: Optional[List[str]] = None, incluir_conte
     # Unificación con plan
     try:
         from src.team_normalizer import canonical_team_key as _kp
+
         _picks = est.get("picks") or []
-        _rec_plan = _rec_desde_plan(_plan_temporada(equipos_usados), _jornada_actual_num())
+        _rec_plan = _rec_desde_plan(
+            _plan_temporada(equipos_usados, permitir_descarga=False),
+            _jornada_actual_num(),
+        )
         if _rec_plan and _picks:
-            _miope = _picks[0].get("equipo")
-            if _kp(_rec_plan.get("equipo")) != _kp(_miope):
-                _rec_plan["razon"] = f"el plan de temporada guarda a {_miope} para una jornada más difícil y usa a {_rec_plan['equipo']} aquí."
+            _miope = str(_picks[0].get("equipo") or "")
+            _equipo_plan = str(_rec_plan.get("equipo") or "")
+            if _equipo_plan and _kp(_equipo_plan) != _kp(_miope):
+                _rec_plan["razon"] = (
+                    f"el plan de temporada guarda a {_miope} para una jornada más difícil y usa a {_equipo_plan} aquí."
+                )
             else:
                 _rec_plan["razon"] = "es el equipo de esta jornada según el plan de toda la temporada."
-            _resto = [p for p in _picks if _kp(p.get("equipo")) != _kp(_rec_plan.get("equipo"))]
+            _resto = [p for p in _picks if _kp(str(p.get("equipo") or "")) != _kp(_equipo_plan)]
             est["picks"] = [_rec_plan] + _resto
-    except Exception: pass
+    except Exception:
+        logger.warning("No se pudo unificar el pick de jornada con el plan de temporada", exc_info=True)
 
     contexto_pick = None
     if incluir_contexto and api_ok:
         _top = (est.get("picks") or [None])[0]
-        contexto_pick = _contexto_top_pick(resultado.get("pronosticos", []), equipos_usados, motivacion, pick_override=_top)
+        contexto_pick = _contexto_top_pick(
+            resultado.get("pronosticos", []), equipos_usados, motivacion, pick_override=_top
+        )
 
     try:
         _ajustar_pick_top(est.get("picks") or [], resultado.get("pronosticos", []), contexto_pick)
-    except Exception: pass
+    except Exception:
+        pass
 
     try:
         _registrar_survivor_historial(est.get("picks") or [], resultado.get("pronosticos", []))
-    except Exception: pass
+    except Exception:
+        pass
 
     goleadores_map = None
     porteros_map = None
     if api_ok:
         try:
             from src import ligamx_api as lmx
+
             goleadores_map = lmx.goleadores_por_equipo()
             porteros_map = lmx.porteros_por_equipo()
-        except Exception: pass
+        except Exception:
+            pass
 
     mensaje = construir_mensaje(
         resultado,
@@ -332,20 +483,24 @@ def enviar_pronosticos(equipos_usados: Optional[List[str]] = None, incluir_conte
         "cautela": est.get("cautela"),
     }
 
+
 def enviar_resumen_rentabilidad() -> Dict[str, Any]:
     """Envía por Telegram el resumen de aciertos del modelo."""
     try:
         from src.database import rentabilidad_pronosticos
+
         data = rentabilidad_pronosticos()
     except Exception as exc:
         return {"enviado": False, "error": str(exc)}
     enviado = enviar_mensaje(construir_mensaje_rentabilidad(data))
     return {"enviado": enviado, "resueltos": data.get("resueltos"), "pendientes": data.get("pendientes")}
 
+
 def enviar_momios_estado(solo_si_hay: bool = False) -> Dict[str, Any]:
     """Envía por Telegram un resumen de cobertura de momios."""
     try:
         from src import comparador_mercado as cm
+
         momios, fuente = cm.momios_para_uso(guardar_si_hay=True, incluir_gratis=True)
     except Exception as exc:
         return {"enviado": False, "error": str(exc)}
@@ -354,18 +509,22 @@ def enviar_momios_estado(solo_si_hay: bool = False) -> Dict[str, Any]:
     enviado = enviar_mensaje(construir_mensaje_momios(momios, fuente))
     return {"enviado": enviado, "partidos_con_momios": len(momios), "fuente": fuente}
 
+
 def enviar_recordatorio_si_aplica(dias_antes: int = 1, hoy: Optional[date] = None) -> Dict[str, Any]:
     """Envía un recordatorio si la jornada está cerca."""
     hoy = hoy or datetime.now(timezone.utc).date()
     j = proxima_jornada(hoy)
-    if not j: return {"enviado": False, "motivo": "sin próxima jornada"}
+    if not j:
+        return {"enviado": False, "motivo": "sin próxima jornada"}
     ini = _fecha(j.get("fecha_inicio"))
-    if ini is None: return {"enviado": False, "motivo": "fecha inválida"}
+    if ini is None:
+        return {"enviado": False, "motivo": "fecha inválida"}
     dias = (ini - hoy).days
     if not (0 <= dias <= dias_antes):
         return {"enviado": False, "motivo": f"faltan {dias} días", "jornada": j.get("jornada")}
     enviado = enviar_mensaje(construir_recordatorio(j, dias))
     return {"enviado": enviado, "jornada": j.get("jornada"), "dias": dias}
+
 
 def enviar_analisis_jornada() -> Dict[str, Any]:
     """Analiza partidos ya jugados y envía conclusión por Telegram."""
@@ -377,15 +536,20 @@ def enviar_analisis_jornada() -> Dict[str, Any]:
     picks_anteriores = []
     try:
         from src.database import get_survivor_picks_recientes
+
         picks_anteriores = get_survivor_picks_recientes(limit=10)
-    except Exception: pass
+    except Exception:
+        pass
 
     resultado = ar.analizar_jornada(picks_anteriores=picks_anteriores)
     cabecera = resultado.get("resumen", "").split("\n")[0] if resultado.get("resumen") else "📊 ANÁLISIS DE LA JORNADA"
-    enviado = enviar_mensaje(f"{cabecera}\n🕒 {datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M')} h (UTC)\n━━━━━━━━━━")
+    enviado = enviar_mensaje(
+        f"{cabecera}\n🕒 {datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M')} h (UTC)\n━━━━━━━━━━"
+    )
 
     for mensaje_partido in resultado.get("mensajes_individuales", []):
-        if not mensaje_partido.strip(): continue
+        if not mensaje_partido.strip():
+            continue
         if len(mensaje_partido) > 3000:
             partes = mensaje_partido.split("💡 <b>Análisis:</b>")
             if len(partes) == 2:
@@ -394,50 +558,71 @@ def enviar_analisis_jornada() -> Dict[str, Any]:
                     m = len(p1) // 2
                     enviado = enviado and enviar_mensaje(p1[:m] + "...")
                     enviado = enviado and enviar_mensaje("..." + p1[m:])
-                else: enviado = enviado and enviar_mensaje(p1)
+                else:
+                    enviado = enviado and enviar_mensaje(p1)
                 enviado = enviado and enviar_mensaje("💡 <b>Análisis:</b>" + p2[:2800])
-                if len(p2) > 2800: enviado = enviado and enviar_mensaje("..." + p2[2800:])
+                if len(p2) > 2800:
+                    enviado = enviado and enviar_mensaje("..." + p2[2800:])
             else:
                 m = len(mensaje_partido) // 2
                 enviado = enviado and enviar_mensaje(mensaje_partido[:m] + "...")
                 enviado = enviado and enviar_mensaje("..." + mensaje_partido[m:])
-        else: enviado = enviado and enviar_mensaje(mensaje_partido)
+        else:
+            enviado = enviado and enviar_mensaje(mensaje_partido)
 
     mensaje_tabla = resultado.get("mensaje_tabla", "")
-    if mensaje_tabla: enviado = enviado and enviar_mensaje(mensaje_tabla)
+    if mensaje_tabla:
+        enviado = enviado and enviar_mensaje(mensaje_tabla)
 
-    return {"enviado": enviado, "total_partidos": len(resultado.get("partidos", [])), "resumen": resultado.get("resumen", "")}
+    return {
+        "enviado": enviado,
+        "total_partidos": len(resultado.get("partidos", [])),
+        "resumen": resultado.get("resumen", ""),
+    }
+
 
 def _mapa_horarios(lmx) -> Dict[str, str]:
     """{clave_equipo: match_date_iso} desde /matches/upcoming."""
     from src.team_normalizer import canonical_team_key as _k
+
     out: Dict[str, str] = {}
     try:
         for m in lmx.partidos_proximos(limit=20) or []:
-            if not isinstance(m, dict): continue
+            if not isinstance(m, dict):
+                continue
             fecha = m.get("match_date")
             for lado in ("home_team", "away_team"):
                 eq = m.get(lado) or {}
                 nombre = eq.get("name") if isinstance(eq, dict) else eq
-                if nombre and fecha: out[_k(str(nombre))] = str(fecha)
-    except Exception: pass
+                if nombre and fecha:
+                    out[_k(str(nombre))] = str(fecha)
+    except Exception:
+        pass
     return out
+
 
 def enviar_seguimiento(equipos_usados: Optional[List[str]] = None, n: int = 5) -> Dict[str, Any]:
     """Envía por Telegram la lista de seguimiento para decidir el Survivor."""
     from src import seguimiento_jornada as seg
     from src import ligamx_api as lmx
+
     resultado = motor.generar_pronosticos()
     pronosticos = resultado.get("pronosticos", [])
-    if equipos_usados is None: equipos_usados = _usados_persistidos()
-    try: motivacion = motor.motivacion_por_equipo()
-    except Exception: motivacion = {}
-    est = motor.mejores_picks_estrategico(pronosticos, equipos_usados, motivacion, partidos_jugados_torneo=_partidos_jugados_torneo(), n=max(n, 5))
+    if equipos_usados is None:
+        equipos_usados = _usados_persistidos()
+    try:
+        motivacion = motor.motivacion_por_equipo()
+    except Exception:
+        motivacion = {}
+    est = motor.mejores_picks_estrategico(
+        pronosticos, equipos_usados, motivacion, partidos_jugados_torneo=_partidos_jugados_torneo(), n=max(n, 5)
+    )
     picks = est.get("picks") or []
     horarios = _mapa_horarios(lmx)
-    
+
     fuerza_xi: Dict[str, float] = {}
     from src.team_normalizer import canonical_team_key as _k
+
     for pk in picks[:n]:
         es_local = pk.get("condicion") == "Local"
         home, away = (pk["equipo"], pk["rival"]) if es_local else (pk["rival"], pk["equipo"])
@@ -447,17 +632,22 @@ def enviar_seguimiento(equipos_usados: Optional[List[str]] = None, n: int = 5) -
                 for eq, info in (imp.get("equipos") or {}).items():
                     if isinstance(info, dict) and info.get("fuerza_xi_pct") is not None:
                         fuerza_xi[_k(eq)] = info["fuerza_xi_pct"]
-        except Exception: pass
+        except Exception:
+            pass
 
     items = seg.lista_seguimiento(picks, horarios=horarios, fuerza_xi=fuerza_xi, n=n)
     usados_set = {_k(e) for e in (equipos_usados or [])}
     seguidos = {_k(it["equipo"]) for it in items}
-    descartados = [p.get("local", "") for p in pronosticos if _k(p.get("local", "")) not in seguidos and _k(p.get("local", "")) not in usados_set][:6]
-    
+    descartados = [
+        p.get("local", "")
+        for p in pronosticos
+        if _k(p.get("local", "")) not in seguidos and _k(p.get("local", "")) not in usados_set
+    ][:6]
+
     recomendado = picks[0] if picks else None
     nota_plan = None
     try:
-        plan = _plan_temporada(equipos_usados)
+        plan = _plan_temporada(equipos_usados, permitir_descarga=False)
         rec_plan = _rec_desde_plan(plan, _jornada_actual_num())
         if rec_plan:
             miope = picks[0]["equipo"] if picks else None
@@ -468,76 +658,92 @@ def enviar_seguimiento(equipos_usados: Optional[List[str]] = None, n: int = 5) -
             recomendado = rec_plan
             if not any(_k(it["equipo"]) == _k(rec_plan["equipo"]) for it in items):
                 items = seg.lista_seguimiento([rec_plan], horarios, fuerza_xi, n=1) + items
-    except Exception: pass
+    except Exception:
+        pass
 
-    mensaje = construir_mensaje_seguimiento(items, descartados=descartados, recomendado=recomendado, nota_plan=nota_plan)
+    mensaje = construir_mensaje_seguimiento(
+        items, descartados=descartados, recomendado=recomendado, nota_plan=nota_plan
+    )
     enviado = enviar_mensaje(mensaje)
     return {"enviado": enviado, "candidatos": len(items)}
 
-def enviar_plan(equipos_usados: Optional[List[str]] = None, peso_victoria: float = 0.5, usar_momios: bool = True) -> Dict[str, Any]:
-    """Análisis inteligente + plan de temporada."""
-    from src import planificador_survivor as plan_mod
-    from src import fuentes_datos
-    from src import poisson_model as pm
 
-    if equipos_usados is None: equipos_usados = _usados_persistidos()
-    
-    try:
-        resultado = motor.generar_pronosticos()
-        mensaje_resumen = "🧠 <b>ANÁLISIS INTELIGENTE</b>\n"
-        # Simplificando para brevedad del paquete, manteniendo el espíritu ejecutivo.
-    except Exception: mensaje_resumen = "⚠️ Error en análisis.\n"
+def enviar_plan(
+    equipos_usados: Optional[List[str]] = None,
+    peso_victoria: float = 0.5,
+    usar_momios: bool = True,
+) -> Dict[str, Any]:
+    """Construye y envía el plan inteligente de toda la temporada."""
+    if equipos_usados is None:
+        equipos_usados = _usados_persistidos()
 
-    calendario = plan_mod.cargar_calendario()
-    if not calendario: plan = {"calendario_incompleto": True, "plan": []}
-    else:
-        try:
-            datos = fuentes_datos.obtener_resultados(meses=18)
-            fuerzas = pm.calcular_fuerzas(datos["resultados"])
-            odds = plan_mod.construir_odds_por_partido(calendario) if usar_momios else None
-            plan = plan_mod.planificar(calendario, fuerzas, equipos_usados=equipos_usados, peso_victoria=peso_victoria, odds_por_partido=odds)
-        except Exception as exc: plan = {"calendario_incompleto": True, "plan": [], "error": str(exc)}
-
+    plan: Dict[str, Any] = _plan_temporada(
+        equipos_usados,
+        peso_victoria=peso_victoria,
+        usar_momios=usar_momios,
+    )
+    mensaje_resumen = (
+        "🧠 <b>ANÁLISIS INTELIGENTE</b>\n"
+        "<i>Plan optimizado para sobrevivir sin repetir equipo y priorizar victorias.</i>\n"
+    )
     plan_texto = construir_mensaje_plan(plan)
     enviado = enviar_mensaje(mensaje_resumen + "\n" + plan_texto)
-    return {"enviado": enviado, "jornadas": len(plan.get("plan", [])), "calendario_incompleto": bool(plan.get("calendario_incompleto"))}
+    pasos = plan.get("plan")
+    jornadas = len(pasos) if isinstance(pasos, list) else 0
+    return {
+        "enviado": enviado,
+        "jornadas": jornadas,
+        "calendario_incompleto": bool(plan.get("calendario_incompleto")),
+    }
+
 
 def enviar_prueba() -> Dict[str, Any]:
     """Backtest en lenguaje simple."""
     from src import fuentes_datos, backtest_estrategias as be
+
     try:
         datos = fuentes_datos.obtener_historico_largo()
         comp = be.comparar_estrategias(datos["resultados"])
-    except Exception: comp = {}
+    except Exception:
+        comp = {}
     enviado = enviar_mensaje(construir_mensaje_prueba(comp))
     return {"enviado": enviado, "mejor": (comp or {}).get("mejor")}
+
 
 def enviar_confianza() -> Dict[str, Any]:
     """Calibración en lenguaje simple."""
     from src import fuentes_datos, calibracion as cal
+
     try:
         datos = fuentes_datos.obtener_historico_largo()
         rep = cal.evaluar_calibracion(datos["resultados"])
-    except Exception: rep = {}
+    except Exception:
+        rep = {}
     enviado = enviar_mensaje(construir_mensaje_confianza(rep))
     return {"enviado": enviado, "alpha": (rep or {}).get("alpha_sugerido")}
+
 
 def enviar_derrotas() -> Dict[str, Any]:
     """Análisis de derrotas en lenguaje simple."""
     from src import fuentes_datos, backtest_estrategias as be
+
     try:
         datos = fuentes_datos.obtener_historico_largo()
         rep = be.analizar_derrotas(datos["resultados"])
-    except Exception: rep = {}
+    except Exception:
+        rep = {}
     enviado = enviar_mensaje(construir_mensaje_derrotas(rep))
     return {"enviado": enviado, "derrotas": (rep or {}).get("total_derrotas")}
+
 
 def enviar_ganadores() -> Dict[str, Any]:
     """Perfect Survivor vs Bot."""
     from src import fuentes_datos, backtest_estrategias as be
+
     try:
         datos = fuentes_datos.obtener_historico_largo()
         rep = be.analizar_ganadores(datos["resultados"])
-    except Exception: rep = {}
+    except Exception:
+        rep = {}
     enviado = enviar_mensaje(construir_mensaje_ganadores(rep))
     return {"enviado": enviado, "torneos": (rep or {}).get("torneos")}

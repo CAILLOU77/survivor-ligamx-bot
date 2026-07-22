@@ -5,6 +5,7 @@ from .formato_pick import render_survivor, DISCLAIMER
 from .formato_partidos import render_partidos, _totales_jornada
 from .utils import _fecha_mx, _pct
 
+
 def construir_mensaje(
     resultado: Dict[str, Any],
     equipos_usados: Optional[List[str]] = None,
@@ -59,6 +60,7 @@ def construir_mensaje(
 
     lineas += [div, DISCLAIMER]
     return "\n".join(lineas)
+
 
 def construir_mensaje_seguimiento(
     items: List[Dict[str, Any]],
@@ -117,10 +119,11 @@ def construir_mensaje_seguimiento(
     if otras:
         lineas.append("")
         lineas.append(f"🔁 <i>Respaldo (solo si su XI sale mal): {', '.join(otras)}.</i>")
-    
+
     # Aviso de timing
     try:
         from src import seguimiento_jornada as _seg
+
         alt_resp = _seg.alternativa_con_respaldo(items, rec)
         if alt_resp:
             lineas.append("")
