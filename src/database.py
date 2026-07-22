@@ -113,15 +113,9 @@ def init_db():
                 prob_victoria_pct REAL,
                 marcador_real TEXT,
                 estado TEXT DEFAULT 'pendiente',
-                resuelto INTEGER DEFAULT 0,
-                fuente TEXT DEFAULT 'bot'
+                resuelto INTEGER DEFAULT 0
             )
         """)
-        # Migración: columna fuente ('bot' | 'usuario') para que /racha mida TUS picks.
-        try:
-            cur.execute("ALTER TABLE survivor_historial ADD COLUMN fuente TEXT DEFAULT 'bot'")
-        except Exception:
-            pass  # ya existe
         # Historial de pronósticos (track-record: marcador exacto + aciertos).
         cur.execute("""
             CREATE TABLE IF NOT EXISTS pronosticos_historial (
@@ -152,6 +146,31 @@ def _norm_equipo(s: str) -> str:
     return " ".join(base.split())
 
 
+    # === Migración en su propia transacción ===
+    # Añade columna 'fuente' a survivor_historial. Separada de init_db() para
+    # que PostgreSQL NO aborte la transacción si falla. Usa IF NOT EXISTS
+    # (PostgreSQL 9.6+) y fallback para SQLite.
+    try:
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "ALTER TABLE survivor_historial "
+                "ADD COLUMN IF NOT EXISTS fuente TEXT DEFAULT 'bot'"
+            )
+            conn.commit()
+    except Exception:
+        try:
+            with get_db() as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    "ALTER TABLE survivor_historial "
+                    "ADD COLUMN fuente TEXT DEFAULT 'bot'"
+                )
+                conn.commit()
+        except Exception:
+            pass  # ya existe
+
+
 def add_equipo_usado(equipo: str) -> bool:
     """Marca un equipo como usado en el Survivor. True si se agregó, False si ya estaba."""
     norm = _norm_equipo(equipo)
@@ -178,7 +197,7 @@ def get_equipos_usados() -> list:
         return [r[0] for r in cur.fetchall()]
 
 
-def remove_equipo_usado(equipo: str) -> int:
+def remove_equipo_usado(eequipo: str) -> int:
     """Quita un equipo de la lista de usados. Devuelve filas afectadas (0 o 1)."""
     norm = _norm_equipo(equipo)
     with get_db() as conn:
@@ -331,7 +350,7 @@ def rentabilidad_pronosticos() -> dict:
 # ---------------------------------------------------------------------------
 def registrar_survivor_pick(
     jornada: str,
-    equipo: str,
+    eequipo: str,
     rival: str,
     condicion: str,
     local: str,
@@ -404,7 +423,7 @@ def registrar_survivor_pick(
 
 def registrar_pick_usuario(
     jornada: str,
-    equipo: str,
+    eequipo: str,
     rival: str = "",
     condicion: str = "",
     local: str = "",
