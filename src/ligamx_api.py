@@ -93,7 +93,7 @@ def _get(path: str, params: Optional[Dict[str, Any]] = None, timeout: Optional[f
             resp = requests.get(url, params=params or {}, timeout=to)
         except requests.RequestException as exc:  # pragma: no cover - error de red
             if intento < 2:
-                espera = 2 ** intento  # 1s, 2s
+                espera = 6 * (intento + 1)  # 6s, 12s, 18s
                 logger.warning("LigaMX API: error de red en %s (intento %d/3, espera %ds): %s", path, intento + 1, espera, exc)
                 time.sleep(espera)
                 continue
@@ -102,7 +102,7 @@ def _get(path: str, params: Optional[Dict[str, Any]] = None, timeout: Optional[f
             return resp.json()
         # 5xx transitorio (502, 503, 504) -> reintentar con backoff
         if 500 <= resp.status_code < 600 and intento < 2:
-            espera = 2 ** intento  # 1s, 2s
+            espera = 6 * (intento + 1)  # 6s, 12s, 18s
             logger.warning("LigaMX API: HTTP %d en %s (intento %d/3, espera %ds)", resp.status_code, path, intento + 1, espera)
             time.sleep(espera)
             continue
