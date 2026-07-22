@@ -340,22 +340,21 @@ def cargar_calendario(path: Path = CALENDARIO_PATH) -> List[Dict[str, Any]]:
     """
     Carga data/calendario.json con el esquema:
         [{"jornada": 1, "partidos": [{"home_team","away_team"}, ...]}, ...]
+    Busca en: path (o CALENDARIO_PATH) y si no, data/calendario.json
+    (relativo al CWD, por si Docker puso el archivo en otra ruta).
     Devuelve [] si no existe o no tiene el esquema esperado (no rompe).
     """
-    p = Path(path)
-    if not p.exists():
-        return []
-    try:
-        data = json.loads(p.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return []
-    if not isinstance(data, list):
-        return []
-    salida = []
-    for j in data:
-        if isinstance(j, dict) and "jornada" in j and isinstance(j.get("partidos"), list):
-            salida.append(j)
-    return salida
+    for p in [Path(path), Path("data/calendario.json")]:
+        if p.exists() and p.is_file():
+            try:
+                data = json.loads(p.read_text(encoding="utf-8"))
+                if isinstance(data, list):
+                    salida = [j for j in data if isinstance(j, dict) and "jornada" in j and isinstance(j.get("partidos"), list)]
+                    if salida:
+                        return salida
+            except (json.JSONDecodeError, OSError):
+                continue
+    return []
 
 
 def main() -> int:
