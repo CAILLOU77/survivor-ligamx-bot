@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 planificador_survivor.py — Estrategia de temporada para el Survivor (PlayDoit).
+import base64
 
 El problema NO es "qué equipo es mejor esta jornada", sino "en QUÉ jornada usar
 cada equipo" mirando TODO el calendario, sin repetir, para:
