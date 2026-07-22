@@ -1,4 +1,4 @@
-r# 🤝 HANDOFF — Survivor Liga MX Bot
+# 🤝 HANDOFF — Survivor Liga MX Bot
 
 ## 1. Identidad
 - **Repo:** `CAILLOU77/survivor-ligamx-bot` · rama principal `main`
