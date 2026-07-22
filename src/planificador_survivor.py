@@ -336,39 +336,26 @@ def construir_odds_por_partido(
     return out
 
 
-def cargar_calendario(path: Optional[Path] = None) -> List[Dict[str, Any]]:
+def cargar_calendario(path: Path = CALENDARIO_PATH) -> List[Dict[str, Any]]:
     """
     Carga data/calendario.json con el esquema:
         [{"jornada": 1, "partidos": [{"home_team","away_team"}, ...]}, ...]
-    Busca en orden:
-    1.  explícito (o CALENDARIO_PATH por defecto)
-    2. data/calendario.json relativo al CWD
-    3. Variable de entorno CALENDARIO_JSON_PATH
     Devuelve [] si no existe o no tiene el esquema esperado (no rompe).
     """
-    candidatos = [
-        path or CALENDARIO_PATH,
-        Path("data/calendario.json"),
-    ]
-    env_path = os.getenv("CALENDARIO_JSON_PATH", "").strip()
-    if env_path:
-        candidatos.append(Path(env_path))
-    for p in candidatos:
-        if p.exists() and p.is_file():
-            try:
-                data = json.loads(p.read_text(encoding="utf-8"))
-            except (json.JSONDecodeError, OSError):
-                continue
-            if not isinstance(data, list):
-                continue
-            salida = []
-            for j in data:
-                if isinstance(j, dict) and "jornada" in j and isinstance(j.get("partidos"), list):
-                    salida.append(j)
-            if salida:
-                return salida
-            return []
-    return []
+    p = Path(path)
+    if not p.exists():
+        return []
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return []
+    if not isinstance(data, list):
+        return []
+    salida = []
+    for j in data:
+        if isinstance(j, dict) and "jornada" in j and isinstance(j.get("partidos"), list):
+            salida.append(j)
+    return salida
 
 
 def main() -> int:

@@ -58,8 +58,6 @@ except ImportError:  # pragma: no cover - ruta alterna de import
         teams_match,
     )
 
-import time    # para reintentos con backoff
-
 DEFAULT_BASE_URL = "https://ligamx-api.onrender.com"
 DECISION = "INFORMATIVO / REVISIÓN HUMANA"
 
@@ -80,35 +78,18 @@ def _get(path: str, params: Optional[Dict[str, Any]] = None, timeout: Optional[f
     """
     GET a la API y devuelve el JSON parseado. Lanza RuntimeError con un mensaje
     claro si falta `requests`, hay error de red o la API responde != 200.
-    Reintenta hasta 3 veces con backoff exponencial (1s, 2s) ante errores 5xx
-    (502 Bad Gateway, 503, 504) que son transitorios en Render.
     `timeout`: segundos por request (default LIGAMX_API_TIMEOUT).
     """
     if requests is None:
         raise RuntimeError("La dependencia 'requests' no está instalada.")
     url = f"{base_url()}/{path.lstrip('/')}"
-    to = timeout if timeout is not None else _timeout()
-    for intento in range(3):
-        try:
-            resp = requests.get(url, params=params or {}, timeout=to)
-        except requests.RequestException as exc:  # pragma: no cover - error de red
-            if intento < 2:
-                espera = 6 * (intento + 1)  # 6s, 12s, 18s
-                logger.warning("LigaMX API: error de red en %s (intento %d/3, espera %ds): %s", path, intento + 1, espera, exc)
-                time.sleep(espera)
-                continue
-            raise RuntimeError(f"No se pudo conectar a la Liga MX API tras {intento + 1} intentos: {exc}") from exc
-        if resp.status_code == 200:
-            return resp.json()
-        # 5xx transitorio (502, 503, 504) -> reintentar con backoff
-        if 500 <= resp.status_code < 600 and intento < 2:
-            espera = 6 * (intento + 1)  # 6s, 12s, 18s
-            logger.warning("LigaMX API: HTTP %d en %s (intento %d/3, espera %ds)", resp.status_code, path, intento + 1, espera)
-            time.sleep(espera)
-            continue
+    try:
+        resp = requests.get(url, params=params or {}, timeout=timeout if timeout is not None else _timeout())
+    except requests.RequestException as exc:  # pragma: no cover - error de red
+        raise RuntimeError(f"No se pudo conectar a la Liga MX API: {exc}") from exc
+    if resp.status_code != 200:
         raise RuntimeError(f"Liga MX API respondió HTTP {resp.status_code} en {path}.")
-    # No debería llegar aquí
-    raise RuntimeError(f"Liga MX API no respondió tras reintentos en {path}.")
+    return resp.json()
 
 
 # ---------------------------------------------------------------------------
@@ -318,15 +299,9 @@ def mapa_equipos() -> Dict[str, int]:
     Mapa {clave_canónica_del_nombre: team_id} de los 18 equipos. El `team_id` es
     la llave que habilita /predict, /h2h y proyecciones por partido. Usa
     `team_normalizer.canonical_team_key` para que casen alias/acentos.
-    Tolerante: si la API falla devuelve {} (vacío) en vez de propagar error.
     """
-    try:
-        equipos = obtener_equipos(limit=100)
-    except Exception as exc:
-        logger.warning("LigaMX API: mapa_equipos() no disponible — %s", exc)
-        return {}
     mapa: Dict[str, int] = {}
-    for e in equipos:
+    for e in obtener_equipos(limit=100):
         nombre, tid = e.get("name"), e.get("id")
         if nombre and tid is not None:
             mapa[canonical_team_key(nombre)] = int(tid)
