@@ -17,12 +17,14 @@ _TELEGRAM_LIMITE = 4000
 def _norm_simple(s: str) -> str:
     return " ".join(str(s or "").lower().split())
 
+
 def _pct(v: Any) -> str:
     """Porcentaje legible en móvil: sin decimales de ruido (55.0 -> '55')."""
     try:
         return str(int(round(float(v))))
     except (TypeError, ValueError):
         return str(v)
+
 
 def _fecha_mx(generado_utc: str) -> str:
     """Fecha/hora en horario de Ciudad de México, sin segundos. Fallback a UTC."""
@@ -35,6 +37,7 @@ def _fecha_mx(generado_utc: str) -> str:
         return dt.astimezone(ZoneInfo("America/Mexico_City")).strftime("%d/%m/%Y %H:%M") + " h (CDMX)"
     except Exception:
         return s.replace("T", " ").replace("Z", " UTC")
+
 
 def _cerca_de_jornada(pronosticos, dias: int = 2) -> bool:
     """
@@ -56,6 +59,7 @@ def _cerca_de_jornada(pronosticos, dias: int = 2) -> bool:
     if not fechas:
         return False
     return (min(fechas) - hoy).days <= dias
+
 
 def _linea_goles(p: Dict[str, Any]) -> str:
     """Línea de goles: pick Over/Under con su %, BTTS y marcador más probable.
@@ -105,6 +109,7 @@ def _linea_goles(p: Dict[str, Any]) -> str:
             )
     return linea
 
+
 def _dividir_mensaje(texto: str, limite: int = _TELEGRAM_LIMITE) -> List[str]:
     """
     Parte un mensaje largo en trozos <= `limite`, cortando SIEMPRE en saltos de
@@ -132,6 +137,7 @@ def _dividir_mensaje(texto: str, limite: int = _TELEGRAM_LIMITE) -> List[str]:
         partes.append(actual)
     return partes
 
+
 def _totales_jornada(pronosticos: list) -> Dict[str, Any]:
     """Calcula totales de la jornada: partidos, goles esperados, O/U, BTTS."""
     if not pronosticos:
@@ -158,6 +164,7 @@ def _totales_jornada(pronosticos: list) -> Dict[str, Any]:
         "btts_si_count": btts_si,
         "btts_no_count": btts_no,
     }
+
 
 def _marcador_a_favor(marcador: str, es_local: bool) -> str:
     """Orienta 'local-visitante' al lado del equipo elegido (equipo-rival)."""

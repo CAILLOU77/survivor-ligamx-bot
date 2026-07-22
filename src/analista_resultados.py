@@ -22,6 +22,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Set, Tuple, cast
 import logging
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -116,10 +117,10 @@ def _extraer_eventos_espn(ev: Dict[str, Any]) -> List[Dict[str, Any]]:
     eventos: List[Dict[str, Any]] = []
     comps = ev.get("competitions") or [{}]
     comp = comps[0] if comps else {}
-    for e in (comp.get("events") or []):
+    for e in comp.get("events") or []:
         if not isinstance(e, dict):
             continue
-        tipo_raw = ((e.get("type") or {}).get("text") or (e.get("type") or {}).get("name") or "")
+        tipo_raw = (e.get("type") or {}).get("text") or (e.get("type") or {}).get("name") or ""
         tipo = str(tipo_raw).lower()
         minuto = (e.get("clock") or {}).get("displayValue", "") or ""
         equipo = ""
@@ -135,7 +136,9 @@ def _extraer_eventos_espn(ev: Dict[str, Any]) -> List[Dict[str, Any]]:
         if "goal" in tipo:
             eventos.append({"type": "goal", "minute": minuto, "team": equipo, "player": jugador, "detail": detalle})
         elif "yellow" in tipo:
-            eventos.append({"type": "yellow_card", "minute": minuto, "team": equipo, "player": jugador, "detail": detalle})
+            eventos.append(
+                {"type": "yellow_card", "minute": minuto, "team": equipo, "player": jugador, "detail": detalle}
+            )
         elif "red" in tipo:
             eventos.append({"type": "red_card", "minute": minuto, "team": equipo, "player": jugador, "detail": detalle})
         elif "substitution" in tipo or "sub" in tipo:
@@ -145,7 +148,17 @@ def _extraer_eventos_espn(ev: Dict[str, Any]) -> List[Dict[str, Any]]:
                 sale = athletes[0].get("displayName", "") or athletes[0].get("name", "")
             if len(athletes) >= 2 and isinstance(athletes[1], dict):
                 entra = athletes[1].get("displayName", "") or athletes[1].get("name", "")
-            eventos.append({"type": "substitution", "minute": minuto, "team": equipo, "player": sale, "playerIn": entra, "playerOut": sale, "detail": detalle})
+            eventos.append(
+                {
+                    "type": "substitution",
+                    "minute": minuto,
+                    "team": equipo,
+                    "player": sale,
+                    "playerIn": entra,
+                    "playerOut": sale,
+                    "detail": detalle,
+                }
+            )
         elif "penalty" in tipo:
             eventos.append({"type": "penalty", "minute": minuto, "team": equipo, "player": jugador, "detail": detalle})
     return eventos
@@ -293,7 +306,7 @@ def _buscar_eventos_partido(home: str, away: str, fecha: str) -> List[Dict[str, 
                     elif c.get("homeAway") == "away":
                         a_name = team_name
                 if home.lower() in h_name.lower() and away.lower() in a_name.lower():
-                    for e in (comp.get("events") or []):
+                    for e in comp.get("events") or []:
                         if not isinstance(e, dict):
                             continue
                         tipo = ((e.get("type") or {}).get("text") or "").lower()
@@ -308,13 +321,39 @@ def _buscar_eventos_partido(home: str, away: str, fecha: str) -> List[Dict[str, 
                             jugador = athletes[0].get("displayName", "")
                         detalle = e.get("text", "") or ""
                         if "goal" in tipo or "gol" in tipo:
-                            eventos.append({"type": "goal", "minute": minuto, "team": equipo, "player": jugador, "detail": detalle})
+                            eventos.append(
+                                {"type": "goal", "minute": minuto, "team": equipo, "player": jugador, "detail": detalle}
+                            )
                         elif "yellow" in tipo or "tarjeta amarilla" in tipo:
-                            eventos.append({"type": "yellow_card", "minute": minuto, "team": equipo, "player": jugador, "detail": detalle})
+                            eventos.append(
+                                {
+                                    "type": "yellow_card",
+                                    "minute": minuto,
+                                    "team": equipo,
+                                    "player": jugador,
+                                    "detail": detalle,
+                                }
+                            )
                         elif "red" in tipo or "tarjeta roja" in tipo:
-                            eventos.append({"type": "red_card", "minute": minuto, "team": equipo, "player": jugador, "detail": detalle})
+                            eventos.append(
+                                {
+                                    "type": "red_card",
+                                    "minute": minuto,
+                                    "team": equipo,
+                                    "player": jugador,
+                                    "detail": detalle,
+                                }
+                            )
                         elif "substitution" in tipo or "cambio" in tipo:
-                            eventos.append({"type": "substitution", "minute": minuto, "team": equipo, "player": jugador, "detail": detalle})
+                            eventos.append(
+                                {
+                                    "type": "substitution",
+                                    "minute": minuto,
+                                    "team": equipo,
+                                    "player": jugador,
+                                    "detail": detalle,
+                                }
+                            )
     except Exception:
         logger.debug("Exception silenciada en _buscar_eventos_partido", exc_info=True)
 
@@ -331,25 +370,30 @@ def _buscar_eventos_partido(home: str, away: str, fecha: str) -> List[Dict[str, 
                 snippet = r.get("snippet", "")
                 texto = f"{titulo} {snippet}".lower()
                 import re
+
                 goles = re.findall(r"(\d+)\s*[-:]\s*(\d+)", texto)
                 if goles:
-                    eventos.append({
-                        "type": "goal_search",
-                        "team": home if home.lower() in texto else away if away.lower() in texto else "",
-                        "player": "",
-                        "minute": "",
-                        "detail": f"Resultado según búsqueda: {goles[0][0]}-{goles[0][1]}",
-                        "source": r.get("url", ""),
-                    })
+                    eventos.append(
+                        {
+                            "type": "goal_search",
+                            "team": home if home.lower() in texto else away if away.lower() in texto else "",
+                            "player": "",
+                            "minute": "",
+                            "detail": f"Resultado según búsqueda: {goles[0][0]}-{goles[0][1]}",
+                            "source": r.get("url", ""),
+                        }
+                    )
                 if "expuls" in texto or "roja" in texto or "red card" in texto:
-                    eventos.append({
-                        "type": "card_search",
-                        "team": home if home.lower() in texto else away if away.lower() in texto else "",
-                        "player": "",
-                        "minute": "",
-                        "detail": "Expulsión reportada",
-                        "source": r.get("url", ""),
-                    })
+                    eventos.append(
+                        {
+                            "type": "card_search",
+                            "team": home if home.lower() in texto else away if away.lower() in texto else "",
+                            "player": "",
+                            "minute": "",
+                            "detail": "Expulsión reportada",
+                            "source": r.get("url", ""),
+                        }
+                    )
 
     return eventos[:15]
 
@@ -420,6 +464,7 @@ def obtener_detalle_partido(home: str, away: str, event_id: Optional[str] = None
     if not out["eventos"] and fecha:
         try:
             from datetime import datetime as _dt
+
             fecha_dt = _dt.strptime(fecha, "%Y-%m-%d")
             ahora = _dt.now()
             if (ahora - fecha_dt).days <= 7:
@@ -448,7 +493,10 @@ def _formatear_eventos(eventos: List[Dict[str, Any]]) -> List[str]:
         jugador = str(e.get("player", "") or e.get("playerName", "") or e.get("athlete", "") or e.get("name", "") or "")
         detalle = str(e.get("detail", "") or e.get("description", "") or e.get("text", "") or "")
         # Ignorar eventos basura de búsqueda web
-        if any(k in tipo_raw for k in ["search", "goal_search", "card_search", "injury_search", "substitution_search", "penalty_search"]):
+        if any(
+            k in tipo_raw
+            for k in ["search", "goal_search", "card_search", "injury_search", "substitution_search", "penalty_search"]
+        ):
             continue
         if not tipo_raw and not jugador:
             continue
@@ -477,6 +525,7 @@ def _formatear_eventos(eventos: List[Dict[str, Any]]) -> List[str]:
             continue
         # Extraer minuto numérico del campo minute para ordenar
         import re
+
         m = re.search(r"(\d+)", minuto)
         minuto_sort = int(m.group(1)) if m else 9999
         items.append((minuto_sort, linea))
@@ -488,7 +537,7 @@ def _formatear_eventos(eventos: List[Dict[str, Any]]) -> List[str]:
 def _formatear_tarjetas(eventos: List[Dict[str, Any]]) -> List[str]:
     """Solo tarjetas amarillas y rojas."""
     out: List[str] = []
-    for e in (eventos or []):
+    for e in eventos or []:
         if not isinstance(e, dict):
             continue
         tipo = str(e.get("type", "") or e.get("category", "") or "").lower()
@@ -517,7 +566,9 @@ def _goles_desde_marcador(home: str, away: str, hg: Optional[int], ag: Optional[
     return lineas
 
 
-def _senales_partido(home: str, away: str, hg: Optional[int], ag: Optional[int], eventos: List[Dict[str, Any]]) -> Tuple[List[str], Set[str], Set[str]]:
+def _senales_partido(
+    home: str, away: str, hg: Optional[int], ag: Optional[int], eventos: List[Dict[str, Any]]
+) -> Tuple[List[str], Set[str], Set[str]]:
     """
     Detecta señales relevantes del partido a partir de marcador + eventos:
     - Underdog visitante que gana
@@ -534,7 +585,7 @@ def _senales_partido(home: str, away: str, hg: Optional[int], ag: Optional[int],
 
     # Contar rojas por equipo
     rojas: Dict[str, int] = {}
-    for e in (eventos or []):
+    for e in eventos or []:
         if not isinstance(e, dict):
             continue
         tipo = str(e.get("type", "") or e.get("category", "") or "").lower()
@@ -576,7 +627,9 @@ def _senales_partido(home: str, away: str, hg: Optional[int], ag: Optional[int],
     return senales, bien, mal
 
 
-def _conclusion_ia(home: str, away: str, detalle: Dict[str, Any], hg: Optional[int] = None, ag: Optional[int] = None) -> Dict[str, Any]:
+def _conclusion_ia(
+    home: str, away: str, detalle: Dict[str, Any], hg: Optional[int] = None, ag: Optional[int] = None
+) -> Dict[str, Any]:
     """
     Pide a la IA una conclusión del partido basada SOLO en datos reales.
     Incluye señales detectadas (underdog, local que pierde, roja) para que la IA
@@ -626,7 +679,11 @@ def _conclusion_ia(home: str, away: str, detalle: Dict[str, Any], hg: Optional[i
     else:
         impacto_txt = "Impacto XI no disponible."
 
-    marcador_txt = f"Marcador final: {home} {hg or '?'} - {ag or '?'} {away}" if hg is not None and ag is not None else "Marcador final no disponible."
+    marcador_txt = (
+        f"Marcador final: {home} {hg or '?'} - {ag or '?'} {away}"
+        if hg is not None and ag is not None
+        else "Marcador final no disponible."
+    )
 
     # Señales detectadas automáticamente (underdog, local que pierde, roja)
     senales, _, _ = _senales_partido(home, away, hg, ag, detalle.get("eventos", []))
@@ -656,7 +713,10 @@ def _conclusion_ia(home: str, away: str, detalle: Dict[str, Any], hg: Optional[i
     payload = {
         "model": ia._modelo(),
         "messages": [
-            {"role": "system", "content": "Eres analista de Liga MX. Conciso, objetivo y honesto. Nunca inventes datos. Si no hay información, dilo."},
+            {
+                "role": "system",
+                "content": "Eres analista de Liga MX. Conciso, objetivo y honesto. Nunca inventes datos. Si no hay información, dilo.",
+            },
             {"role": "user", "content": user},
         ],
         "temperature": 0.3,
@@ -677,16 +737,19 @@ def _conclusion_ia(home: str, away: str, detalle: Dict[str, Any], hg: Optional[i
     # Fallback: conclusión descriptiva sin IA
     if hg is not None and ag is not None:
         if hg > ag:
-            conclusion = (f"{home} ganó {hg}-{ag} a {away}. "
-                          f"Victoria local con {hg} goles. "
-                          f"Señales: {home} GANÓ DE LOCAL vs {away}.")
+            conclusion = (
+                f"{home} ganó {hg}-{ag} a {away}. "
+                f"Victoria local con {hg} goles. "
+                f"Señales: {home} GANÓ DE LOCAL vs {away}."
+            )
         elif hg < ag:
-            conclusion = (f"{away} ganó {ag}-{hg} a {home}. "
-                          f"Victoria visitante (underdog) con {ag} goles. "
-                          f"Señales: {away} GANÓ COMO VISITANTE (underdog) vs {home}.")
+            conclusion = (
+                f"{away} ganó {ag}-{hg} a {home}. "
+                f"Victoria visitante (underdog) con {ag} goles. "
+                f"Señales: {away} GANÓ COMO VISITANTE (underdog) vs {home}."
+            )
         else:
-            conclusion = (f"Empate {hg}-{ag} entre {home} y {away}. "
-                          f"Reparto de puntos.")
+            conclusion = f"Empate {hg}-{ag} entre {home} y {away}. Reparto de puntos."
         return {"disponible": True, "conclusion": conclusion}
     return {
         "disponible": False,
@@ -782,7 +845,9 @@ def _procesar_partido(p: Dict[str, Any], picks_anteriores: List[Dict[str, Any]])
     return ret
 
 
-def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+def analizar_jornada(
+    fecha: Optional[str] = None, picks_anteriores: Optional[List[Dict[str, Any]]] = None
+) -> Dict[str, Any]:
     """
     Analiza TODOS los partidos YA JUGADOS de la jornada actual.
     Devuelve un dict con:
@@ -793,7 +858,12 @@ def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[Lis
     """
     partidos = obtener_partidos_jornada(fecha)
     if not partidos:
-        return {"partidos": [], "resumen": "No hay partidos jugados aún en la jornada actual.", "resumen_2": "", "tabla_posiciones": ""}
+        return {
+            "partidos": [],
+            "resumen": "No hay partidos jugados aún en la jornada actual.",
+            "resumen_2": "",
+            "tabla_posiciones": "",
+        }
 
     picks_anteriores = picks_anteriores or []
 
@@ -806,15 +876,21 @@ def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[Lis
                 analisis.append(fut.result())
             except Exception:
                 p = futuros[fut]
-                analisis.append({
-                    "home": p.get("home_team", ""),
-                    "away": p.get("away_team", ""),
-                    "home_goals": p.get("home_goals"),
-                    "away_goals": p.get("away_goals"),
-                    "eventos": [], "eventos_lineas": [], "tarjetas": [],
-                    "alineacion": None, "impacto_xi": None, "picks_lineas": [],
-                    "conclusion_ia": {"disponible": False, "motivo": "Error al procesar", "conclusion": ""},
-                })
+                analisis.append(
+                    {
+                        "home": p.get("home_team", ""),
+                        "away": p.get("away_team", ""),
+                        "home_goals": p.get("home_goals"),
+                        "away_goals": p.get("away_goals"),
+                        "eventos": [],
+                        "eventos_lineas": [],
+                        "tarjetas": [],
+                        "alineacion": None,
+                        "impacto_xi": None,
+                        "picks_lineas": [],
+                        "conclusion_ia": {"disponible": False, "motivo": "Error al procesar", "conclusion": ""},
+                    }
+                )
     # Ordenar por fecha/orden original de la jornada
     mapa_orden = {(p.get("home_team"), p.get("away_team")): i for i, p in enumerate(partidos)}
     analisis.sort(key=lambda a: mapa_orden.get((a["home"], a["away"]), 0))
@@ -822,8 +898,10 @@ def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[Lis
     # Estadísticas por equipo (solo esta jornada, para contexto si hiciera falta)
     stats_equipos: Dict[str, Dict[str, Any]] = {}
     for a in analisis:
-        home = a["home"]; away = a["away"]
-        hg = a.get("home_goals"); ag = a.get("away_goals")
+        home = a["home"]
+        away = a["away"]
+        hg = a.get("home_goals")
+        ag = a.get("away_goals")
         for equipo, gf, gc in [(home, hg or 0, ag or 0), (away, ag or 0, hg or 0)]:
             if equipo not in stats_equipos:
                 stats_equipos[equipo] = {"gf": 0, "gc": 0, "pj": 0, "g": 0, "e": 0, "p": 0, "puntos": 0}
@@ -831,9 +909,11 @@ def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[Lis
             stats_equipos[equipo]["gc"] += gc
             stats_equipos[equipo]["pj"] += 1
             if gf > gc:
-                stats_equipos[equipo]["g"] += 1; stats_equipos[equipo]["puntos"] += 3
+                stats_equipos[equipo]["g"] += 1
+                stats_equipos[equipo]["puntos"] += 3
             elif gf == gc:
-                stats_equipos[equipo]["e"] += 1; stats_equipos[equipo]["puntos"] += 1
+                stats_equipos[equipo]["e"] += 1
+                stats_equipos[equipo]["puntos"] += 1
             else:
                 stats_equipos[equipo]["p"] += 1
 
@@ -852,10 +932,12 @@ def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[Lis
     ]
     if not tabla_torneo:
         tabla_lineas.append("(sin datos aún)")
-    for pos, (eq, st) in enumerate(sorted(tabla_torneo.items(), key=lambda x: (x[1]["puntos"], x[1]["gf"] - x[1]["gc"]), reverse=True), 1):
-        dg = st['gf'] - st['gc']
+    for pos, (eq, st) in enumerate(
+        sorted(tabla_torneo.items(), key=lambda x: (x[1]["puntos"], x[1]["gf"] - x[1]["gc"]), reverse=True), 1
+    ):
+        dg = st["gf"] - st["gc"]
         dg_str = f"+{dg}" if dg > 0 else str(dg)
-        pts = st['puntos']
+        pts = st["puntos"]
         # Formato compacto: posición | equipo | pts | pj | dg
         tabla_lineas.append(f"{pos}º {eq}")
         tabla_lineas.append(f"   PTS:{pts}  PJ:{st['pj']}  DG:{dg_str}")
@@ -865,8 +947,8 @@ def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[Lis
     bien_set: set = set()
     mal_set: set = set()
     for a in analisis:
-        bien_set |= (a.get("bien") or set())
-        mal_set |= (a.get("mal") or set())
+        bien_set |= a.get("bien") or set()
+        mal_set |= a.get("mal") or set()
     # Un equipo no puede estar en ambos: si aparece en los dos, lo quitamos de MAL
     mal_set -= bien_set
     if bien_set or mal_set:
@@ -921,8 +1003,10 @@ def analizar_jornada(fecha: Optional[str] = None, picks_anteriores: Optional[Lis
 
 def _bloque_partido(a: Dict[str, Any]) -> List[str]:
     """Arma el bloque de un partido para Telegram (con contexto)."""
-    home = a["home"]; away = a["away"]
-    hg = a.get("home_goals"); ag = a.get("away_goals")
+    home = a["home"]
+    away = a["away"]
+    hg = a.get("home_goals")
+    ag = a.get("away_goals")
 
     # Encabezado del partido
     if hg is not None and ag is not None:
@@ -996,6 +1080,7 @@ def _guardar_resultados_jornada(stats_equipos: Dict[str, Dict[str, Any]], fecha:
     """
     import json
     from pathlib import Path
+
     BASE_DIR = Path(__file__).resolve().parents[1]
     historial_path = BASE_DIR / "data" / "historial_resultados.json"
     try:
@@ -1018,9 +1103,7 @@ def _guardar_resultados_jornada(stats_equipos: Dict[str, Dict[str, Any]], fecha:
     }
     historial["por_fecha"] = por_fecha
     # Mantener también lista legible de las últimas 10 fechas
-    historial["jornadas"] = [
-        por_fecha[f] for f in sorted(por_fecha.keys())[-10:]
-    ]
+    historial["jornadas"] = [por_fecha[f] for f in sorted(por_fecha.keys())[-10:]]
 
     try:
         historial_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1064,6 +1147,7 @@ def cargar_historial_resultados() -> Dict[str, Any]:
     """Carga el historial de resultados de las jornadas guardadas."""
     import json
     from pathlib import Path
+
     BASE_DIR = Path(__file__).resolve().parents[1]
     historial_path = BASE_DIR / "data" / "historial_resultados.json"
     try:

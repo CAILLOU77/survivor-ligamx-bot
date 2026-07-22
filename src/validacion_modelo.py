@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Sequence
 import logging
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -150,7 +151,9 @@ def metricas_rendimiento() -> dict:
     }
 
     # Intentar cargar desde cache de métricas si existe
-    cache_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "metricas_cache.json")
+    cache_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "metricas_cache.json"
+    )
     try:
         with open(cache_path, "r") as f:
             cached = json.load(f)
@@ -162,6 +165,7 @@ def metricas_rendimiento() -> dict:
     if metrics["total_predicciones"] == 0:
         try:
             from src.database import get_history
+
             history = get_history(limit=1000)
             if history:
                 total = len(history)

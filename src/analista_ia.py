@@ -27,6 +27,7 @@ import json
 import os
 from typing import Any, Dict, List
 import logging
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -104,11 +105,13 @@ def _buscar_web(query: str, max_results: int = 5) -> List[Dict[str, str]]:
             data = resp.json()
             for item in (data.get("items") or [])[:max_results]:
                 if isinstance(item, dict):
-                    resultados.append({
-                        "title": item.get("headline", "") or item.get("title", ""),
-                        "url": item.get("links", {}).get("web", {}).get("href", "") or item.get("url", ""),
-                        "snippet": item.get("description", "") or item.get("summary", ""),
-                    })
+                    resultados.append(
+                        {
+                            "title": item.get("headline", "") or item.get("title", ""),
+                            "url": item.get("links", {}).get("web", {}).get("href", "") or item.get("url", ""),
+                            "snippet": item.get("description", "") or item.get("summary", ""),
+                        }
+                    )
     except Exception:
         logger.debug("Exception silenciada en _buscar_web", exc_info=True)
     # Fallback: Google News RSS via requests
@@ -122,20 +125,23 @@ def _buscar_web(query: str, max_results: int = 5) -> List[Dict[str, str]]:
             )
             if resp.status_code == 200:
                 import re as _re
-                items = _re.findall(r'<item>(.*?)</item>', resp.text, _re.DOTALL)
+
+                items = _re.findall(r"<item>(.*?)</item>", resp.text, _re.DOTALL)
                 for item in items[:max_results]:
-                    titulo = _re.search(r'<title>(.*?)</title>', item, _re.DOTALL)
-                    link = _re.search(r'<link/>(.*?)$', item, _re.MULTILINE)
-                    desc = _re.search(r'<description>(.*?)</description>', item, _re.DOTALL)
+                    titulo = _re.search(r"<title>(.*?)</title>", item, _re.DOTALL)
+                    link = _re.search(r"<link/>(.*?)$", item, _re.MULTILINE)
+                    desc = _re.search(r"<description>(.*?)</description>", item, _re.DOTALL)
                     url = ""
                     if link:
                         url = link.group(1).strip()
                     if titulo:
-                        resultados.append({
-                            "title": _re.sub(r'<[^>]+>', '', titulo.group(1)).strip(),
-                            "url": url,
-                            "snippet": _re.sub(r'<[^>]+>', '', desc.group(1)).strip() if desc else "",
-                        })
+                        resultados.append(
+                            {
+                                "title": _re.sub(r"<[^>]+>", "", titulo.group(1)).strip(),
+                                "url": url,
+                                "snippet": _re.sub(r"<[^>]+>", "", desc.group(1)).strip() if desc else "",
+                            }
+                        )
         except Exception:
             logger.debug("Exception silenciada en _buscar_web", exc_info=True)
     # Tercer fallback: obtener contenido completo de las URLs encontradas
@@ -145,8 +151,9 @@ def _buscar_web(query: str, max_results: int = 5) -> List[Dict[str, str]]:
                 page_resp = requests.get(r["url"], timeout=8, headers={"User-Agent": "Mozilla/5.0"})
                 if page_resp.status_code == 200:
                     import re as _re2
-                    texto = _re2.sub(r'<[^>]+>', ' ', page_resp.text)
-                    texto = ' '.join(texto.split())
+
+                    texto = _re2.sub(r"<[^>]+>", " ", page_resp.text)
+                    texto = " ".join(texto.split())
                     r["snippet"] = texto[:500]
             except Exception:
                 logger.debug("Exception silenciada en _buscar_web", exc_info=True)
@@ -176,7 +183,7 @@ def _enriquecer_con_busqueda_web(equipos: List[str], noticias: List[Dict[str, An
         consultas.append(f"{eq} resultado último partido 2026")
     # Búsquedas específicas por jugadores mencionados en las noticias
     jugadores_mencionados: set = set()
-    for n in (noticias or []):
+    for n in noticias or []:
         if not isinstance(n, dict):
             continue
         titulo = n.get("titulo") or n.get("title") or ""
@@ -192,8 +199,8 @@ def _enriquecer_con_busqueda_web(equipos: List[str], noticias: List[Dict[str, An
         if resultados:
             resultados_txt.append(f"\n🔍 Búsqueda web: {q}")
             for r in resultados:
-                titulo = r.get('title', '')
-                snippet = r.get('snippet', '')
+                titulo = r.get("title", "")
+                snippet = r.get("snippet", "")
                 if titulo or snippet:
                     resultados_txt.append(f"- {titulo}: {snippet[:200]}")
     return "\n".join(resultados_txt) if resultados_txt else ""

@@ -8,6 +8,7 @@ Vive en su propio módulo (y no en ``api.py``) para que los routers puedan
 reutilizar ``verify_api_key`` sin provocar un import circular, ya que
 ``api.py`` importa los routers.
 """
+
 import os
 from typing import Optional
 

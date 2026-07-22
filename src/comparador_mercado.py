@@ -27,6 +27,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, cast
 import logging
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -671,7 +672,9 @@ def _casas_activas() -> List[str]:
         return _ACTIVAS_CACHE
     try:
         data = _get(f"{BASE_URL}/bookmakers", {})
-        _ACTIVAS_CACHE = [cast(str, b.get("name")) for b in data if isinstance(b, dict) and b.get("active") and b.get("name")]
+        _ACTIVAS_CACHE = [
+            cast(str, b.get("name")) for b in data if isinstance(b, dict) and b.get("active") and b.get("name")
+        ]
     except RuntimeError:
         _ACTIVAS_CACHE = []
     return _ACTIVAS_CACHE

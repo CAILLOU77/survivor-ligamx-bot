@@ -25,6 +25,7 @@ import threading
 import time
 from datetime import datetime, timedelta
 import logging
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -64,6 +65,7 @@ def _proximo_disparo() -> float:
 def _wake_up() -> None:
     """Ping a /health para despertar el Web Service y la API de 365scores."""
     import requests
+
     port = os.getenv("PORT", "8000")
     api_base = os.getenv("API_BASE", "").strip().rstrip("/")
     urls = [f"http://127.0.0.1:{port}/health"]
@@ -78,6 +80,7 @@ def _wake_up() -> None:
 
 def _loop() -> None:
     from src.telegram_pronosticos import enviar_analisis_jornada
+
     wakeup = int(os.getenv("SCHEDULER_WAKEUP_MINUTES", "10") or "10")
     while True:
         espera = _proximo_disparo()

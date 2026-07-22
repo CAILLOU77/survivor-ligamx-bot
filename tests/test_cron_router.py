@@ -52,8 +52,10 @@ class TestCronBacktestAuth(unittest.TestCase):
 
     def test_con_key_ejecuta_backtest(self):
         # run_backtest mockeado; el bloque de settle falla controladamente (sin red).
-        with mock.patch.object(cron_router, "run_backtest", return_value={"ok": True}), \
-             mock.patch("fuentes_datos.obtener_resultados", side_effect=RuntimeError("sin red en tests"), create=True):
+        with (
+            mock.patch.object(cron_router, "run_backtest", return_value={"ok": True}),
+            mock.patch("fuentes_datos.obtener_resultados", side_effect=RuntimeError("sin red en tests"), create=True),
+        ):
             r = self.client.post("/cron/backtest", headers={"X-API-Key": "testkey"})
         self.assertEqual(r.status_code, 200)
         body = r.json()

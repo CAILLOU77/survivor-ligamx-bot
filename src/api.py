@@ -1,4 +1,5 @@
 import logging
+
 logger = logging.getLogger(__name__)
 from fastapi import FastAPI, Request
 from slowapi import _rate_limit_exceeded_handler
@@ -27,6 +28,7 @@ from typing import Dict, List
 
 class HealthResponse(BaseModel):
     """Respuesta del healthcheck del sistema."""
+
     status: str  # "ok" o "degradado"
     version: str
     timestamp: str
@@ -35,6 +37,7 @@ class HealthResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     """Respuesta de error estándar."""
+
     detail: str
     error_code: Optional[str] = None
     timestamp: Optional[str] = None
@@ -42,6 +45,7 @@ class ErrorResponse(BaseModel):
 
 class UsadosResponse(BaseModel):
     """Lista de equipos usados en el Survivor."""
+
     usados: List[str]
     total: int
     decision: str = "INFORMATIVO / REVISIÓN HUMANA"
@@ -50,6 +54,7 @@ class UsadosResponse(BaseModel):
 
 class UsadoResponse(BaseModel):
     """Resultado de agregar/quitar un equipo usado."""
+
     equipo: str
     agregado: Optional[bool] = None
     quitado: Optional[bool] = None
@@ -59,6 +64,7 @@ class UsadoResponse(BaseModel):
 
 class MetricsResponse(BaseModel):
     """Métricas de rendimiento del modelo."""
+
     total_picks: int
     accuracy_1x2: Optional[float] = None
     accuracy_marcador: Optional[float] = None
@@ -71,6 +77,7 @@ class MetricsResponse(BaseModel):
 
 class PrediccionItem(BaseModel):
     """Una predicción individual."""
+
     equipo_local: str
     equipo_visitante: str
     probabilidad_local: float
@@ -84,6 +91,7 @@ class PrediccionItem(BaseModel):
 
 class PrediccionesResponse(BaseModel):
     """Lista de predicciones."""
+
     pronosticos: List[PrediccionItem]
     fuente_datos: Optional[str] = None
     generado_utc: Optional[str] = None
@@ -93,6 +101,7 @@ class PrediccionesResponse(BaseModel):
 
 class CronResponse(BaseModel):
     """Respuesta de un endpoint CRON."""
+
     status: str = "ok"
     message: Optional[str] = None
     timestamp: str
@@ -134,11 +143,11 @@ app.state.limiter = limiter
 try:
     if not getattr(app.state, "_scheduler_started", False):
         from src.scheduler import arrancar as _arrancar_scheduler
+
         _arrancar_scheduler()
         app.state._scheduler_started = True
 except Exception:  # pragma: no cover - el scheduler es opcional
     logger.debug("Exception silenciada en arranque del scheduler", exc_info=True)
-
 
 
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]  # firma de slowapi mas estrecha que la anotacion de Starlette
@@ -185,12 +194,14 @@ def health():
     - ligamx_api: ok si responde, error si no
     """
     import requests
+
     deps = {"base_de_datos": "error", "espn": "error", "ligamx_api": "error"}
     status_global = "ok"
 
     # 1) Base de datos
     try:
         from src.database import get_equipos_usados
+
         get_equipos_usados()
         deps["base_de_datos"] = "ok"
     except Exception as e:
@@ -349,7 +360,12 @@ def get_fichajes(request: Request, equipo: str):
 # ---------------------------------------------------------------------------
 # Equipos usados en el Survivor (persisten en la BD; el pick los excluye).
 # ---------------------------------------------------------------------------
-@app.get("/survivor/usados", response_model=UsadosResponse, summary="Lista de equipos ya usados en el Survivor", tags=["Survivor"])
+@app.get(
+    "/survivor/usados",
+    response_model=UsadosResponse,
+    summary="Lista de equipos ya usados en el Survivor",
+    tags=["Survivor"],
+)
 @limiter.limit("30/minute")
 def survivor_usados_listar(request: Request):
     """Equipos que ya gastaste (se excluyen automáticamente del pick y del plan)."""
@@ -485,7 +501,6 @@ def get_history_endpoint(request: Request, limit: int = 20, offset: int = 0, api
         raise HTTPException(status_code=500, detail=str(e))
 
 
-
 @app.get("/metrics", response_model=MetricsResponse, summary="Métricas de rendimiento del modelo", tags=["Analytics"])
 @limiter.limit("10/minute")
 def get_metrics_endpoint(request: Request):
@@ -499,12 +514,14 @@ def get_metrics_endpoint(request: Request):
     """
     try:
         from src.database import get_metrics as _get_metrics
+
         base = _get_metrics()
     except Exception:
         base = {"total_picks": 0, "wins": 0, "win_rate": 0.0, "total_profit": 0.0}
 
     try:
         from src.validacion_modelo import metricas_rendimiento
+
         extra = metricas_rendimiento()
     except Exception:
         extra = {}
@@ -519,6 +536,7 @@ def get_metrics_endpoint(request: Request):
         "total_predicciones": extra.get("total_predicciones", base.get("total_picks", 0)),
         "ultima_actualizacion": extra.get("ultima_actualizacion", None),
     }
+
 
 @app.post("/backtest/settle/{pick_id}", summary="Validar resultado de pick", tags=["Analytics"])
 def settle_pick_endpoint(

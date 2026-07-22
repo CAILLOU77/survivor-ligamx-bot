@@ -20,6 +20,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, cast
 import logging
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -112,16 +113,18 @@ def obtener_partidos_espn(fecha: Optional[str] = None, delta_dias: int = 2) -> L
             if clave in vistos:
                 continue
             vistos.add(clave)
-            partidos.append({
-                "home_team": home,
-                "away_team": away,
-                "home_goals": hg_i,
-                "away_goals": ag_i,
-                "estado": estado,
-                "event_id": ev.get("id"),
-                "fecha": str(ev.get("date", ""))[:10],
-                "fuente": "espn",
-            })
+            partidos.append(
+                {
+                    "home_team": home,
+                    "away_team": away,
+                    "home_goals": hg_i,
+                    "away_goals": ag_i,
+                    "estado": estado,
+                    "event_id": ev.get("id"),
+                    "fecha": str(ev.get("date", ""))[:10],
+                    "fuente": "espn",
+                }
+            )
     return partidos
 
 
@@ -158,16 +161,20 @@ def buscar_en_web(home: str, away: str, fecha: str) -> List[Dict[str, Any]]:
 
     # Fuente 1: ESPN search
     try:
-        espn_data = _get("https://site.api.espn.com/apis/v2/sports/search", {"query": f"{home} {away} Liga MX", "limit": 5})
+        espn_data = _get(
+            "https://site.api.espn.com/apis/v2/sports/search", {"query": f"{home} {away} Liga MX", "limit": 5}
+        )
         if espn_data and isinstance(espn_data, dict):
             for item in (espn_data.get("items") or [])[:3]:
                 if isinstance(item, dict):
-                    resultados.append({
-                        "titulo": item.get("headline", "") or item.get("title", ""),
-                        "descripcion": item.get("description", "") or item.get("summary", ""),
-                        "url": item.get("links", {}).get("web", {}).get("href", "") or item.get("url", ""),
-                        "fuente": "espn",
-                    })
+                    resultados.append(
+                        {
+                            "titulo": item.get("headline", "") or item.get("title", ""),
+                            "descripcion": item.get("description", "") or item.get("summary", ""),
+                            "url": item.get("links", {}).get("web", {}).get("href", "") or item.get("url", ""),
+                            "fuente": "espn",
+                        }
+                    )
     except Exception:
         logger.debug("Exception silenciada en buscar_en_web", exc_info=True)
 
@@ -178,21 +185,24 @@ def buscar_en_web(home: str, away: str, fecha: str) -> List[Dict[str, Any]]:
             data = _get("https://news.google.com/rss/search", {"q": q, "hl": "es", "gl": "MX"})
             if data and isinstance(data, str):
                 import re as _re
-                items = _re.findall(r'<item>(.*?)</item>', data, _re.DOTALL)
+
+                items = _re.findall(r"<item>(.*?)</item>", data, _re.DOTALL)
                 for item in items[:3]:
-                    titulo = _re.search(r'<title>(.*?)</title>', item, _re.DOTALL)
-                    desc = _re.search(r'<description>(.*?)</description>', item, _re.DOTALL)
-                    link = _re.search(r'<link/>(.*?)$', item, _re.MULTILINE)
-                    titulo_txt = _re.sub(r'<[^>]+>', '', titulo.group(1)).strip() if titulo else ""
-                    desc_txt = _re.sub(r'<[^>]+>', '', desc.group(1)).strip() if desc else ""
+                    titulo = _re.search(r"<title>(.*?)</title>", item, _re.DOTALL)
+                    desc = _re.search(r"<description>(.*?)</description>", item, _re.DOTALL)
+                    link = _re.search(r"<link/>(.*?)$", item, _re.MULTILINE)
+                    titulo_txt = _re.sub(r"<[^>]+>", "", titulo.group(1)).strip() if titulo else ""
+                    desc_txt = _re.sub(r"<[^>]+>", "", desc.group(1)).strip() if desc else ""
                     url = link.group(1).strip() if link else ""
                     if titulo_txt and not any(r.get("titulo") == titulo_txt for r in resultados):
-                        resultados.append({
-                            "titulo": titulo_txt,
-                            "descripcion": desc_txt,
-                            "url": url,
-                            "fuente": "google_news",
-                        })
+                        resultados.append(
+                            {
+                                "titulo": titulo_txt,
+                                "descripcion": desc_txt,
+                                "url": url,
+                                "fuente": "google_news",
+                            }
+                        )
         except Exception:
             logger.debug("Exception silenciada en buscar_en_web", exc_info=True)
 
@@ -204,13 +214,20 @@ def buscar_en_web(home: str, away: str, fecha: str) -> List[Dict[str, Any]]:
         try:
             page_resp = requests.get(url, timeout=10, headers=_HEADERS)
             if page_resp.status_code == 200:
-                texto = re.sub(r'<[^>]+>', ' ', page_resp.text)
-                texto = ' '.join(texto.split())
+                texto = re.sub(r"<[^>]+>", " ", page_resp.text)
+                texto = " ".join(texto.split())
                 # Extraer oraciones relevantes
-                oraciones = re.split(r'[.!?]+', texto)
-                relevantes = [o.strip() for o in oraciones if any(pal in o.lower() for pal in [home.lower(), away.lower(), 'gol', 'tarjeta', 'expuls', 'penal', 'minuto', 'lesión'])]
+                oraciones = re.split(r"[.!?]+", texto)
+                relevantes = [
+                    o.strip()
+                    for o in oraciones
+                    if any(
+                        pal in o.lower()
+                        for pal in [home.lower(), away.lower(), "gol", "tarjeta", "expuls", "penal", "minuto", "lesión"]
+                    )
+                ]
                 if relevantes:
-                    r["contenido"] = ' '.join(relevantes[:8])
+                    r["contenido"] = " ".join(relevantes[:8])
                 else:
                     r["contenido"] = texto[:800]
         except Exception:
@@ -251,6 +268,7 @@ def analizar_partido_fuerte(home: str, away: str, hg: int, ag: int, fecha: str) 
         contenido = r.get("contenido", "")
         texto = f"{titulo} {desc} {contenido}".lower()
         import re
+
         if re.search(r"expuls|roja|red card", texto):
             eventos_formateados.append(f"🟥 (web) {titulo[:60]}")
         if re.search(r"lesión|baja|injury", texto):
@@ -317,15 +335,19 @@ def _generar_conclusion(home: str, away: str, hg: int, ag: int, eventos: List[st
             partes.append(f"  • {t}")
 
     if expulsiones:
-        partes.append(f"⚠️ <b>Expulsiones:</b> El partido tuvo {len(expulsiones)} expulsión(es), lo que cambió el desarrollo del juego.")
+        partes.append(
+            f"⚠️ <b>Expulsiones:</b> El partido tuvo {len(expulsiones)} expulsión(es), lo que cambió el desarrollo del juego."
+        )
 
     # Fuentes consultadas
     if web:
         partes.append(f"📰 <b>Fuentes consultadas:</b> {len(web)} noticias analizadas.")
 
     # Conclusión táctica
-    partes.append("💡 <b>Análisis:</b> El resultado refleja el rendimiento de ambos equipos durante los 90 minutos. "
-                  "Los goles determinaron el ganador, mientras que las tarjetas y expulsiones indican la intensidad y el estado del juego.")
+    partes.append(
+        "💡 <b>Análisis:</b> El resultado refleja el rendimiento de ambos equipos durante los 90 minutos. "
+        "Los goles determinaron el ganador, mientras que las tarjetas y expulsiones indican la intensidad y el estado del juego."
+    )
 
     return "\n".join(partes)
 
@@ -376,6 +398,7 @@ def cargar_resultados() -> Dict[str, Any]:
 
 if __name__ == "__main__":
     import sys
+
     fecha = sys.argv[1] if len(sys.argv) > 1 else None
     print(f"Analizando jornada: {fecha or 'hoy'}...")
     data = analizar_jornada_completa(fecha)

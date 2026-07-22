@@ -17,6 +17,7 @@ from typing import Any, Dict, Optional, cast
 
 from fastapi import APIRouter, Request
 import logging
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -274,7 +275,8 @@ def survivor(request: Request, excluir: str = "") -> Dict[str, Any]:
     pick = _enriquecer_con_crowd(est["picks"][0]) if est.get("picks") else None
     # Top 3 picks crowd para contexto
     top_crowd = sorted(
-        [{"equipo": k, "crowd_pct": v} for k, v in CROWD_DISTRIBUTION.items()], key=lambda x: -cast(float, x["crowd_pct"])
+        [{"equipo": k, "crowd_pct": v} for k, v in CROWD_DISTRIBUTION.items()],
+        key=lambda x: -cast(float, x["crowd_pct"]),
     )[:3]
     return {
         "generado_utc": data.get("generado_utc"),

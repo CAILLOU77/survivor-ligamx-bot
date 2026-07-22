@@ -10,6 +10,7 @@ documenta la intención: "por defecto true; los tests lo apagan". Este conftest
 materializa ese comportamiento y debe ejecutarse antes de importar cualquier
 módulo del proyecto (pytest carga conftest.py antes de los módulos de test).
 """
+
 import os
 
 # setdefault: no sobreescribe si el entorno ya lo fija explícitamente.

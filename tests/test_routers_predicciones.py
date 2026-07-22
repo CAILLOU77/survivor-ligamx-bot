@@ -25,10 +25,16 @@ from starlette.requests import Request  # noqa: E402
 # Request minimo para llamar a los endpoints directamente (sin servidor HTTP).
 # El rate limiter esta desactivado en tests (conftest.py) y los cuerpos de los
 # endpoints no usan `request`; solo esta en la firma por slowapi.
-_REQ = Request(scope={
-    "type": "http", "method": "GET", "path": "/", "headers": [],
-    "client": ("127.0.0.1", 50000), "scheme": "http",
-})
+_REQ = Request(
+    scope={
+        "type": "http",
+        "method": "GET",
+        "path": "/",
+        "headers": [],
+        "client": ("127.0.0.1", 50000),
+        "scheme": "http",
+    }
+)
 
 
 def _fake_data():

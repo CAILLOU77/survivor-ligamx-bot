@@ -192,7 +192,9 @@ def evaluar_calibracion(
     alpha = fit["alpha"]
 
     def brier_prom(mset: Sequence[Dict[str, Any]], a: float) -> float:
-        return cast(float, sum(brier_score(calibrar_probs(m["probs"], a, base), int(m["resultado"])) for m in mset) / len(mset))
+        return cast(
+            float, sum(brier_score(calibrar_probs(m["probs"], a, base), int(m["resultado"])) for m in mset) / len(mset)
+        )
 
     brier_base_eval = round(brier_prom(eval_set, 0.0), 4)
     brier_cal_eval = round(brier_prom(eval_set, alpha), 4)

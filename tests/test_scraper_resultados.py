@@ -73,15 +73,21 @@ class TestGetPost(unittest.TestCase):
 
 def _espn_sample(estado="STATUS_FULL_TIME", hg="2", ag="1"):
     return {
-        "events": [{
-            "id": "1",
-            "date": "2026-07-16T20:00Z",
-            "status": {"type": {"name": estado}},
-            "competitions": [{"competitors": [
-                {"homeAway": "home", "team": {"displayName": "América"}, "score": hg},
-                {"homeAway": "away", "team": {"displayName": "Toluca"}, "score": ag},
-            ]}],
-        }]
+        "events": [
+            {
+                "id": "1",
+                "date": "2026-07-16T20:00Z",
+                "status": {"type": {"name": estado}},
+                "competitions": [
+                    {
+                        "competitors": [
+                            {"homeAway": "home", "team": {"displayName": "América"}, "score": hg},
+                            {"homeAway": "away", "team": {"displayName": "Toluca"}, "score": ag},
+                        ]
+                    }
+                ],
+            }
+        ]
     }
 
 

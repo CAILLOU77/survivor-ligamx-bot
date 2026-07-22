@@ -50,8 +50,11 @@ class TestNotifyPredicciones(unittest.TestCase):
         get_resp.raise_for_status.return_value = None
         capture = {}
         fake = _FakeClient(get_resp=get_resp, post_capture=capture)
-        with mock.patch.object(tn, "TELEGRAM_TOKEN", "tok"), mock.patch.object(tn, "CHAT_ID", "chat"), \
-             mock.patch.object(tn.httpx, "AsyncClient", lambda *a, **k: fake):
+        with (
+            mock.patch.object(tn, "TELEGRAM_TOKEN", "tok"),
+            mock.patch.object(tn, "CHAT_ID", "chat"),
+            mock.patch.object(tn.httpx, "AsyncClient", lambda *a, **k: fake),
+        ):
             asyncio.run(tn.notify_predicciones())
         self.assertNotIn("url", capture)  # nunca se envió a Telegram
 
@@ -62,9 +65,12 @@ class TestNotifyPredicciones(unittest.TestCase):
         get_resp.raise_for_status.return_value = None
         capture = {}
         fake = _FakeClient(get_resp=get_resp, post_capture=capture)
-        with mock.patch.object(tn, "TELEGRAM_TOKEN", "tok"), mock.patch.object(tn, "CHAT_ID", "chat"), \
-             mock.patch.object(tn.httpx, "AsyncClient", lambda *a, **k: fake), \
-             mock.patch.object(tn.telegram_pronosticos, "construir_mensaje", return_value="<b>msg</b>"):
+        with (
+            mock.patch.object(tn, "TELEGRAM_TOKEN", "tok"),
+            mock.patch.object(tn, "CHAT_ID", "chat"),
+            mock.patch.object(tn.httpx, "AsyncClient", lambda *a, **k: fake),
+            mock.patch.object(tn.telegram_pronosticos, "construir_mensaje", return_value="<b>msg</b>"),
+        ):
             asyncio.run(tn.notify_predicciones())
         self.assertIn("tok", capture["url"])
         self.assertEqual(capture["json"]["chat_id"], "chat")

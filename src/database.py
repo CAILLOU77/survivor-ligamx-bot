@@ -19,6 +19,7 @@ import unicodedata
 from contextlib import contextmanager
 from typing import Any, Dict, List, cast, Optional
 import logging
+
 logger = logging.getLogger(__name__)
 
 DATABASE_URL = os.getenv("DATABASE_URL", "") or ""
@@ -263,7 +264,12 @@ def settle_pronosticos(resultados) -> int:
             hg, ag = int(r.get("home_goals")), int(r.get("away_goals"))
         except (TypeError, ValueError):
             continue
-        info: Optional[Dict[str, Any]] = {"hg": hg, "ag": ag, "home": r.get("home_team", ""), "away": r.get("away_team", "")}
+        info: Optional[Dict[str, Any]] = {
+            "hg": hg,
+            "ag": ag,
+            "home": r.get("home_team", ""),
+            "away": r.get("away_team", ""),
+        }
         por_clave[_clave_pronostico(r.get("home_team", ""), r.get("away_team", ""), r.get("fecha", ""))] = info
         por_equipos.setdefault(f"{_norm_equipo(r.get('home_team', ''))}|{_norm_equipo(r.get('away_team', ''))}", info)
     settled = 0

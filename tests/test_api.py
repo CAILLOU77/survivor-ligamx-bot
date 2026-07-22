@@ -113,8 +113,6 @@ class TestApi(unittest.TestCase):
         self.assertEqual(r.status_code, 403)
 
 
-
-
 class TestAuth(unittest.TestCase):
     def setUp(self):
         authmod.API_KEY = "testkey"
@@ -137,6 +135,7 @@ class TestAuth(unittest.TestCase):
     def test_healthcheck_devuelve_dependencias(self):
         """Healthcheck debe incluir campo 'dependencias'"""
         from unittest import mock as _mock
+
         with (
             _mock.patch("src.database.get_equipos_usados", return_value=[]),
             _mock.patch("requests.get") as mock_get,
@@ -153,6 +152,7 @@ class TestAuth(unittest.TestCase):
     def test_healthcheck_db_fallando_muestra_degradado(self):
         """Si la BD falla, status='degradado'"""
         from unittest import mock as _mock
+
         with (
             _mock.patch("src.database.get_equipos_usados", side_effect=Exception("DB caída")),
             _mock.patch("requests.get") as mock_get,
@@ -167,6 +167,7 @@ class TestAuth(unittest.TestCase):
     def test_healthcheck_espn_fallando_muestra_degradado(self):
         """Si ESPN falla, status='degradado'"""
         from unittest import mock as _mock
+
         with (
             _mock.patch("src.database.get_equipos_usados", return_value=[]),
             _mock.patch("requests.get", side_effect=Exception("Timeout")),
@@ -177,10 +178,10 @@ class TestAuth(unittest.TestCase):
         self.assertEqual(data["status"], "degradado")
         self.assertIn("error", data["dependencias"]["espn"])
 
-
     def test_healthcheck_espn_5xx_muestra_degradado(self):
         """Si ESPN devuelve 502, status='degradado'"""
         from unittest import mock as _mock
+
         mock_resp = _mock.MagicMock()
         mock_resp.status_code = 502
         with (
@@ -197,6 +198,7 @@ class TestAuth(unittest.TestCase):
     def test_healthcheck_ligamxapi_5xx_muestra_degradado(self):
         """Si ligamx-api devuelve 503, status='degradado'"""
         from unittest import mock as _mock
+
         mock_resp = _mock.MagicMock()
         mock_resp.status_code = 503
         with (
@@ -213,6 +215,7 @@ class TestAuth(unittest.TestCase):
     def test_healthcheck_espn_timeout_muestra_degradado(self):
         """Timeout en ESPN debe dar degradado"""
         from unittest import mock as _mock
+
         with (
             _mock.patch("src.database.get_equipos_usados", return_value=[]),
             _mock.patch("requests.get", side_effect=Exception("Connection timeout")),
@@ -222,6 +225,7 @@ class TestAuth(unittest.TestCase):
         data = r.json()
         self.assertEqual(data["status"], "degradado")
         self.assertIn("timeout", data["dependencias"]["espn"].lower())
+
 
 if __name__ == "__main__":
     unittest.main()

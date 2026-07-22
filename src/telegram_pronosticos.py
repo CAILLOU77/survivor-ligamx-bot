@@ -2244,6 +2244,7 @@ def enviar_recordatorio_si_aplica(dias_antes: int = 1, hoy: Optional[date] = Non
 # ANÁLISIS INTELIGENTE DE JORNADA (usa todas las piezas del bot)
 # ---------------------------------------------------------------------------
 
+
 def enviar_analisis_jornada() -> Dict[str, Any]:
     """
     Analiza TODOS los partidos YA JUGADOS de la jornada actual.
@@ -2272,7 +2273,9 @@ def enviar_analisis_jornada() -> Dict[str, Any]:
                     import database as _db
                 except ImportError:  # pragma: no cover
                     from src import database as _db  # type: ignore
-                picks_anteriores = _db.get_survivor_picks_recientes(limit=10) if hasattr(_db, 'get_survivor_picks_recientes') else []
+                picks_anteriores = (
+                    _db.get_survivor_picks_recientes(limit=10) if hasattr(_db, "get_survivor_picks_recientes") else []
+                )
         else:
             picks_anteriores = get_survivor_picks_recientes(limit=10)
     except Exception:
@@ -2282,7 +2285,9 @@ def enviar_analisis_jornada() -> Dict[str, Any]:
 
     # Enviar mensaje de cabecera
     cabecera = resultado.get("resumen", "").split("\n")[0] if resultado.get("resumen") else "📊 ANÁLISIS DE LA JORNADA"
-    enviado = enviar_mensaje(f"{cabecera}\n🕒 {datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M')} h (UTC)\n━━━━━━━━━━")
+    enviado = enviar_mensaje(
+        f"{cabecera}\n🕒 {datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M')} h (UTC)\n━━━━━━━━━━"
+    )
 
     # Enviar cada partido como mensaje individual o dividido si es muy largo
     for mensaje_partido in resultado.get("mensajes_individuales", []):
