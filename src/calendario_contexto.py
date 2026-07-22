@@ -30,10 +30,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-try:
-    from team_normalizer import canonical_team_key
-except ImportError:  # pragma: no cover
-    from src.team_normalizer import canonical_team_key  # type: ignore
+from src.team_normalizer import canonical_team_key
 
 # Margen (días) para considerar un evento "cercano" a un partido.
 MARGEN_DIAS = 5

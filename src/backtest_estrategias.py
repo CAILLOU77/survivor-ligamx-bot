@@ -996,10 +996,8 @@ def estrategia_supervivencia(
 
 
 def main() -> int:
-    try:
-        import fuentes_datos
-    except ImportError:  # pragma: no cover
-        from src import fuentes_datos  # type: ignore
+    from src import fuentes_datos
+
     print("🧪 Comparando estrategias de Survivor (historial largo, por torneo)...")
     datos = fuentes_datos.obtener_historico_largo()
     print(f"Fuente historial: {datos.get('fuente')} | partidos: {datos.get('total')}")

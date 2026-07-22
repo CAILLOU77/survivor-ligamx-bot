@@ -89,10 +89,8 @@ def parsear_comando(texto: str) -> Tuple[Optional[str], str]:
 
 
 def _db():
-    try:
-        import database as db
-    except ImportError:  # pragma: no cover
-        from src import database as db  # type: ignore
+    from src import database as db
+
     return db
 
 
@@ -147,10 +145,8 @@ def responder(cmd: Optional[str], arg: str) -> str:
             resumen = db.resumen_survivor()
         except Exception as exc:  # pragma: no cover - BD no disponible
             return f"⚠️ No se pudo leer la racha: {exc}"
-        try:
-            import telegram_pronosticos as tp
-        except ImportError:  # pragma: no cover
-            from src import telegram_pronosticos as tp  # type: ignore
+        from src import telegram_pronosticos as tp
+
         return cast(str, tp.construir_mensaje_survivor_historial(resumen))
 
     return "❓ Comando no reconocido. Usa /ayuda"

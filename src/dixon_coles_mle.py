@@ -27,10 +27,7 @@ import math
 from datetime import date
 from typing import Any, Dict, Optional, Sequence, Tuple
 
-try:
-    import poisson_model as pm
-except ImportError:  # pragma: no cover
-    from src import poisson_model as pm  # type: ignore
+from src import poisson_model as pm
 
 # Defaults validados por walk-forward (ridge en el rango robusto 10–15).
 HALF_LIFE_DIAS_DEFAULT = 365.0

@@ -26,13 +26,9 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-try:
-    import fuentes_datos
-    import espn_data
-    import poisson_model as pm
-except ImportError:  # pragma: no cover
-    from src import fuentes_datos, espn_data  # type: ignore
-    from src import poisson_model as pm  # type: ignore
+from src import fuentes_datos, espn_data
+from src import poisson_model as pm
+from src.cache_ttl import ttl_cache
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 PRONOSTICOS_PATH = BASE_DIR / "data" / "pronosticos.json"
@@ -200,6 +196,7 @@ def pronosticar_partido(home: str, away: str, fuerzas: Dict[str, Any]) -> Option
     }
 
 
+@ttl_cache(600)
 def generar_pronosticos(
     meses: int = 18,
     fixtures: Optional[Sequence[Dict[str, Any]]] = None,
@@ -259,16 +256,12 @@ def generar_pronosticos(
     # Señal "bestia negra" (H2H): usa el histórico MÁS LARGO disponible (todas las
     # temporadas de la Liga MX API), no solo la ventana reciente del modelo.
     try:
-        try:
-            import matchup_h2h as mh2h
-        except ImportError:  # pragma: no cover
-            from src import matchup_h2h as mh2h  # type: ignore
+        from src import matchup_h2h as mh2h
+
         h2h_hist = resultados
         try:
-            try:
-                import ligamx_api as _lmx
-            except ImportError:  # pragma: no cover
-                from src import ligamx_api as _lmx  # type: ignore
+            from src import ligamx_api as _lmx
+
             largo = _lmx.resultados_historicos()  # todas las temporadas backfilleadas
             if isinstance(largo, list) and len(largo) > len(resultados):
                 h2h_hist = largo
@@ -571,10 +564,8 @@ def motivacion_por_equipo() -> Dict[str, Dict[str, Any]]:
     Mapa {equipo_norm: {motivacion_nivel, zona}} desde la tabla de ESPN.
     Defensivo: devuelve {} si no hay red/datos (no rompe el flujo).
     """
-    try:
-        import tabla_posiciones as tabla_mod
-    except ImportError:  # pragma: no cover
-        from src import tabla_posiciones as tabla_mod  # type: ignore
+    from src import tabla_posiciones as tabla_mod
+
     try:
         data = tabla_mod.obtener_tabla()
     except Exception:

@@ -16,10 +16,7 @@ import os
 import httpx
 from dotenv import load_dotenv
 
-try:
-    import telegram_pronosticos
-except ImportError:  # pragma: no cover
-    from src import telegram_pronosticos  # type: ignore
+from src import telegram_pronosticos
 
 load_dotenv()
 

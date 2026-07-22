@@ -425,8 +425,11 @@ async def telegram_webhook(
     /quitar, /reset, /pick, /ayuda). Solo atiende el TELEGRAM_CHAT_ID configurado
     y, si hay TELEGRAM_WEBHOOK_SECRET, valida el header secreto de Telegram.
     """
-    # 1) Validación del secreto del webhook (si está configurado).
+    # 1) Validación del secreto del webhook (fail-closed en producción).
     secreto = os.getenv("TELEGRAM_WEBHOOK_SECRET", "").strip()
+    if os.getenv("RENDER") and not secreto:
+        raise HTTPException(status_code=503, detail="TELEGRAM_WEBHOOK_SECRET no configurado en producción")
+
     if secreto and x_telegram_bot_api_secret_token != secreto:
         raise HTTPException(status_code=403, detail="Secreto de webhook inválido")
 

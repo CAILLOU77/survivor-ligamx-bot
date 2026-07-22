@@ -28,10 +28,7 @@ import math
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple, cast
 
-try:
-    import poisson_model as pm
-except ImportError:  # pragma: no cover
-    from src import poisson_model as pm  # type: ignore
+from src import poisson_model as pm
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 CALENDARIO_PATH = BASE_DIR / "data" / "calendario.json"
@@ -309,10 +306,7 @@ def construir_odds_por_partido(
 
     `momios_crudos` se puede inyectar (tests). Sin key/momios => {} (no-op).
     """
-    try:
-        import comparador_mercado as cm
-    except ImportError:  # pragma: no cover
-        from src import comparador_mercado as cm  # type: ignore
+    from src import comparador_mercado as cm
 
     if momios_crudos is not None:
         momios = momios_crudos
@@ -367,10 +361,7 @@ def cargar_calendario(path: Path = CALENDARIO_PATH) -> List[Dict[str, Any]]:
 
 
 def main() -> int:
-    try:
-        import fuentes_datos
-    except ImportError:  # pragma: no cover
-        from src import fuentes_datos  # type: ignore
+    from src import fuentes_datos
 
     print("📅 Planificador de temporada Survivor (PlayDoit)...")
     calendario = cargar_calendario()

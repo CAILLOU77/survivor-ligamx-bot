@@ -23,20 +23,11 @@ try:
 except ImportError:  # pragma: no cover
     requests = None  # type: ignore[assignment]
 
-try:
-    import motor_pronosticos as motor
-except ImportError:  # pragma: no cover
-    from src import motor_pronosticos as motor  # type: ignore
+from src import motor_pronosticos as motor
 
-try:
-    import calendario_contexto as calctx
-except ImportError:  # pragma: no cover
-    from src import calendario_contexto as calctx  # type: ignore
+from src import calendario_contexto as calctx
 
-try:
-    from team_normalizer import clean_team_name
-except ImportError:  # pragma: no cover
-    from src.team_normalizer import clean_team_name  # type: ignore
+from src.team_normalizer import clean_team_name
 
 DISCLAIMER = "ℹ️ Informativo / revisión humana. No es consejo de apuesta."
 _MAX_PARTIDOS = 9
@@ -46,10 +37,8 @@ _CALENDARIO_PATH = Path(__file__).resolve().parents[1] / "data" / "calendario.js
 def _usados_persistidos() -> Optional[List[str]]:
     """Equipos usados guardados en la BD (para excluir del pick/plan). None si falla."""
     try:
-        try:
-            from database import get_equipos_usados
-        except ImportError:  # pragma: no cover
-            from src.database import get_equipos_usados  # type: ignore
+        from src.database import get_equipos_usados
+
         return list(get_equipos_usados())
     except Exception:  # pragma: no cover - BD no disponible
         return None
@@ -58,10 +47,8 @@ def _usados_persistidos() -> Optional[List[str]]:
 def _partidos_jugados_torneo() -> Optional[int]:
     """Partidos jugados del torneo actual (para la cautela de arranque). None si falla."""
     try:
-        try:
-            import ligamx_api as lmx
-        except ImportError:  # pragma: no cover
-            from src import ligamx_api as lmx  # type: ignore
+        from src import ligamx_api as lmx
+
         est = lmx.estado_temporada()
         return int(est.get("finished_matches")) if est.get("finished_matches") is not None else None
     except Exception:  # pragma: no cover - API no disponible
@@ -778,14 +765,8 @@ def _ajustar_pick_top(
     """
     if not picks or not contexto_pick:
         return
-    try:
-        import ajuste_pronostico as aj
-    except ImportError:  # pragma: no cover
-        from src import ajuste_pronostico as aj  # type: ignore
-    try:
-        from team_normalizer import canonical_team_key as _k
-    except ImportError:  # pragma: no cover
-        from src.team_normalizer import canonical_team_key as _k  # type: ignore
+    from src import ajuste_pronostico as aj
+    from src.team_normalizer import canonical_team_key as _k
 
     rec = picks[0]
     es_local = rec.get("condicion") == "Local"
@@ -828,10 +809,8 @@ def _contexto_top_pick(
     para ESE pick, de modo que el contexto coincida con el pick del plan que se muestra.
     """
     try:
-        try:
-            import ligamx_api as lmx
-        except ImportError:  # pragma: no cover
-            from src import ligamx_api as lmx  # type: ignore
+        from src import ligamx_api as lmx
+
         if pick_override and pick_override.get("equipo") and pick_override.get("rival"):
             pk = pick_override
         else:
@@ -846,10 +825,8 @@ def _contexto_top_pick(
         dossier = lmx.resumen_partido(home, away)
         # Análisis de IA (Groq) sobre las noticias reales del partido (opcional).
         try:
-            try:
-                import analista_ia as ia
-            except ImportError:  # pragma: no cover
-                from src import analista_ia as ia  # type: ignore
+            from src import analista_ia as ia
+
             if ia.habilitado() and isinstance(dossier, dict):
                 dossier["analisis_ia"] = ia.analizar_noticias(
                     [dossier.get("home", home), dossier.get("away", away)],
@@ -870,10 +847,8 @@ def _contexto_top_pick(
                 except Exception:  # pragma: no cover - API no disponible
                     pass
                 if not loc and not vis:  # fallback al modo asistido (data/fichajes.json)
-                    try:
-                        import fichajes as fich
-                    except ImportError:  # pragma: no cover
-                        from src import fichajes as fich  # type: ignore
+                    from src import fichajes as fich
+
                     loc = fich.linea_equipo(dossier.get("home", home))
                     vis = fich.linea_equipo(dossier.get("away", away))
                 if loc or vis:
@@ -914,10 +889,7 @@ def _contexto_top_pick(
 def _registrar_historial(pronosticos) -> None:
     """Guarda los pronósticos en el track-record (dedup por equipos+fecha). Tolerante."""
     try:
-        try:
-            from database import registrar_pronostico
-        except ImportError:  # pragma: no cover
-            from src.database import registrar_pronostico  # type: ignore
+        from src.database import registrar_pronostico
     except Exception:  # pragma: no cover
         return
     for p in pronosticos or []:
@@ -957,10 +929,7 @@ def _registrar_survivor_historial(picks, pronosticos) -> None:
     if not picks:
         return
     try:
-        try:
-            import database as _db
-        except ImportError:  # pragma: no cover
-            from src import database as _db  # type: ignore
+        from src import database as _db
     except Exception:  # pragma: no cover
         return
     pk = picks[0]
@@ -1084,10 +1053,8 @@ def enviar_pronosticos(equipos_usados: Optional[List[str]] = None, incluir_conte
     cerca = _cerca_de_jornada(resultado.get("pronosticos", []))
     api_ok = False
     try:
-        try:
-            import ligamx_api as _lmx_probe
-        except ImportError:  # pragma: no cover
-            from src import ligamx_api as _lmx_probe  # type: ignore
+        from src import ligamx_api as _lmx_probe
+
         api_ok = _lmx_probe.disponible(timeout=45 if cerca else 5)
     except Exception:  # pragma: no cover
         api_ok = False
@@ -1104,10 +1071,8 @@ def enviar_pronosticos(equipos_usados: Optional[List[str]] = None, incluir_conte
     # asigna a ESTA jornada (una sola fuente de verdad; prioriza sobrevivir las 17).
     # Así /pick y /plan SIEMPRE coinciden. Si no hay calendario/plan, queda el de la jornada.
     try:
-        try:
-            from team_normalizer import canonical_team_key as _kp
-        except ImportError:  # pragma: no cover
-            from src.team_normalizer import canonical_team_key as _kp  # type: ignore
+        from src.team_normalizer import canonical_team_key as _kp
+
         _picks = est.get("picks") or []
         _rec_plan = _rec_desde_plan(_plan_temporada(equipos_usados), _jornada_actual_num())
         if _rec_plan and _picks:
@@ -1147,18 +1112,14 @@ def enviar_pronosticos(equipos_usados: Optional[List[str]] = None, incluir_conte
     porteros_map = None
     if api_ok:
         try:
-            try:
-                import ligamx_api as lmx
-            except ImportError:  # pragma: no cover
-                from src import ligamx_api as lmx  # type: ignore
+            from src import ligamx_api as lmx
+
             goleadores_map = lmx.goleadores_por_equipo()
         except Exception:  # pragma: no cover - nunca debe tumbar el envío
             goleadores_map = None
         try:
-            try:
-                import ligamx_api as lmx
-            except ImportError:  # pragma: no cover
-                from src import ligamx_api as lmx  # type: ignore
+            from src import ligamx_api as lmx
+
             porteros_map = lmx.porteros_por_equipo()
         except Exception:  # pragma: no cover - nunca debe tumbar el envío
             porteros_map = None
@@ -1240,10 +1201,8 @@ def construir_mensaje_seguimiento(
         lineas.append("")
         lineas.append(f"🔁 <i>Respaldo (solo si su XI sale mal): {', '.join(otras)}.</i>")
     # Aviso de timing: si el pick juega de los últimos, no hay red de seguridad.
-    try:
-        import seguimiento_jornada as _seg
-    except ImportError:  # pragma: no cover
-        from src import seguimiento_jornada as _seg  # type: ignore
+    from src import seguimiento_jornada as _seg
+
     alt_resp = _seg.alternativa_con_respaldo(items, rec)
     if alt_resp:
         lineas.append("")
@@ -1272,10 +1231,8 @@ def construir_mensaje_seguimiento(
 
 def _mapa_horarios(lmx) -> Dict[str, str]:
     """{clave_equipo: match_date_iso} desde /matches/upcoming. {} si falla."""
-    try:
-        from team_normalizer import canonical_team_key as _k
-    except ImportError:  # pragma: no cover
-        from src.team_normalizer import canonical_team_key as _k  # type: ignore
+    from src.team_normalizer import canonical_team_key as _k
+
     out: Dict[str, str] = {}
     try:
         for m in lmx.partidos_proximos(limit=20) or []:
@@ -1350,14 +1307,8 @@ def enviar_seguimiento(equipos_usados: Optional[List[str]] = None, n: int = 5) -
     Envía por Telegram la lista de seguimiento (candidatos priorizados, ordenados
     por hora de partido) para decidir el Survivor de forma secuencial.
     """
-    try:
-        import seguimiento_jornada as seg
-    except ImportError:  # pragma: no cover
-        from src import seguimiento_jornada as seg  # type: ignore
-    try:
-        import ligamx_api as lmx
-    except ImportError:  # pragma: no cover
-        from src import ligamx_api as lmx  # type: ignore
+    from src import seguimiento_jornada as seg
+    from src import ligamx_api as lmx
 
     resultado = motor.generar_pronosticos()
     pronosticos = resultado.get("pronosticos", [])
@@ -1378,10 +1329,8 @@ def enviar_seguimiento(equipos_usados: Optional[List[str]] = None, n: int = 5) -
     horarios = _mapa_horarios(lmx)
     # Fuerza del XI por equipo candidato (solo los que ya tengan alineación).
     fuerza_xi: Dict[str, float] = {}
-    try:
-        from team_normalizer import canonical_team_key as _k
-    except ImportError:  # pragma: no cover
-        from src.team_normalizer import canonical_team_key as _k  # type: ignore
+    from src.team_normalizer import canonical_team_key as _k
+
     for pk in picks[:n]:
         es_local = pk.get("condicion") == "Local"
         home = pk["equipo"] if es_local else pk["rival"]
@@ -1518,10 +1467,8 @@ def enviar_plan(
             )
             picks = est.get("picks", [])
             advertencia = est.get("advertencia")
-            try:
-                import database as _db
-            except ImportError:
-                from src import database as _db
+            from src import database as _db
+
             usados = _db.get_equipos_usados() if equipos_usados is None else equipos_usados
 
             partes_mensaje = [
@@ -1559,10 +1506,8 @@ def enviar_plan(
                         )
                     partes_mensaje.append("")
                 # Racha / forma del pick recomendado y alternativas
-                try:
-                    import ligamx_api as _rach_lmx
-                except ImportError:
-                    from src import ligamx_api as _rach_lmx  # type: ignore
+                from src import ligamx_api as _rach_lmx
+
                 _rach_mapa = _rach_lmx.mapa_equipos()
                 for _rach_i, _rach_pk in enumerate(picks[:3]):
                     _rach_tid = _rach_lmx.id_de_equipo(_rach_pk["equipo"], _rach_mapa)
@@ -1605,26 +1550,20 @@ def enviar_plan(
             else:
                 partes_mensaje.append("🔓 <b>No has usado ningún equipo aún</b> (temporada nueva)")
             partes_mensaje.append("")
-            try:
-                import seguimiento_jornada as _seg
-            except ImportError:
-                from src import seguimiento_jornada as _seg
+            from src import seguimiento_jornada as _seg
+
             try:
                 horarios = {}
                 fuerza_xi: Dict[str, float] = {}
-                try:
-                    from team_normalizer import canonical_team_key as _ctk
-                except ImportError:
-                    from src.team_normalizer import canonical_team_key as _ctk  # type: ignore
+                from src.team_normalizer import canonical_team_key as _ctk
+
                 for p in pronosticos:
                     for eq_key in [p.get("local", ""), p.get("visitante", "")]:
                         if p.get("fecha"):
                             horarios[_ctk(eq_key)] = p["fecha"]
                 # Consultar fuerza del XI para cada candidato (picks)
-                try:
-                    import ligamx_api as _lmx
-                except ImportError:
-                    from src import ligamx_api as _lmx
+                from src import ligamx_api as _lmx
+
                 _lmx_inst = _lmx.LigaMXAPI()
                 for _pk in picks:
                     es_local = _pk.get("condicion") == "Local"
@@ -2093,10 +2032,8 @@ def construir_mensaje_rentabilidad(data: Dict[str, Any]) -> str:
 def enviar_resumen_rentabilidad() -> Dict[str, Any]:
     """Envía por Telegram el resumen de aciertos del modelo. Tolerante (BD)."""
     try:
-        try:
-            from database import rentabilidad_pronosticos
-        except ImportError:  # pragma: no cover
-            from src.database import rentabilidad_pronosticos  # type: ignore
+        from src.database import rentabilidad_pronosticos
+
         data = rentabilidad_pronosticos()
     except Exception as exc:  # pragma: no cover - BD no disponible
         return {"enviado": False, "error": str(exc)}
@@ -2144,10 +2081,8 @@ def enviar_momios_estado(solo_si_hay: bool = False) -> Dict[str, Any]:
     pretemporada; solo te avisa cuando por fin aparecen momios.
     """
     try:
-        try:
-            import comparador_mercado as cm
-        except ImportError:  # pragma: no cover
-            from src import comparador_mercado as cm  # type: ignore
+        from src import comparador_mercado as cm
+
         momios, fuente = cm.momios_para_uso(guardar_si_hay=True, incluir_gratis=True)
     except Exception as exc:  # pragma: no cover - nunca tumbar el envío
         return {"enviado": False, "error": str(exc)}
@@ -2255,31 +2190,16 @@ def enviar_analisis_jornada() -> Dict[str, Any]:
     Devuelve el resumen HTML para enviar por Telegram.
     """
     try:
-        try:
-            import analista_resultados as ar
-        except ImportError:  # pragma: no cover
-            from src import analista_resultados as ar  # type: ignore
+        from src import analista_resultados as ar
     except Exception as exc:  # pragma: no cover
         return {"enviado": False, "error": str(exc)}
 
     # Obtener picks anteriores de la BD para comparar
     picks_anteriores: List[Dict[str, Any]] = []
     try:
-        try:
-            from database import get_survivor_picks_recientes
-        except ImportError:  # pragma: no cover
-            try:
-                from src.database import get_survivor_picks_recientes  # type: ignore
-            except ImportError:
-                try:
-                    import database as _db
-                except ImportError:  # pragma: no cover
-                    from src import database as _db  # type: ignore
-                picks_anteriores = (
-                    _db.get_survivor_picks_recientes(limit=10) if hasattr(_db, "get_survivor_picks_recientes") else []
-                )
-        else:
-            picks_anteriores = get_survivor_picks_recientes(limit=10)
+        from src.database import get_survivor_picks_recientes
+
+        picks_anteriores = get_survivor_picks_recientes(limit=10)
     except Exception:
         picks_anteriores = []
 
