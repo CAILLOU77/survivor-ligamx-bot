@@ -354,7 +354,7 @@ def cargar_calendario(path: Path = CALENDARIO_PATH) -> List[Dict[str, Any]]:
                     return salida
         except (json.JSONDecodeError, OSError):
             pass
-    
+
     # Fallback: usar datos incrustados inline (SIEMPRE funciona)
     return [j for j in _CALENDARIO_INLINE if isinstance(j, dict) and "jornada" in j and isinstance(j.get("partidos"), list)]
 

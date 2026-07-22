@@ -1562,10 +1562,6 @@ def enviar_plan(
                     import ligamx_api as _rach_lmx
                 except ImportError:
                     from src import ligamx_api as _rach_lmx  # type: ignore
-                try:
-                    from team_normalizer import canonical_team_key as _rach_ctk
-                except ImportError:
-                    from src.team_normalizer import canonical_team_key as _rach_ctk  # type: ignore
                 _rach_mapa = _rach_lmx.mapa_equipos()
                 for _rach_i, _rach_pk in enumerate(picks[:3]):
                     _rach_tid = _rach_lmx.id_de_equipo(_rach_pk["equipo"], _rach_mapa)
@@ -2283,11 +2279,11 @@ def enviar_analisis_jornada() -> Dict[str, Any]:
         picks_anteriores = []
 
     resultado = ar.analizar_jornada(picks_anteriores=picks_anteriores)
-    
+
     # Enviar mensaje de cabecera
     cabecera = resultado.get("resumen", "").split("\n")[0] if resultado.get("resumen") else "📊 ANÁLISIS DE LA JORNADA"
     enviado = enviar_mensaje(f"{cabecera}\n🕒 {datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M')} h (UTC)\n━━━━━━━━━━")
-    
+
     # Enviar cada partido como mensaje individual o dividido si es muy largo
     for mensaje_partido in resultado.get("mensajes_individuales", []):
         if not mensaje_partido.strip():
@@ -2316,12 +2312,12 @@ def enviar_analisis_jornada() -> Dict[str, Any]:
                 enviado = enviado and enviar_mensaje("..." + mensaje_partido[mitad:])
         else:
             enviado = enviado and enviar_mensaje(mensaje_partido)
-    
+
     # Enviar tabla de posiciones
     mensaje_tabla = resultado.get("mensaje_tabla", "")
     if mensaje_tabla:
         enviado = enviado and enviar_mensaje(mensaje_tabla)
-    
+
     return {
         "enviado": enviado,
         "total_partidos": len(resultado.get("partidos", [])),
