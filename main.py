@@ -14,22 +14,18 @@ Informativo / revisión humana. No cierra ni envía apuestas por sí solo.
 from __future__ import annotations
 
 import argparse
-import os
-import sys
-
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src"))
 
 # Configurar logging estructurado ANTES de importar módulos que loguean
 from src.logging_setup import setup_logging, get_logger
 
 setup_logging()
 
-import motor_pronosticos as motor  # noqa: E402
+from src import motor_pronosticos as motor  # noqa: E402
 
 logger = get_logger(__name__)
 
 
-def ejecutar(excluir=None, enviar_telegram=False) -> int:
+def ejecutar(excluir: str | None = None, enviar_telegram: bool = False) -> int:
     logger.info("🤖 SURVIVOR LIGA MX — pronósticos reales (ESPN + Poisson)")
     logger.info("=" * 60)
 
@@ -67,7 +63,7 @@ def ejecutar(excluir=None, enviar_telegram=False) -> int:
 
     if enviar_telegram:
         try:
-            import telegram_pronosticos as tp
+            from src import telegram_pronosticos as tp
 
             envio = tp.enviar_pronosticos(usados)
             logger.info(f"📲 Telegram: enviado={envio['enviado']} ({envio.get('total_pronosticos', 0)} pronósticos)")

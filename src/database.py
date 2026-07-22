@@ -14,15 +14,39 @@ Las funciones públicas (init_db, save_pick, get_metrics, get_history,
 settle_pick) funcionan igual en ambos backends.
 """
 
+import logging
 import os
 import unicodedata
 from contextlib import contextmanager
-from typing import Any, Dict, List, cast, Optional
-import logging
+from typing import TYPE_CHECKING, Any, Dict, Generator, List, Optional, cast
+
+if TYPE_CHECKING:
+    from psycopg2.pool import ThreadedConnectionPool
 
 logger = logging.getLogger(__name__)
 
 DATABASE_URL = os.getenv("DATABASE_URL", "") or ""
+
+_pool: Optional["ThreadedConnectionPool"] = None
+
+
+def _get_pool() -> Optional["ThreadedConnectionPool"]:
+    """Inicializa el pool de conexiones para Postgres si es necesario."""
+    global _pool
+    if _pool is None:
+        try:
+            from psycopg2.pool import ThreadedConnectionPool
+        except ImportError:
+            return None
+
+        # Neon/algunas URLs ya incluyen `sslmode=...`
+        dsn = DATABASE_URL
+        if "sslmode=" not in dsn:
+            dsn = dsn + ("?" if "?" not in dsn else "&") + "sslmode=require"
+
+        # minconn=1, maxconn=5 (ajustar según plan de Neon)
+        _pool = ThreadedConnectionPool(minconn=1, maxconn=5, dsn=dsn)
+    return _pool
 
 
 def _es_postgres(url: str) -> bool:
@@ -37,18 +61,16 @@ SQLITE_PATH = DATABASE_URL if (DATABASE_URL and not USE_POSTGRES) else os.path.j
 
 
 @contextmanager
-def get_db():
-    """Conexión al backend activo. Cierra siempre al salir."""
+def get_db() -> Generator[Any, None, None]:
+    """Conexión al backend activo. Usa pool en Postgres, archivo en SQLite."""
+    conn = None
+    use_pool = False
+    pool = None
     if USE_POSTGRES:
-        import psycopg2
-
-        # Neon/algunas URLs ya incluyen `sslmode=...` (y `channel_binding=...`)
-        # en la query string; pasarlo TAMBIÉN como kwarg provoca error de
-        # "parámetro duplicado". Solo forzamos sslmode si la URL no lo trae.
-        if "sslmode=" in DATABASE_URL:
-            conn = psycopg2.connect(DATABASE_URL)
-        else:
-            conn = psycopg2.connect(DATABASE_URL, sslmode="require")
+        pool = _get_pool()
+        if pool:
+            conn = pool.getconn()
+            use_pool = True
     else:
         import sqlite3
 
@@ -56,19 +78,26 @@ def get_db():
         if carpeta:
             os.makedirs(carpeta, exist_ok=True)
         conn = sqlite3.connect(SQLITE_PATH)
+
+    if conn is None:
+        raise RuntimeError("No se pudo establecer conexión con la base de datos.")
+
     try:
         yield conn
     except Exception:
         try:
             conn.rollback()
         except Exception:
-            logger.debug("Exception silenciada en get_db", exc_info=True)
+            logger.debug("Exception silenciada en get_db rollback", exc_info=True)
         raise
     finally:
-        conn.close()
+        if use_pool and pool:
+            pool.putconn(conn)
+        else:
+            conn.close()
 
 
-def init_db():
+def init_db() -> None:
     """Crea la tabla `picks` si no existe (sintaxis adaptada por backend)."""
     if USE_POSTGRES:
         id_col = "id SERIAL PRIMARY KEY"
@@ -165,12 +194,12 @@ def add_equipo_usado(equipo: str) -> bool:
         return True
 
 
-def get_equipos_usados() -> list:
+def get_equipos_usados() -> List[str]:
     """Lista de equipos usados (nombres tal como se guardaron), del más antiguo al reciente."""
     with get_db() as conn:
         cur = conn.cursor()
         cur.execute("SELECT equipo FROM survivor_usados ORDER BY created_at")
-        return [r[0] for r in cur.fetchall()]
+        return [str(r[0]) for r in cur.fetchall()]
 
 
 def remove_equipo_usado(equipo: str) -> int:
@@ -237,7 +266,7 @@ def registrar_pronostico(
         return True
 
 
-def historial_pronosticos(limit: int = 50, offset: int = 0, solo_resueltos: bool = False) -> list:
+def historial_pronosticos(limit: int = 50, offset: int = 0, solo_resueltos: bool = False) -> List[Dict[str, Any]]:
     """Historial de pronósticos (más recientes primero) como lista de dicts."""
     with get_db() as conn:
         cur = conn.cursor()
@@ -250,7 +279,7 @@ def historial_pronosticos(limit: int = 50, offset: int = 0, solo_resueltos: bool
         return [dict(zip(cols, fila)) for fila in cur.fetchall()]
 
 
-def settle_pronosticos(resultados) -> int:
+def settle_pronosticos(resultados: List[Dict[str, Any]]) -> int:
     """
     Resuelve pronósticos pendientes con resultados reales. `resultados`: lista de
     {home_team, away_team, home_goals, away_goals, fecha}. Rellena marcador real,
@@ -261,7 +290,7 @@ def settle_pronosticos(resultados) -> int:
     por_equipos: Dict[str, Any] = {}
     for r in resultados:
         try:
-            hg, ag = int(r.get("home_goals")), int(r.get("away_goals"))
+            hg, ag = int(r.get("home_goals", 0)), int(r.get("away_goals", 0))
         except (TypeError, ValueError):
             continue
         info: Optional[Dict[str, Any]] = {
@@ -302,7 +331,7 @@ def settle_pronosticos(resultados) -> int:
     return settled
 
 
-def rentabilidad_pronosticos() -> dict:
+def rentabilidad_pronosticos() -> Dict[str, Any]:
     """Track-record: aciertos 1X2 y de marcador exacto sobre los pronósticos resueltos."""
     with get_db() as conn:
         cur = conn.cursor()
@@ -392,7 +421,7 @@ def registrar_survivor_pick(
         return True
 
 
-def settle_survivor(resultados) -> int:
+def settle_survivor(resultados: List[Dict[str, Any]]) -> int:
     """
     Resuelve picks de Survivor pendientes con resultados reales. Determina si el
     equipo elegido GANÓ (punto), EMPATÓ (sobrevive sin punto) o PERDIÓ (eliminado).
@@ -401,10 +430,10 @@ def settle_survivor(resultados) -> int:
     por_equipos: Dict[str, Any] = {}
     for r in resultados:
         try:
-            hg, ag = int(r.get("home_goals")), int(r.get("away_goals"))
+            hg, ag = int(r.get("home_goals", 0)), int(r.get("away_goals", 0))
         except (TypeError, ValueError):
             continue
-        clave = f"{_norm_equipo(r.get('home_team', ''))}|{_norm_equipo(r.get('away_team', ''))}"
+        clave = f"{_norm_equipo(str(r.get('home_team', '')))}|{_norm_equipo(str(r.get('away_team', '')))}"
         por_equipos.setdefault(clave, {"hg": hg, "ag": ag})
     settled = 0
     with get_db() as conn:
@@ -412,7 +441,7 @@ def settle_survivor(resultados) -> int:
         cur.execute("SELECT jornada, condicion, local, visitante FROM survivor_historial WHERE resuelto = 0")
         pendientes = cur.fetchall()
         for jornada, condicion, local, visitante in pendientes:
-            info = por_equipos.get(f"{_norm_equipo(local)}|{_norm_equipo(visitante)}")
+            info = por_equipos.get(f"{_norm_equipo(str(local))}|{_norm_equipo(str(visitante))}")
             if info is None:
                 continue
             hg, ag = info["hg"], info["ag"]
@@ -429,7 +458,7 @@ def settle_survivor(resultados) -> int:
     return settled
 
 
-def resumen_survivor() -> dict:
+def resumen_survivor() -> Dict[str, Any]:
     """
     Track-record del Survivor: jornadas jugadas, sobrevividas (gana+empata),
     victorias, empates, si sigue VIVO y en qué jornada cayó. Cronológico por fecha.
@@ -505,7 +534,7 @@ def get_survivor_picks_recientes(limit: int = 10) -> List[Dict[str, Any]]:
         return [dict(zip(cols, fila)) for fila in cur.fetchall()]
 
 
-def save_pick(match_id, market, true_prob, momio, ev, kelly_pct):
+def save_pick(match_id: str, market: str, true_prob: float, momio: float, ev: float, kelly_pct: float) -> None:
     with get_db() as conn:
         cur = conn.cursor()
         cur.execute(
@@ -516,7 +545,7 @@ def save_pick(match_id, market, true_prob, momio, ev, kelly_pct):
         conn.commit()
 
 
-def get_metrics():
+def get_metrics() -> Dict[str, Any]:
     with get_db() as conn:
         cur = conn.cursor()
         cur.execute("""
@@ -540,7 +569,7 @@ def get_metrics():
         }
 
 
-def get_history(limit: int = 20, offset: int = 0):
+def get_history(limit: int = 20, offset: int = 0) -> List[Dict[str, Any]]:
     """Historial paginado de picks (más recientes primero) como lista de dicts."""
     with get_db() as conn:
         cur = conn.cursor()
@@ -553,7 +582,7 @@ def get_history(limit: int = 20, offset: int = 0):
         return filas
 
 
-def settle_pick(pick_id: int, result: float = 0.0, profit_loss: float = 0.0):
+def settle_pick(pick_id: int, result: float = 0.0, profit_loss: float = 0.0) -> int:
     """Marca un pick como 'settled' con su resultado y P/L."""
     with get_db() as conn:
         cur = conn.cursor()
@@ -562,4 +591,4 @@ def settle_pick(pick_id: int, result: float = 0.0, profit_loss: float = 0.0):
             (result, profit_loss, pick_id),
         )
         conn.commit()
-        return cur.rowcount
+        return int(cur.rowcount)

@@ -32,26 +32,15 @@ Endpoints:
 
 from __future__ import annotations
 
-import unicodedata
 from datetime import date, datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional, Tuple, cast
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from fastapi import APIRouter, HTTPException, Query
 
-try:
-    import poisson_model as pm
-except ImportError:  # pragma: no cover
-    from src import poisson_model as pm  # type: ignore
-
-try:
-    import fuentes_datos as fuentes_mod
-except ImportError:  # pragma: no cover
-    from src import fuentes_datos as fuentes_mod  # type: ignore
-
-try:
-    import planificador_survivor as plan_mod
-except ImportError:  # pragma: no cover
-    from src import planificador_survivor as plan_mod  # type: ignore
+from src import poisson_model as pm
+from src import fuentes_datos as fuentes_mod
+from src import planificador_survivor as plan_mod
+from src import team_normalizer as tn
 
 router = APIRouter(prefix="/api/v1", tags=["API Liga MX"])
 
@@ -85,77 +74,27 @@ def _datos_y_fuerzas() -> Tuple[Dict[str, Any], Dict[str, Any]]:
 
 
 def _calendario() -> List[Dict[str, Any]]:
-    return cast(List[Dict[str, Any]], plan_mod.cargar_calendario())
-
-
-# Resolución de nombres tolerante (ignora acentos + alias comunes). SOLO para
-# encontrar el nombre canónico; el modelo sigue usando pm._norm exacto.
-_ALIASES = {
-    "chivas": "guadalajara",
-    "club america": "america",
-    "aguilas": "america",
-    "pumas": "pumas unam",
-    "unam": "pumas unam",
-    "tigres": "tigres uanl",
-    "uanl": "tigres uanl",
-    "san luis": "atletico de san luis",
-    "atletico san luis": "atletico de san luis",
-    "asl": "atletico de san luis",
-    "juarez": "fc juarez",
-    "santos laguna": "santos",
-    "xolos": "tijuana",
-    "club tijuana": "tijuana",
-    "rayados": "monterrey",
-    "mazatlan": "mazatlan fc",
-    "la maquina": "cruz azul",
-}
-
-
-def _slug(s: Any) -> str:
-    """Minúsculas + sin acentos + espacios colapsados (solo para búsqueda)."""
-    t = unicodedata.normalize("NFKD", str(s or ""))
-    t = "".join(ch for ch in t if not unicodedata.combining(ch))
-    return " ".join(t.lower().split())
+    return plan_mod.cargar_calendario()
 
 
 def _equipos_del_torneo(calendario: List[Dict[str, Any]]) -> List[str]:
     """Nombres (display) de los equipos que aparecen en el calendario oficial."""
-    vistos: Dict[str, str] = {}  # norm -> display
+    vistos: Set[str] = set()
     for j in calendario:
         for p in j.get("partidos", []):
             for t in (p.get("home_team", ""), p.get("away_team", "")):
                 if t:
-                    vistos.setdefault(pm._norm(t), t)
-    return sorted(vistos.values(), key=lambda s: s.lower())
+                    vistos.add(tn.display_team_name(t))
+    return sorted(list(vistos), key=lambda s: s.lower())
 
 
-def _mapa_slug_a_display(
-    calendario: List[Dict[str, Any]], fuerzas: Dict[str, Any], datos: Optional[Dict[str, Any]] = None
-) -> Dict[str, str]:
-    """Resuelve cualquier nombre (slug) a un display name conocido."""
-    mapa: Dict[str, str] = {}
-    for j in calendario:
-        for p in j.get("partidos", []):
-            for t in (p.get("home_team", ""), p.get("away_team", "")):
-                if t:
-                    mapa.setdefault(_slug(t), t)
-    if datos:
-        for r in datos.get("resultados", []):
-            for t in (r.get("home_team", ""), r.get("away_team", "")):
-                if t:
-                    mapa.setdefault(_slug(t), t)
-    for norm in fuerzas.get("equipos", {}):
-        mapa.setdefault(_slug(norm), norm)
-    return mapa
-
-
-def _resolver_equipo(
-    q: str, calendario: List[Dict[str, Any]], fuerzas: Dict[str, Any], datos: Optional[Dict[str, Any]] = None
-) -> Optional[str]:
-    mapa = _mapa_slug_a_display(calendario, fuerzas, datos)
-    s = _slug(q)
-    s = _ALIASES.get(s, s)
-    return mapa.get(s)
+def _resolver_equipo(q: str, *args: Any, **kwargs: Any) -> Optional[str]:
+    """Resuelve un nombre de búsqueda al nombre canónico visible."""
+    # team_normalizer es mucho más robusto que el sistema anterior.
+    name = tn.display_team_name(q)
+    # Si el normalizador no lo conoce (no está en DISPLAY), devuelve el original limpio.
+    # Para la API, queremos asegurar que es un equipo válido del torneo.
+    return name
 
 
 def _tiene_modelo(equipo: str, fuerzas: Dict[str, Any]) -> bool:

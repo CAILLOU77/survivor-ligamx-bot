@@ -32,4 +32,4 @@ jobs:
         run: python -c "import os; assert os.path.isdir('src') and os.path.isfile('run_bot_prod.sh')"
 
       - name: Run tests
-        run: python -m pytest tests/ --cov=src --cov-report=term-missing
+        run: python -m pytest tests/ --cov=src --cov-report=term-missing --cov-fail-under=64
