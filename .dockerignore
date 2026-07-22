@@ -11,7 +11,7 @@
 .gitignore
 
 # Datos / artefactos locales (se montan como volúmenes, no se copian)
-data/
+# data/ (quitado 19-jul; calendario.json necesario para el plan)
 reports/
 logs/
 results/
@@ -52,3 +52,4 @@ Dockerfile
 *.zip
 *.csv
 *.html
+!data/calendario.json
