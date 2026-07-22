@@ -105,65 +105,31 @@ def _linea_goles(p: Dict[str, Any]) -> str:
             )
     return linea
 
-import re as _re_div
-
-_TAG_RE_DIV = _re_div.compile(r"<\s*(/?)\s*([a-zA-Z0-9]+)([^>]*)>")
-_VOID_DIV = {"br", "hr", "img", "meta", "link", "input"}
-
-
-def _balancear_html(texto: str):
-    """Cierra las etiquetas HTML abiertas para que el trozo sea válido.
-    Devuelve (texto_corregido, lista_de_etiquetas_abiertas)."""
-    pila: List[str] = []
-    for m in _TAG_RE_DIV.finditer(texto):
-        cierre, tag = m.group(1), m.group(2).lower()
-        if tag in _VOID_DIV:
-            continue
-        if cierre:
-            if pila and pila[-1] == tag:
-                pila.pop()
-        else:
-            if not (m.group(3) or "").rstrip().endswith("/"):
-                pila.append(tag)
-    return texto + "".join(f"</{t}>" for t in reversed(pila)), pila
-
-
 def _dividir_mensaje(texto: str, limite: int = _TELEGRAM_LIMITE) -> List[str]:
     """
-    Parte un mensaje largo en trozos <= `limite` que son HTML válido cada uno.
-    1) Prefiere cortar en saltos de línea. 2) Si una línea sola excede el límite,
-    la corta y BALANCEA las etiquetas (cierra al final del trozo y reabre al
-    inicio del siguiente) para que Telegram nunca rechace un trozo (HTTP 400).
+    Parte un mensaje largo en trozos <= `limite`, cortando SIEMPRE en saltos de
+    línea (nunca a media línea) para respetar el tope de Telegram (~4096) y no
+    romper etiquetas HTML (cada línea abre y cierra las suyas).
     """
     if len(texto) <= limite:
         return [texto]
     partes: List[str] = []
     actual = ""
-    reapertura: List[str] = []
-
-    def _flush(bloque: str):
-        nonlocal reapertura
-        if reapertura:
-            bloque = "".join(f"<{t}>" for t in reapertura) + bloque
-        corregido, abiertas = _balancear_html(bloque)
-        partes.append(corregido)
-        reapertura = list(abiertas)
-
     for linea in texto.split("\n"):
+        # Línea suelta más larga que el límite (muy raro): corte duro.
         while len(linea) > limite:
             if actual:
-                _flush(actual)
+                partes.append(actual)
                 actual = ""
-            _flush(linea[:limite])
+            partes.append(linea[:limite])
             linea = linea[limite:]
-        candidato = f"{actual}\n{linea}" if actual else linea
-        if len(candidato) > limite and actual:
-            _flush(actual)
+        if actual and len(actual) + 1 + len(linea) > limite:
+            partes.append(actual)
             actual = linea
         else:
-            actual = candidato
+            actual = f"{actual}\n{linea}" if actual else linea
     if actual:
-        _flush(actual)
+        partes.append(actual)
     return partes
 
 def _totales_jornada(pronosticos: list) -> Dict[str, Any]:

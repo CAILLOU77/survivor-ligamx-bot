@@ -333,129 +333,43 @@ def registrar_survivor_pick(
     no_perder_pct: float,
     prob_victoria_pct: float,
     fecha: str = "",
-    fuente_nueva: str = "bot",
 ) -> bool:
     """
-    Registra (o actualiza si aun esta pendiente) el pick de Survivor de una
-    jornada. Una fila por jornada.
-    - Si ya esta RESUELTO: no se sobreescribe.
-    - El pick del USUARIO (fuente='usuario' desde /usado) tiene prioridad:
-      el bot (fuente='bot') NO lo sobreescribe.
-    - La columna 'fuente' se migra automaticamente si no existe (PostgreSQL-safe).
-    Devuelve True si inserto/actualizo.
+    Registra (o actualiza si aún está pendiente) el pick de Survivor de una
+    jornada. Una fila por jornada. Si ya está RESUELTO, no se sobreescribe.
+    Devuelve True si insertó/actualizó.
     """
     if not jornada or not equipo:
         return False
-
-    def _migrar_fuente():
-        for sql in [
-            "ALTER TABLE survivor_historial ADD COLUMN IF NOT EXISTS fuente TEXT DEFAULT 'bot'",
-            "ALTER TABLE survivor_historial ADD COLUMN fuente TEXT DEFAULT 'bot'",
-        ]:
-            try:
-                with get_db() as mconn:
-                    mconn.cursor().execute(sql)
-                    mconn.commit()
-                return True
-            except Exception:
-                continue
-        return False
-
     with get_db() as conn:
         cur = conn.cursor()
-        migrado = False
-        try:
-            cur.execute(
-                f"SELECT resuelto, fuente FROM survivor_historial WHERE jornada = {PH}",
-                (str(jornada),),
-            )
-            migrado = True
-        except Exception:
-            if not _migrar_fuente():
-                cur.execute(
-                    f"SELECT resuelto FROM survivor_historial WHERE jornada = {PH}",
-                    (str(jornada),),
-                )
-                row = cur.fetchone()
-                if row and row[0]:
-                    return False
-                cur.execute(
-                    f"""UPDATE survivor_historial SET fecha={PH}, equipo={PH}, rival={PH},
-                        condicion={PH}, local={PH}, visitante={PH}, no_perder_pct={PH},
-                        prob_victoria_pct={PH} WHERE jornada={PH}""",
-                    (
-                        str(fecha or "")[:10],
-                        str(equipo),
-                        str(rival or ""),
-                        str(condicion or ""),
-                        str(local or ""),
-                        str(visitante or ""),
-                        float(no_perder_pct or 0),
-                        float(prob_victoria_pct or 0),
-                        str(jornada),
-                    ),
-                )
-                conn.commit()
-                return True
-            conn.rollback()
-            cur.execute(
-                f"SELECT resuelto, fuente FROM survivor_historial WHERE jornada = {PH}",
-                (str(jornada),),
-            )
-            migrado = True
-
+        cur.execute(f"SELECT resuelto FROM survivor_historial WHERE jornada = {PH}", (str(jornada),))
         row = cur.fetchone()
         if row is not None:
-            if migrado:
-                resuelto, fuente = row[0], (row[1] or "bot")
-                if resuelto:
-                    return False
-                if fuente == "usuario" and str(fuente_nueva) == "bot":
-                    return False
-            else:
-                if row[0]:
-                    return False
-            if migrado:
-                cur.execute(
-                    f"""UPDATE survivor_historial SET fecha={PH}, equipo={PH}, rival={PH},
-                        condicion={PH}, local={PH}, visitante={PH}, no_perder_pct={PH},
-                        prob_victoria_pct={PH}, fuente={PH} WHERE jornada={PH}""",
-                    (
-                        str(fecha or "")[:10],
-                        str(equipo),
-                        str(rival or ""),
-                        str(condicion or ""),
-                        str(local or ""),
-                        str(visitante or ""),
-                        float(no_perder_pct or 0),
-                        float(prob_victoria_pct or 0),
-                        str(fuente_nueva or "bot"),
-                        str(jornada),
-                    ),
-                )
-            else:
-                cur.execute(
-                    f"""UPDATE survivor_historial SET fecha={PH}, equipo={PH}, rival={PH},
-                        condicion={PH}, local={PH}, visitante={PH}, no_perder_pct={PH},
-                        prob_victoria_pct={PH} WHERE jornada={PH}""",
-                    (
-                        str(fecha or "")[:10],
-                        str(equipo),
-                        str(rival or ""),
-                        str(condicion or ""),
-                        str(local or ""),
-                        str(visitante or ""),
-                        float(no_perder_pct or 0),
-                        float(prob_victoria_pct or 0),
-                        str(jornada),
-                    ),
-                )
+            if row[0]:  # ya resuelto: bloqueado
+                return False
+            cur.execute(
+                f"""UPDATE survivor_historial SET fecha={PH}, equipo={PH}, rival={PH},
+                    condicion={PH}, local={PH}, visitante={PH}, no_perder_pct={PH},
+                    prob_victoria_pct={PH} WHERE jornada={PH}""",
+                (
+                    str(fecha or "")[:10],
+                    str(equipo),
+                    str(rival or ""),
+                    str(condicion or ""),
+                    str(local or ""),
+                    str(visitante or ""),
+                    float(no_perder_pct or 0),
+                    float(prob_victoria_pct or 0),
+                    str(jornada),
+                ),
+            )
         else:
             cur.execute(
                 f"""INSERT INTO survivor_historial
                     (jornada, fecha, equipo, rival, condicion, local, visitante,
-                     no_perder_pct, prob_victoria_pct, fuente)
-                    VALUES ({PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH})""",
+                     no_perder_pct, prob_victoria_pct)
+                    VALUES ({PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH})""",
                 (
                     str(jornada),
                     str(fecha or "")[:10],
@@ -466,38 +380,10 @@ def registrar_survivor_pick(
                     str(visitante or ""),
                     float(no_perder_pct or 0),
                     float(prob_victoria_pct or 0),
-                    str(fuente_nueva or "bot"),
                 ),
             )
         conn.commit()
         return True
-
-
-def registrar_pick_usuario(
-    jornada: str,
-    equipo: str,
-    rival: str = "",
-    condicion: str = "",
-    local: str = "",
-    visitante: str = "",
-    fecha: str = "",
-) -> bool:
-    """
-    Registra el pick REAL del usuario (marcado con /usado) para una jornada, con
-    fuente='usuario'. Tiene prioridad sobre el pick del bot (no lo pisa).
-    """
-    return registrar_survivor_pick(
-        jornada=jornada,
-        equipo=equipo,
-        rival=rival,
-        condicion=condicion,
-        local=local,
-        visitante=visitante,
-        no_perder_pct=0,
-        prob_victoria_pct=0,
-        fecha=fecha,
-        fuente_nueva="usuario",
-    )
 
 
 def settle_survivor(resultados) -> int:

@@ -114,20 +114,8 @@ def responder(cmd: Optional[str], arg: str) -> str:
             usados = db.get_equipos_usados()
         except Exception as exc:  # pragma: no cover - BD no disponible
             return f"⚠️ No se pudo registrar: {exc}"
-        # FIX /racha: registra TU pick real en el track-record de la jornada actual.
-        nota_racha = ""
-        try:
-            try:
-                import telegram_pronosticos as tp
-            except ImportError:  # pragma: no cover
-                from src import telegram_pronosticos as tp  # type: ignore
-            fn = getattr(tp, "registrar_pick_usuario_desde_usado", None)
-            if fn and fn(arg):
-                nota_racha = "\n🔥 Registrado en tu racha survivor (mírala con /racha)."
-        except Exception:  # pragma: no cover - nunca romper /usado
-            nota_racha = ""
         cab = "✅ Registrado" if agregado else "ℹ️ Ya estaba"
-        return f"{cab}: <b>{arg}</b>\nUsados ({len(usados)}): {', '.join(usados) or '—'}{nota_racha}"
+        return f"{cab}: <b>{arg}</b>\nUsados ({len(usados)}): {', '.join(usados) or '—'}"
 
     if cmd in ("usados", "lista", "list"):
         try:
