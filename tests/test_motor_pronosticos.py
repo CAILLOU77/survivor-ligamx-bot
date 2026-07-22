@@ -59,6 +59,8 @@ class TestGenerar(unittest.TestCase):
         self.assertEqual(faltantes[0]["fecha"], "2026-07-17")
 
     def test_sin_resultados_no_revienta(self):
+        if hasattr(mp.generar_pronosticos, "cache_clear"):
+            mp.generar_pronosticos.cache_clear()
         res = mp.generar_pronosticos(fixtures=[{"home_team": "A", "away_team": "B"}], resultados=[])
         self.assertEqual(res["total_pronosticos"], 0)
 
