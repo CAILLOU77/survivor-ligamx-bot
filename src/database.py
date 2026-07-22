@@ -113,9 +113,15 @@ def init_db():
                 prob_victoria_pct REAL,
                 marcador_real TEXT,
                 estado TEXT DEFAULT 'pendiente',
-                resuelto INTEGER DEFAULT 0
+                resuelto INTEGER DEFAULT 0,
+                fuente TEXT DEFAULT 'bot'
             )
         """)
+        # Migración: columna fuente ('bot' | 'usuario') para que /racha mida TUS picks.
+        try:
+            cur.execute("ALTER TABLE survivor_historial ADD COLUMN fuente TEXT DEFAULT 'bot'")
+        except Exception:
+            pass  # ya existe
         # Historial de pronósticos (track-record: marcador exacto + aciertos).
         cur.execute("""
             CREATE TABLE IF NOT EXISTS pronosticos_historial (
@@ -333,25 +339,33 @@ def registrar_survivor_pick(
     no_perder_pct: float,
     prob_victoria_pct: float,
     fecha: str = "",
+    fuente_nueva: str = "bot",
 ) -> bool:
     """
     Registra (o actualiza si aún está pendiente) el pick de Survivor de una
     jornada. Una fila por jornada. Si ya está RESUELTO, no se sobreescribe.
-    Devuelve True si insertó/actualizó.
+    El pick del USUARIO (fuente='usuario', marcado con /usado) tiene prioridad:
+    el bot (fuente='bot') NO lo sobreescribe. Devuelve True si insertó/actualizó.
     """
     if not jornada or not equipo:
         return False
     with get_db() as conn:
         cur = conn.cursor()
-        cur.execute(f"SELECT resuelto FROM survivor_historial WHERE jornada = {PH}", (str(jornada),))
+        cur.execute(
+            f"SELECT resuelto, fuente FROM survivor_historial WHERE jornada = {PH}",
+            (str(jornada),),
+        )
         row = cur.fetchone()
         if row is not None:
-            if row[0]:  # ya resuelto: bloqueado
+            resuelto, fuente = row[0], (row[1] or "bot")
+            if resuelto:  # ya resuelto: bloqueado
                 return False
+            if fuente == "usuario" and str(fuente_nueva) == "bot":
+                return False  # el pick del usuario manda; el bot no lo pisa
             cur.execute(
                 f"""UPDATE survivor_historial SET fecha={PH}, equipo={PH}, rival={PH},
                     condicion={PH}, local={PH}, visitante={PH}, no_perder_pct={PH},
-                    prob_victoria_pct={PH} WHERE jornada={PH}""",
+                    prob_victoria_pct={PH}, fuente={PH} WHERE jornada={PH}""",
                 (
                     str(fecha or "")[:10],
                     str(equipo),
@@ -361,6 +375,7 @@ def registrar_survivor_pick(
                     str(visitante or ""),
                     float(no_perder_pct or 0),
                     float(prob_victoria_pct or 0),
+                    str(fuente_nueva or "bot"),
                     str(jornada),
                 ),
             )
@@ -368,8 +383,8 @@ def registrar_survivor_pick(
             cur.execute(
                 f"""INSERT INTO survivor_historial
                     (jornada, fecha, equipo, rival, condicion, local, visitante,
-                     no_perder_pct, prob_victoria_pct)
-                    VALUES ({PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH})""",
+                     no_perder_pct, prob_victoria_pct, fuente)
+                    VALUES ({PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH})""",
                 (
                     str(jornada),
                     str(fecha or "")[:10],
@@ -380,10 +395,38 @@ def registrar_survivor_pick(
                     str(visitante or ""),
                     float(no_perder_pct or 0),
                     float(prob_victoria_pct or 0),
+                    str(fuente_nueva or "bot"),
                 ),
             )
         conn.commit()
         return True
+
+
+def registrar_pick_usuario(
+    jornada: str,
+    equipo: str,
+    rival: str = "",
+    condicion: str = "",
+    local: str = "",
+    visitante: str = "",
+    fecha: str = "",
+) -> bool:
+    """
+    Registra el pick REAL del usuario (marcado con /usado) para una jornada, con
+    fuente='usuario'. Tiene prioridad sobre el pick del bot (el bot no lo pisa).
+    """
+    return registrar_survivor_pick(
+        jornada=jornada,
+        equipo=equipo,
+        rival=rival,
+        condicion=condicion,
+        local=local,
+        visitante=visitante,
+        no_perder_pct=0,
+        prob_victoria_pct=0,
+        fecha=fecha,
+        fuente_nueva="usuario",
+    )
 
 
 def settle_survivor(resultados) -> int:

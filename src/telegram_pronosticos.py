@@ -858,9 +858,71 @@ def _registrar_survivor_historial(picks, pronosticos) -> None:
             no_perder_pct=pk.get("no_perder_pct", 0),
             prob_victoria_pct=pk.get("prob_victoria_pct", 0),
             fecha=fecha,
+            fuente_nueva="bot",
         )
     except Exception:  # pragma: no cover - nunca tumbar el envío por el track-record
         logger.debug("Exception silenciada en _registrar_survivor_historial", exc_info=True)
+
+
+def registrar_pick_usuario_desde_usado(equipo: str) -> bool:
+    """
+    FIX /racha: cuando el usuario marca /usado <equipo>, registra ESE equipo como
+    su pick REAL de la jornada actual en survivor_historial (fuente='usuario'),
+    para que /racha mida sus picks y no los del bot. Ubica el partido en los
+    pronósticos más recientes (cacheados; si no, los genera). Tolerante: nunca lanza.
+    """
+    try:
+        try:
+            import database as _db
+        except ImportError:  # pragma: no cover
+            from src import database as _db  # type: ignore
+        pronosticos: List[Dict[str, Any]] = []
+        try:
+            import json as _json
+            import os as _os
+            ruta = _os.path.join(
+                _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+                "data", "pronosticos.json",
+            )
+            if _os.path.exists(ruta):
+                with open(ruta, encoding="utf-8") as fh:
+                    pronosticos = (_json.load(fh) or {}).get("pronosticos", []) or []
+        except Exception:  # pragma: no cover
+            pronosticos = []
+        if not pronosticos:
+            try:
+                pronosticos = motor.generar_pronosticos().get("pronosticos", []) or []
+            except Exception:  # pragma: no cover
+                pronosticos = []
+
+        def _cf(s):
+            return str(s or "").strip().casefold()
+
+        eq = _cf(equipo)
+        partido = next(
+            (p for p in pronosticos if _cf(p.get("local")) == eq or _cf(p.get("visitante")) == eq),
+            None,
+        )
+        if not partido:
+            return False
+        es_local = _cf(partido.get("local")) == eq
+        rival = partido.get("visitante") if es_local else partido.get("local")
+        fecha = str(partido.get("fecha", ""))[:10]
+        jornada = _iso_week(fecha) or fecha
+        if not jornada:
+            return False
+        return bool(_db.registrar_pick_usuario(
+            jornada=jornada,
+            equipo=equipo,
+            rival=rival or "",
+            condicion="Local" if es_local else "Visitante",
+            local=partido.get("local", ""),
+            visitante=partido.get("visitante", ""),
+            fecha=fecha,
+        ))
+    except Exception:  # pragma: no cover - nunca tumbar /usado por el track-record
+        logger.debug("Exception silenciada en registrar_pick_usuario_desde_usado", exc_info=True)
+        return False
 
 
 def enviar_pronosticos(equipos_usados: Optional[List[str]] = None, incluir_contexto: bool = True) -> Dict[str, Any]:
@@ -1852,7 +1914,7 @@ def construir_mensaje_survivor_historial(resumen: Dict[str, Any]) -> str:
             pieza += f" vs {rival}"
             lineas.append(pieza)
 
-    lineas += [div, "ℹ️ Mide el pick del bot, no tus picks manuales de /usado.", DISCLAIMER]
+    lineas += [div, "ℹ️ Mide TUS picks (los que marcas con /usado). 🟢 ganado · 🤝 empate · 🔴 perdido.", DISCLAIMER]
     return "\n".join(lineas)
 
 
@@ -2146,30 +2208,9 @@ def enviar_analisis_jornada() -> Dict[str, Any]:
     for mensaje_partido in resultado.get("mensajes_individuales", []):
         if not mensaje_partido.strip():
             continue
-        # Si el mensaje supera los 3000 caracteres, dividirlo inteligentemente
-        if len(mensaje_partido) > 3000:
-            # Dividir por bloques: encabezado, goles, tarjetas, señales, conclusión
-            partes = mensaje_partido.split("💡 <b>Análisis:</b>")
-            if len(partes) == 2:
-                parte1 = partes[0]
-                parte2 = partes[1]
-                # Dividir parte1 si sigue siendo muy largo
-                if len(parte1) > 2800:
-                    mitad = len(parte1) // 2
-                    enviado = enviado and enviar_mensaje(parte1[:mitad] + "...")
-                    enviado = enviado and enviar_mensaje("..." + parte1[mitad:])
-                else:
-                    enviado = enviado and enviar_mensaje(parte1)
-                enviado = enviado and enviar_mensaje("💡 <b>Análisis:</b>" + parte2[:2800])
-                if len(parte2) > 2800:
-                    enviado = enviado and enviar_mensaje("..." + parte2[2800:])
-            else:
-                # Fallback: dividir por la mitad
-                mitad = len(mensaje_partido) // 2
-                enviado = enviado and enviar_mensaje(mensaje_partido[:mitad] + "...")
-                enviado = enviado and enviar_mensaje("..." + mensaje_partido[mitad:])
-        else:
-            enviado = enviado and enviar_mensaje(mensaje_partido)
+        # FIX: enviar_mensaje() -> _dividir_mensaje() ya parte en trozos <= 4096
+        # con HTML balanceado (nunca corta a media etiqueta -> Telegram no rechaza).
+        enviado = enviar_mensaje(mensaje_partido) and enviado
 
     # Enviar tabla de posiciones
     mensaje_tabla = resultado.get("mensaje_tabla", "")

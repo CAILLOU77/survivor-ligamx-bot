@@ -541,11 +541,23 @@ def mejores_picks_estrategico(
 
     advertencia = None
     if cautela:
-        advertencia = (
-            "⚠️ Arranque de torneo (pocos datos aún): priorizo LOCALES, evito favoritos "
-            "visitantes y guardo a los equipos fuertes para jornadas difíciles. "
-            "Las primeras semanas traen sorpresas."
-        )
+        if partidos_jugados_torneo is None:
+            advertencia = (
+                "🌱 <b>Modo cauteloso</b> — no pude leer cuántos partidos van del torneo "
+                "(la API de datos no respondió), así que juego conservador: priorizo "
+                "<b>LOCALES</b> y evito favoritos visitantes.\n"
+                "⚠️ Si esto sigue varias jornadas, revisa la fuente de datos "
+                "(<code>estado_temporada</code> / ESPN)."
+            )
+        else:
+            faltan = max(0, UMBRAL_CAUTELA_PARTIDOS - int(partidos_jugados_torneo))
+            advertencia = (
+                f"🌱 <b>Arranque de torneo</b> — llevo <b>{partidos_jugados_torneo}</b> de "
+                f"<b>{UMBRAL_CAUTELA_PARTIDOS}</b> partidos vistos (~3 jornadas).\n"
+                f"Con pocos datos juego conservador: priorizo <b>LOCALES</b> y evito "
+                f"favoritos visitantes; guardo a los fuertes para jornadas difíciles.\n"
+                f"📈 Me relajo en ~<b>{faltan}</b> partidos más."
+            )
     return {
         "cautela": cautela,
         "partidos_jugados_torneo": partidos_jugados_torneo,

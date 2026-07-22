@@ -660,7 +660,7 @@ def _conclusion_ia(home: str, away: str, detalle: Dict[str, Any], hg: Optional[i
             {"role": "user", "content": user},
         ],
         "temperature": 0.3,
-        "max_tokens": 400,  # Más espacio para análisis IA completo
+        "max_tokens": 700,  # Más espacio para análisis IA completo (antes 400 -> se cortaba)
     }
 
     backend = ia._backend()
