@@ -104,8 +104,10 @@ class TestPlanificador(unittest.TestCase):
 
 
 class TestCargarCalendario(unittest.TestCase):
-    def test_archivo_inexistente(self):
-        self.assertEqual(ps.cargar_calendario(Path("/no/existe/x.json")), [])
+    def test_archivo_inexistente_usa_fallback_inline(self):
+        cal = ps.cargar_calendario(Path("/no/existe/x.json"))
+        self.assertEqual(len(cal), 17)  # fallback inline: 17 jornadas
+        self.assertTrue(all("jornada" in j and j["partidos"] for j in cal))
 
 
 class TestOddsPorPartido(unittest.TestCase):
