@@ -6,6 +6,7 @@ automáticos**: toda salida es informativa y para revisión humana.
 
 ![Python](https://img.shields.io/badge/Python-3.12-blue)
 ![CI](https://github.com/CAILLOU77/survivor-ligamx-bot/workflows/CI%2FCD/badge.svg)
+![Coverage](https://img.shields.io/badge/coverage-view_logs-green)
 
 ## Arquitectura (ESPN + Poisson)
 
