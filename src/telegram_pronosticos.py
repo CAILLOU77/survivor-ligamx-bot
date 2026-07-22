@@ -1172,11 +1172,24 @@ def _plan_temporada(equipos_usados: Optional[List[str]]) -> Dict[str, Any]:
 
 def _jornada_actual_num() -> Optional[int]:
     """Número de la próxima jornada por jugar (según data/calendario.json).
-    Siempre toma la primera jornada del calendario como predeterminada.
-    Así /pick y /plan SIEMPRE coinciden aunque el calendario sea futuro."""
+
+    Toma la primera jornada que aún no termina (fecha_fin >= hoy) para que /pick
+    apunte a la jornada ACTUAL (la que se juega ahora o la siguiente por jugar) y
+    así /pick y /plan SIEMPRE coincidan. (Antes usaba siempre cal[0], la primera
+    del archivo, lo que dejaba /pick clavado en la jornada 1 aunque ya se hubiera
+    jugado.)"""
     try:
+        hoy = datetime.now(timezone.utc).date()
         cal = _cargar_calendario_local()
-        if cal:
+        vigentes = []
+        for j in cal:
+            fin = _fecha(j.get("fecha_fin"))
+            if fin is not None and fin >= hoy:
+                vigentes.append(j)
+        if vigentes:
+            vigentes.sort(key=lambda j: _fecha(j.get("fecha_inicio")) or hoy)
+            return int(vigentes[0].get("jornada", 1))
+        if cal:  # fallback: primera del calendario
             return int(cal[0].get("jornada", 1))
         return None
     except Exception:  # pragma: no cover
