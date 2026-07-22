@@ -1317,12 +1317,11 @@ def _plan_temporada(equipos_usados: Optional[List[str]]) -> Dict[str, Any]:
 
 def _jornada_actual_num() -> Optional[int]:
     """Número de la próxima jornada por jugar (según data/calendario.json).
-    Siempre toma la primera jornada del calendario como predeterminada.
-    Así /pick y /plan SIEMPRE coinciden aunque el calendario sea futuro."""
+    Detecta la jornada cuya fecha_inicio es la más próxima a hoy."""
     try:
-        cal = _cargar_calendario_local()
-        if cal:
-            return int(cal[0].get("jornada", 1))
+        jornada = proxima_jornada()
+        if jornada:
+            return int(jornada.get("jornada", 1))
         return None
     except Exception:  # pragma: no cover
         return None
@@ -2183,17 +2182,21 @@ def _fecha(valor: Any) -> Optional[date]:
 
 
 def proxima_jornada(hoy: Optional[date] = None) -> Optional[Dict[str, Any]]:
-    """Jornada cuya fecha_inicio es la más próxima a partir de hoy (o None)."""
+    """Jornada cuya fecha cubre a hoy (o la más próxima futura)."""
     hoy = hoy or datetime.now(timezone.utc).date()
     candidatas = []
     for j in _cargar_calendario_local():
         ini = _fecha(j.get("fecha_inicio"))
-        if ini is not None and ini >= hoy:
-            candidatas.append((ini, j))
-    if not candidatas:
-        return None
-    candidatas.sort(key=lambda t: t[0])
-    return candidatas[0][1]
+        fin = _fecha(j.get("fecha_fin"))
+        if ini is not None and fin is not None:
+            if ini <= hoy <= fin:
+                return j  # Jornada actual en curso
+            if ini > hoy:
+                candidatas.append((ini, j))  # Jornadas futuras
+    if candidatas:
+        candidatas.sort(key=lambda t: t[0])
+        return candidatas[0][1]
+    return None
 
 
 def construir_recordatorio(jornada: Dict[str, Any], dias: int) -> str:
