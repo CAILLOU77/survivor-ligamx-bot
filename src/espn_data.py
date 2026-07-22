@@ -23,7 +23,7 @@ import argparse
 import json
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 try:
     import requests
@@ -50,7 +50,7 @@ def _fetch_scoreboard(rango_fechas: str = "") -> Dict[str, Any]:
     resp = requests.get(SCOREBOARD_URL, params=params, timeout=20)
     if resp.status_code != 200:
         raise RuntimeError(f"ESPN respondió HTTP {resp.status_code}.")
-    return resp.json()
+    return cast(Dict[str, Any], resp.json())
 
 
 def parsear_eventos(data: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -90,8 +90,8 @@ def parsear_eventos(data: Dict[str, Any]) -> List[Dict[str, Any]]:
         }
         if jugado:
             try:
-                partido["home_goals"] = int(hg)
-                partido["away_goals"] = int(ag)
+                partido["home_goals"] = int(cast(Any, hg))
+                partido["away_goals"] = int(cast(Any, ag))
             except (TypeError, ValueError):
                 partido["jugado"] = False
         partidos.append(partido)

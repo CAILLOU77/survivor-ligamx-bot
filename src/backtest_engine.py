@@ -12,7 +12,7 @@ no fabrica nada. Informativo / revisión humana.
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, cast
 
 try:
     import fuentes_datos
@@ -31,7 +31,7 @@ def run_backtest(meses: int = 18) -> Dict[str, Any]:
     resultado = validacion_modelo.evaluar_modelo(datos.get("resultados", []))
     resultado["fuente_datos"] = datos.get("fuente")
     resultado["nota"] = "Validación real del modelo vs ESPN (sin simular apuestas)."
-    return resultado
+    return cast(Dict[str, Any], resultado)
 
 
 if __name__ == "__main__":

@@ -18,12 +18,13 @@ for p in (SRC, ROOT):
 os.environ.setdefault("API_KEY", "testkey")  # antes de importar la app
 
 import src.api as apimod  # noqa: E402
+import src.auth as authmod  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 
 class TestApi(unittest.TestCase):
     def setUp(self):
-        apimod.API_KEY = "testkey"  # asegura auth activa en el test
+        authmod.API_KEY = "testkey"  # asegura auth activa en el test
         self.client = TestClient(apimod.app)
 
     def test_health_ok(self):
@@ -116,16 +117,16 @@ class TestApi(unittest.TestCase):
 
 class TestAuth(unittest.TestCase):
     def setUp(self):
-        apimod.API_KEY = "testkey"
+        authmod.API_KEY = "testkey"
         self.client = TestClient(apimod.app)
 
     def test_api_key_no_configurada_devuelve_503(self):
         """Si API_KEY='' (no configurada), debe dar 503"""
-        apimod.API_KEY = ""
+        authmod.API_KEY = ""
         r = self.client.get("/stats", headers={"X-API-Key": ""})
         self.assertEqual(r.status_code, 503)
         self.assertIn("API_KEY no configurada", r.json().get("detail", ""))
-        apimod.API_KEY = "testkey"  # restaurar
+        authmod.API_KEY = "testkey"  # restaurar
 
     def test_api_key_invalida_devuelve_403(self):
         """Si API_KEY es distinta, debe dar 403"""
@@ -168,7 +169,7 @@ class TestAuth(unittest.TestCase):
         from unittest import mock as _mock
         with (
             _mock.patch("src.database.get_equipos_usados", return_value=[]),
-            _mock.patch("requests.get", side_effect=Exception("Timeout")) as mock_get,
+            _mock.patch("requests.get", side_effect=Exception("Timeout")),
         ):
             r = self.client.get("/health")
         self.assertEqual(r.status_code, 200)

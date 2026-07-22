@@ -22,6 +22,8 @@ import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
+import logging
+logger = logging.getLogger(__name__)
 
 try:
     import fuentes_datos
@@ -270,10 +272,10 @@ def generar_pronosticos(
             if isinstance(largo, list) and len(largo) > len(resultados):
                 h2h_hist = largo
         except Exception:  # pragma: no cover - API no disponible: usar el del modelo
-            pass
+            logger.debug("Exception silenciada en generar_pronosticos", exc_info=True)
         pronosticos = mh2h.anotar_h2h(pronosticos, h2h_hist)
     except Exception:  # pragma: no cover - nunca tumbar el pipeline
-        pass
+        logger.debug("Exception silenciada en generar_pronosticos", exc_info=True)
 
     return {
         "generado_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),

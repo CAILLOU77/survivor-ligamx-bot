@@ -24,6 +24,8 @@ import os
 import threading
 import time
 from datetime import datetime, timedelta
+import logging
+logger = logging.getLogger(__name__)
 
 try:
     from zoneinfo import ZoneInfo
@@ -41,7 +43,7 @@ def _zona():
         try:
             return ZoneInfo("America/Mexico_City")
         except Exception:
-            pass
+            logger.debug("Exception silenciada en _zona", exc_info=True)
     return None
 
 
@@ -71,7 +73,7 @@ def _wake_up() -> None:
         try:
             requests.get(url, timeout=10)
         except Exception:
-            pass
+            logger.debug("Exception silenciada en _wake_up", exc_info=True)
 
 
 def _loop() -> None:
@@ -90,7 +92,7 @@ def _loop() -> None:
         try:
             enviar_analisis_jornada()
         except Exception:
-            pass
+            logger.debug("Exception silenciada en _loop", exc_info=True)
         time.sleep(120)  # evitar doble disparo en el mismo minuto
 
 

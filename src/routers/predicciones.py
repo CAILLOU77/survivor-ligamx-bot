@@ -13,9 +13,11 @@ memoria (TTL) para no golpear ESPN en cada request.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 
 from fastapi import APIRouter, Request
+import logging
+logger = logging.getLogger(__name__)
 
 try:
     from rate_limit import limiter
@@ -118,7 +120,7 @@ def _obtener() -> Dict[str, Any]:
     if not _fresco():
         _CACHE["data"] = motor.generar_pronosticos()
         _CACHE["ts"] = datetime.now(timezone.utc)
-    return _CACHE["data"]
+    return cast(Dict[str, Any], _CACHE["data"])
 
 
 def _obtener_tabla() -> Dict[str, Any]:
@@ -130,7 +132,7 @@ def _obtener_tabla() -> Dict[str, Any]:
     if not fresco:
         _CACHE_TABLA["data"] = tabla_mod.obtener_tabla()
         _CACHE_TABLA["ts"] = datetime.now(timezone.utc)
-    return _CACHE_TABLA["data"]
+    return cast(Dict[str, Any], _CACHE_TABLA["data"])
 
 
 def _contexto_pick(pick: Dict[str, Any]) -> Dict[str, Any]:
@@ -159,8 +161,8 @@ def _contexto_pick(pick: Dict[str, Any]) -> Dict[str, Any]:
                     dossier.get("noticias", []),
                 )
         except Exception:  # pragma: no cover - IA nunca debe tumbar la jornada
-            pass
-        return dossier
+            logger.debug("Exception silenciada en _contexto_pick", exc_info=True)
+        return cast(Dict[str, Any], dossier)
     except Exception:  # pragma: no cover - fallback defensivo de red
         return {}
 
@@ -272,7 +274,7 @@ def survivor(request: Request, excluir: str = "") -> Dict[str, Any]:
     pick = _enriquecer_con_crowd(est["picks"][0]) if est.get("picks") else None
     # Top 3 picks crowd para contexto
     top_crowd = sorted(
-        [{"equipo": k, "crowd_pct": v} for k, v in CROWD_DISTRIBUTION.items()], key=lambda x: -x["crowd_pct"]
+        [{"equipo": k, "crowd_pct": v} for k, v in CROWD_DISTRIBUTION.items()], key=lambda x: -cast(float, x["crowd_pct"])
     )[:3]
     return {
         "generado_utc": data.get("generado_utc"),
@@ -377,14 +379,14 @@ def valor(request: Request) -> Dict[str, Any]:
 @limiter.limit("10/minute")
 def valor_diagnostico(request: Request) -> Dict[str, Any]:
     """Muestra qué devuelve odds-api.io (eventos/casas/mercados) sin exponer la key."""
-    return mercado_mod.diagnostico_mercado()
+    return cast(Dict[str, Any], mercado_mod.diagnostico_mercado())
 
 
 @router.get("/health/fuentes", summary="Salud de las fuentes de datos (ESPN/TheSportsDB/odds)")
 @limiter.limit("10/minute")
 def health_fuentes(request: Request) -> Dict[str, Any]:
     """Ping a cada fuente para detectar caídas antes de la jornada."""
-    return fuentes_mod.estado_fuentes()
+    return cast(Dict[str, Any], fuentes_mod.estado_fuentes())
 
 
 @router.get("/analisis/riesgo", summary="¿Cuándo falla el favorito? (análisis de upsets, datos reales)")
@@ -409,7 +411,7 @@ def analisis_riesgo(request: Request) -> Dict[str, Any]:
         except Exception as exc:  # pragma: no cover - fallback defensivo de red
             return {"partidos_evaluados": 0, "error": str(exc), "decision": "INFORMATIVO / REVISIÓN HUMANA"}
         _CACHE_RIESGO["ts"] = datetime.now(timezone.utc)
-    return _CACHE_RIESGO["data"]
+    return cast(Dict[str, Any], _CACHE_RIESGO["data"])
 
 
 @router.get("/plan-survivor", summary="Estrategia de temporada: qué equipo usar en cada jornada")
@@ -436,7 +438,7 @@ def plan_survivor(
             and (datetime.now(timezone.utc) - _CACHE_PLAN["ts"] < timedelta(minutes=_TTL_RIESGO_MIN))
         )
         if fresco:
-            return _CACHE_PLAN["data"]
+            return cast(Dict[str, Any], _CACHE_PLAN["data"])
 
     calendario = plan_mod.cargar_calendario()
     if not calendario:
@@ -461,7 +463,7 @@ def plan_survivor(
     if usar_cache:
         _CACHE_PLAN["data"] = resultado
         _CACHE_PLAN["ts"] = datetime.now(timezone.utc)
-    return resultado
+    return cast(Dict[str, Any], resultado)
 
 
 @router.get("/analisis-partido", summary="Dossier de un partido (Liga MX API): predicción + forma + tarjetas + h2h")
@@ -480,7 +482,7 @@ def analisis_partido(request: Request, home: str, away: str, prediccion: bool = 
     if not home or not away:
         return {"error": "Faltan parámetros 'home' y 'away'.", "decision": "INFORMATIVO / REVISIÓN HUMANA"}
     try:
-        return lmx.analisis_partido(home, away, incluir_prediccion=prediccion)
+        return cast(Dict[str, Any], lmx.analisis_partido(home, away, incluir_prediccion=prediccion))
     except Exception as exc:  # pragma: no cover - fallback defensivo de red
         return {"home": home, "away": away, "error": str(exc), "decision": "INFORMATIVO / REVISIÓN HUMANA"}
 

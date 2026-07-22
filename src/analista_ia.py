@@ -26,6 +26,8 @@ from __future__ import annotations
 import json
 import os
 from typing import Any, Dict, List
+import logging
+logger = logging.getLogger(__name__)
 
 try:
     import requests
@@ -108,7 +110,7 @@ def _buscar_web(query: str, max_results: int = 5) -> List[Dict[str, str]]:
                         "snippet": item.get("description", "") or item.get("summary", ""),
                     })
     except Exception:
-        pass
+        logger.debug("Exception silenciada en _buscar_web", exc_info=True)
     # Fallback: Google News RSS via requests
     if not resultados:
         try:
@@ -135,7 +137,7 @@ def _buscar_web(query: str, max_results: int = 5) -> List[Dict[str, str]]:
                             "snippet": _re.sub(r'<[^>]+>', '', desc.group(1)).strip() if desc else "",
                         })
         except Exception:
-            pass
+            logger.debug("Exception silenciada en _buscar_web", exc_info=True)
     # Tercer fallback: obtener contenido completo de las URLs encontradas
     for r in resultados[:3]:
         if r.get("url") and not r.get("snippet"):
@@ -147,7 +149,7 @@ def _buscar_web(query: str, max_results: int = 5) -> List[Dict[str, str]]:
                     texto = ' '.join(texto.split())
                     r["snippet"] = texto[:500]
             except Exception:
-                pass
+                logger.debug("Exception silenciada en _buscar_web", exc_info=True)
     return resultados
 
 
@@ -214,16 +216,16 @@ def analizar_noticias(equipos: List[str], noticias: List[Dict[str, Any]]) -> Dic
         f"Equipos del partido: {', '.join(equipos)}.\n\n"
         f"Noticias recientes (úsalas SOLO como fuente, no inventes):\n{texto}\n\n"
     )
-    
+
     # Enriquecer con búsqueda web si hay equipos definidos
     web_ctx = ""
     if equipos:
         web_ctx = _enriquecer_con_busqueda_web(equipos, noticias)
     if web_ctx:
         user += f"Información adicional de búsqueda web (también usala SOLO como fuente):\n{web_ctx}\n\n"
-    
+
     user += "Devuelve el JSON con las señales de riesgo relevantes a esos equipos."
-    
+
     payload = {
         "model": _modelo(),
         "messages": [{"role": "system", "content": _SYSTEM}, {"role": "user", "content": user}],

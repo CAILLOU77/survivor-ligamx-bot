@@ -8,7 +8,7 @@ import logging
 import os
 import sys
 from datetime import datetime, timezone
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 
 class JSONFormatter(logging.Formatter):
@@ -53,7 +53,7 @@ class JSONFormatter(logging.Formatter):
         return json.dumps(log_obj, ensure_ascii=False)
 
 
-def setup_logging(level: str = None) -> logging.Logger:
+def setup_logging(level: Optional[str] = None) -> logging.Logger:
     """
     Configura logging estructurado.
     En producción (LOG_LEVEL=INFO/DEBUG), salida JSON a stdout.

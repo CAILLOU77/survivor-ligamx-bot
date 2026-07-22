@@ -21,7 +21,7 @@ INFORMATIVO / REVISIÓN HUMANA.
 from __future__ import annotations
 
 from datetime import date
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, cast
 
 try:
     import poisson_model as pm
@@ -71,7 +71,7 @@ def _labels_arranque(
     prev = None
     idx = 0
     for j in jornadas:
-        f = _fecha_semana_iso(j.get("jornada"))
+        f = _fecha_semana_iso(cast(Any, j.get("jornada")))
         if f is None:
             prev = None
             continue

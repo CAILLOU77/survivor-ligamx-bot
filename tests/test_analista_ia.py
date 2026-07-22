@@ -40,7 +40,7 @@ class TestHabilitado(unittest.TestCase):
 
     def test_lee_key_primary_backup(self):
         with mock.patch.dict(os.environ, {"GROQ_API_KEY_PRIMARY": "p"}, clear=True):
-            self.assertEqual(ia._api_key(), "p")
+            self.assertEqual(ia._groq_api_key(), "p")
 
     def test_enabled_false_fuerza_apagado(self):
         with mock.patch.dict(os.environ, {"GROQ_API_KEY": "x", "GROQ_ENABLED": "false"}, clear=True):

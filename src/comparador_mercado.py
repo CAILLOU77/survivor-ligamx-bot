@@ -25,7 +25,9 @@ import unicodedata
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, cast
+import logging
+logger = logging.getLogger(__name__)
 
 try:
     import requests
@@ -304,7 +306,7 @@ def anotar_pronostico(pron: Dict[str, Any], mercado: Optional[Dict[str, Any]]) -
                 ml["visita"],
             )
     except (KeyError, ValueError, TypeError):
-        pass
+        logger.debug("Exception silenciada en anotar_pronostico", exc_info=True)
     try:
         tot = mercado.get("totals")
         if tot and "prob_over_pct" in pron:
@@ -315,13 +317,13 @@ def anotar_pronostico(pron: Dict[str, Any], mercado: Optional[Dict[str, Any]]) -
                 tot.get("linea", LINEA_GOLES),
             )
     except (KeyError, ValueError, TypeError):
-        pass
+        logger.debug("Exception silenciada en anotar_pronostico", exc_info=True)
     try:
         hcp = mercado.get("handicap")
         if hcp:
             bloque["handicap"] = resumen_handicap(hcp["linea"], hcp["local"], hcp["visita"])
     except (KeyError, ValueError, TypeError):
-        pass
+        logger.debug("Exception silenciada en anotar_pronostico", exc_info=True)
 
     salida["mercado"] = bloque if len(bloque) > 1 else None
     return salida
@@ -379,7 +381,7 @@ def pronostico_desde_momios(
             pron["prob_under_pct"] = round(ou["prob_b"] * 100, 2)
             pron["pick_ou"] = "Over" if ou["prob_a"] >= ou["prob_b"] else "Under"
     except (KeyError, ValueError, TypeError):
-        pass
+        logger.debug("Exception silenciada en pronostico_desde_momios", exc_info=True)
     return pron
 
 
@@ -583,7 +585,7 @@ def parsear_mercado(odds_response: Any) -> Dict[str, Any]:
     ml_d: List[float] = []
     ml_a: List[float] = []
     # totales agrupados por línea: {linea: {"over": [...], "under": [...]}}
-    tot = defaultdict(lambda: {"over": [], "under": []})
+    tot: Dict[Any, Any] = defaultdict(lambda: {"over": [], "under": []})
     hdp_line: List[float] = []
     hdp_h: List[float] = []
     hdp_a: List[float] = []
@@ -594,7 +596,7 @@ def parsear_mercado(odds_response: Any) -> Dict[str, Any]:
         for m in markets:
             if not isinstance(m, dict):
                 continue
-            nombre = _norm(m.get("name"))
+            nombre = _norm(cast(Any, m.get("name")))
             odds_list = m.get("odds") or []
             if not isinstance(odds_list, list) or not odds_list:
                 continue
@@ -669,7 +671,7 @@ def _casas_activas() -> List[str]:
         return _ACTIVAS_CACHE
     try:
         data = _get(f"{BASE_URL}/bookmakers", {})
-        _ACTIVAS_CACHE = [b.get("name") for b in data if isinstance(b, dict) and b.get("active") and b.get("name")]
+        _ACTIVAS_CACHE = [cast(str, b.get("name")) for b in data if isinstance(b, dict) and b.get("active") and b.get("name")]
     except RuntimeError:
         _ACTIVAS_CACHE = []
     return _ACTIVAS_CACHE
@@ -777,7 +779,7 @@ def casas_con_odds_liga(key: str) -> List[str]:
         and ts is not None
         and ((ahora - ts).total_seconds() < CASAS_AUTO_TTL_HORAS * 3600)
     ):
-        return _CASAS_AUTO_CACHE["casas"]
+        return cast(List[str], _CASAS_AUTO_CACHE["casas"])
 
     activas_norm = {_norm(n): n for n in _casas_activas()}
     candidatas = []
@@ -894,7 +896,7 @@ def cargar_momios(max_edad_horas: float = MOMIOS_MAX_EDAD_HORAS, path: Path = MO
             if edad_h > max_edad_horas:
                 return {}
         except (ValueError, TypeError):
-            pass
+            logger.debug("Exception silenciada en cargar_momios", exc_info=True)
     return momios
 
 
@@ -956,13 +958,13 @@ def _pinnacle_liga_id(nombre: str = PINNACLE_LIGA) -> Optional[int]:
     objetivo = _norm(nombre)
     for lg in ligas:
         if _norm(lg.get("name", "")) == objetivo:
-            return lg.get("id")
+            return cast(Optional[int], lg.get("id"))
     # Respaldo: cualquier liga de México que no sea femenil/reservas/expansión.
     excluir = ("women", "femenil", "reserv", "u20", "u19", "u23", "expansion")
     for lg in ligas:
         n = _norm(lg.get("name", ""))
         if "mexico" in n and "liga mx" in n and not any(x in n for x in excluir):
-            return lg.get("id")
+            return cast(Optional[int], lg.get("id"))
     return None
 
 
@@ -1081,7 +1083,7 @@ def momios_para_uso(guardar_si_hay: bool = False, incluir_gratis: bool = False) 
             try:
                 guardar_momios(m)
             except OSError:  # pragma: no cover - disco no escribible
-                pass
+                logger.debug("Exception silenciada en _quizas_guardar", exc_info=True)
 
     if mercado_habilitado():
         live = obtener_momios_liga_mx()
@@ -1142,7 +1144,7 @@ def diagnostico_mercado() -> Dict[str, Any]:
             ev_id = eventos[0]["id"]
             todas = _bookmakers_consulta().split(",")
             # (a) Hallar el límite de casas: probar 1, 2, 3, 5, 10.
-            pruebas = []
+            pruebas: List[Dict[str, Any]] = []
             for n in (1, 2, 3, 5, 10):
                 libro = ",".join(todas[:n])
                 try:

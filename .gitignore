@@ -54,3 +54,11 @@ datos_liga_mx/
 data_kiro/
 /*.csv
 /*.zip
+
+# Borradores / scratch local (no es codigo de produccion, nunca se commitea)
+tmp/
+
+# Cobertura / artefactos de testing
+.coverage
+coverage.xml
+*.patch

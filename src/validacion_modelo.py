@@ -19,6 +19,8 @@ Sin red propia (recibe resultados) ni momios. Informativo.
 from __future__ import annotations
 
 from typing import Any, Dict, Sequence
+import logging
+logger = logging.getLogger(__name__)
 
 try:
     import poisson_model as pm
@@ -127,7 +129,7 @@ if __name__ == "__main__":
 def metricas_rendimiento() -> dict:
     """
     Métricas de negocio del modelo predictivo.
-    
+
     Returns:
         dict con accuracy_1x2, accuracy_marcador, brier_score,
         accuracy_por_jornada, latencia_espn_promedio_ms,
@@ -137,7 +139,7 @@ def metricas_rendimiento() -> dict:
     import json
     from datetime import datetime, timezone
 
-    metrics = {
+    metrics: Dict[str, Any] = {
         "accuracy_1x2": None,
         "accuracy_marcador": None,
         "brier_score": None,
@@ -154,7 +156,7 @@ def metricas_rendimiento() -> dict:
             cached = json.load(f)
             metrics.update(cached)
     except (FileNotFoundError, json.JSONDecodeError):
-        pass
+        logger.debug("Exception silenciada en metricas_rendimiento", exc_info=True)
 
     # Si no hay cache, calcular desde BD
     if metrics["total_predicciones"] == 0:
@@ -168,6 +170,6 @@ def metricas_rendimiento() -> dict:
                 metrics["total_predicciones"] = total
                 metrics["ultima_actualizacion"] = datetime.now(timezone.utc).isoformat()
         except Exception:
-            pass
+            logger.debug("Exception silenciada en metricas_rendimiento", exc_info=True)
 
     return metrics

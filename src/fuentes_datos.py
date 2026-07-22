@@ -18,7 +18,7 @@ import json
 import os
 import time
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, cast, Optional
 
 try:
     import requests
@@ -81,7 +81,7 @@ def _fetch_thesportsdb() -> Dict[str, Any]:
     resp = requests.get(TSDB_URL, params={"id": TSDB_LIGAMX_ID}, timeout=20)
     if resp.status_code != 200:
         raise RuntimeError(f"TheSportsDB respondió HTTP {resp.status_code}.")
-    return resp.json()
+    return cast(Dict[str, Any], resp.json())
 
 
 def obtener_resultados_thesportsdb() -> List[Dict[str, Any]]:
@@ -193,7 +193,7 @@ def _combinar(a: List[Dict[str, Any]], b: List[Dict[str, Any]]) -> List[Dict[str
 # ---------------------------------------------------------------------------
 # Healthcheck de fuentes (para detectar caídas antes de la jornada).
 # ---------------------------------------------------------------------------
-def _ping(url: str, params: Dict[str, Any] = None, timeout: int = 8) -> Dict[str, Any]:
+def _ping(url: str, params: Optional[Dict[str, Any]] = None, timeout: int = 8) -> Dict[str, Any]:
     """Hace un GET ligero y reporta {ok, http, ms} o {ok:False, error}."""
     if requests is None:
         return {"ok": False, "error": "requests no instalado"}

@@ -1,0 +1,54 @@
+# .dockerignore — lo que NUNCA debe hornearse dentro de la imagen.
+# El contexto de build es la raíz del repo (ver docker/docker-compose.yml).
+
+# Secretos / API keys — lo más importante: JAMÁS dentro de la imagen.
+.env
+.env.*
+!.env.example
+
+# Control de versiones
+.git
+.gitignore
+
+# Datos / artefactos locales (se montan como volúmenes, no se copian)
+data/
+reports/
+logs/
+results/
+datos_ligamx/
+datos_liga_mx/
+data_kiro/
+
+# Borradores / scratch (no es código de producción)
+tmp/
+
+# Python / entornos
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+
+# IDE / sistema operativo
+.DS_Store
+.kiro/
+.vscode/
+.idea/
+
+# Documentación que no necesita el runtime
+docs/
+*.md
+
+# Docker (evita copiar la propia receta dentro de la imagen)
+docker-compose.yml
+docker/docker-compose.yml
+docker/Dockerfile
+Dockerfile
+
+# Otros artefactos locales
+*.log
+*.zip
+*.csv
+*.html

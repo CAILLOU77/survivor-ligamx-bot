@@ -18,7 +18,9 @@ import os
 import re
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
+import logging
+logger = logging.getLogger(__name__)
 
 try:
     import requests
@@ -45,7 +47,7 @@ def _get(url: str, params: Optional[Dict[str, Any]] = None, timeout: int = 15) -
     try:
         resp = requests.get(url, params=params, timeout=timeout, headers=_HEADERS)
         if resp.status_code == 200:
-            return resp.json()
+            return cast(Optional[Dict[str, Any]], resp.json())
         return None
     except Exception:
         return None
@@ -57,7 +59,7 @@ def _post(url: str, data: Optional[Dict[str, Any]] = None, timeout: int = 15) ->
     try:
         resp = requests.post(url, data=data, timeout=timeout, headers=_HEADERS)
         if resp.status_code == 200:
-            return resp.text
+            return cast(Optional[str], resp.text)
         return None
     except Exception:
         return None
@@ -146,14 +148,14 @@ def obtener_eventos_ligamx(home: str, away: str) -> List[Dict[str, Any]]:
                         eventos = ev_data
                     break
     except Exception:
-        pass
+        logger.debug("Exception silenciada en obtener_eventos_ligamx", exc_info=True)
     return eventos
 
 
 def buscar_en_web(home: str, away: str, fecha: str) -> List[Dict[str, Any]]:
     """Busca en web información detallada del partido."""
     resultados: List[Dict[str, Any]] = []
-    
+
     # Fuente 1: ESPN search
     try:
         espn_data = _get("https://site.api.espn.com/apis/v2/sports/search", {"query": f"{home} {away} Liga MX", "limit": 5})
@@ -167,8 +169,8 @@ def buscar_en_web(home: str, away: str, fecha: str) -> List[Dict[str, Any]]:
                         "fuente": "espn",
                     })
     except Exception:
-        pass
-    
+        logger.debug("Exception silenciada en buscar_en_web", exc_info=True)
+
     # Fuente 2: Google News RSS (por si acaso)
     if len(resultados) < 2:
         try:
@@ -192,8 +194,8 @@ def buscar_en_web(home: str, away: str, fecha: str) -> List[Dict[str, Any]]:
                             "fuente": "google_news",
                         })
         except Exception:
-            pass
-    
+            logger.debug("Exception silenciada en buscar_en_web", exc_info=True)
+
     # Intentar obtener contenido de las URLs encontradas
     for r in resultados[:3]:
         url = r.get("url", "")
@@ -214,7 +216,7 @@ def buscar_en_web(home: str, away: str, fecha: str) -> List[Dict[str, Any]]:
         except Exception:
             continue
         time.sleep(0.5)
-    
+
     return resultados[:5]
 
 
@@ -287,10 +289,10 @@ def analizar_partido_fuerte(home: str, away: str, hg: int, ag: int, fecha: str) 
 def _generar_conclusion(home: str, away: str, hg: int, ag: int, eventos: List[str], web: List[Dict[str, str]]) -> str:
     """Genera una conclusión detallada del partido."""
     partes = []
-    
+
     # Contexto general
     partes.append(f"<b>{home} vs {away}</b> — Análisis completo del partido.")
-    
+
     # Resumen del marcador
     if hg > ag:
         partes.append(f"<b>Resultado:</b> Victoria de {home} por {hg}-{ag}.")
@@ -298,33 +300,33 @@ def _generar_conclusion(home: str, away: str, hg: int, ag: int, eventos: List[st
         partes.append(f"<b>Resultado:</b> Victoria de {away} por {ag}-{hg}.")
     else:
         partes.append(f"<b>Resultado:</b> Empate {hg}-{ag}.")
-    
+
     # Eventos clave
     goles = [e for e in eventos if e.startswith("⚽")]
     tarjetas = [e for e in eventos if "🟥" in e or "🟨" in e]
     expulsiones = [e for e in eventos if "🟥" in e]
-    
+
     if goles:
         partes.append(f"<b>Goles ({len(goles)}):</b>")
         for g in goles[:6]:
             partes.append(f"  • {g}")
-    
+
     if tarjetas:
         partes.append(f"<b>Tarjetas ({len(tarjetas)}):</b>")
         for t in tarjetas[:6]:
             partes.append(f"  • {t}")
-    
+
     if expulsiones:
         partes.append(f"⚠️ <b>Expulsiones:</b> El partido tuvo {len(expulsiones)} expulsión(es), lo que cambió el desarrollo del juego.")
-    
+
     # Fuentes consultadas
     if web:
         partes.append(f"📰 <b>Fuentes consultadas:</b> {len(web)} noticias analizadas.")
-    
+
     # Conclusión táctica
     partes.append("💡 <b>Análisis:</b> El resultado refleja el rendimiento de ambos equipos durante los 90 minutos. "
                   "Los goles determinaron el ganador, mientras que las tarjetas y expulsiones indican la intensidad y el estado del juego.")
-    
+
     return "\n".join(partes)
 
 
@@ -366,9 +368,9 @@ def cargar_resultados() -> Dict[str, Any]:
     try:
         if os.path.exists(RESULTADOS_PATH):
             with open(RESULTADOS_PATH, "r", encoding="utf-8") as f:
-                return json.load(f)
+                return cast(Dict[str, Any], json.load(f))
     except Exception:
-        pass
+        logger.debug("Exception silenciada en cargar_resultados", exc_info=True)
     return {}
 
 

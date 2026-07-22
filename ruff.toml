@@ -3,6 +3,8 @@
 # código heredado (punto y coma, largo de línea), para tener un gate util y verde.
 target-version = "py312"
 line-length = 120
+# tmp/ contiene borradores/scratch (no es codigo de produccion): fuera del lint.
+extend-exclude = ["tmp"]
 
 [lint]
 select = ["E", "F", "W"]

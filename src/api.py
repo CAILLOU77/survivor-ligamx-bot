@@ -1,3 +1,5 @@
+import logging
+logger = logging.getLogger(__name__)
 from fastapi import FastAPI, Request
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -14,13 +16,13 @@ try:
 
     load_dotenv()
 except Exception:  # pragma: no cover - dotenv es opcional
-    pass
+    logger.debug("dotenv opcional no disponible", exc_info=True)
 
 from src.database import init_db, get_metrics, get_history, settle_pick
 from src.rate_limit import limiter
 
 from pydantic import BaseModel
-from typing import Optional, Dict, List
+from typing import Dict, List
 
 
 class HealthResponse(BaseModel):
@@ -96,20 +98,11 @@ class CronResponse(BaseModel):
     timestamp: str
 
 
-# Sin default público: la clave DEBE venir del entorno (Render / GitHub secret).
-# Si no está configurada, los endpoints protegidos fallan en cerrado (503).
-API_KEY = os.getenv("API_KEY", "").strip()
-
-
-def verify_api_key(x_api_key: Optional[str] = Header(None)):
-    if not API_KEY:
-        raise HTTPException(
-            status_code=503,
-            detail="API_KEY no configurada en el servidor",
-        )
-    if not x_api_key or x_api_key != API_KEY:
-        raise HTTPException(status_code=403, detail="Clave API inválida o faltante")
-    return x_api_key
+# Autenticación por API key (X-API-Key): la lógica vive en src/auth.py para que
+# los routers puedan reutilizarla sin import circular (api.py importa los routers).
+# La clave DEBE venir del entorno (Render / GitHub secret); si no está configurada,
+# los endpoints protegidos fallan en cerrado (503).
+from src.auth import verify_api_key  # noqa: E402
 
 
 app = FastAPI(title="Survivor LigaMX API Premium", version="2.1.0", docs_url="/docs")
@@ -144,11 +137,11 @@ try:
         _arrancar_scheduler()
         app.state._scheduler_started = True
 except Exception:  # pragma: no cover - el scheduler es opcional
-    pass
+    logger.debug("Exception silenciada en arranque del scheduler", exc_info=True)
 
 
 
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]  # firma de slowapi mas estrecha que la anotacion de Starlette
 from src.routers.cron_router import router as cron_router
 
 app.include_router(cron_router)
@@ -704,7 +697,7 @@ def analisis_jornada(request: Request, fecha: Optional[str] = None, api_key: str
     try:
         from src import analista_resultados as ar
     except ImportError:  # pragma: no cover
-        from src.analista_resultados import analizar_jornada, cargar_historial_resultados  # type: ignore
+        logger.debug("Exception silenciada en analisis_jornada", exc_info=True)
 
     resultado = ar.analizar_jornada(fecha=fecha)
     historial = ar.cargar_historial_resultados()
@@ -747,7 +740,7 @@ def _enviar_analisis_jornada_bg() -> None:
     try:
         enviar_analisis_jornada()
     except Exception:
-        pass
+        logger.debug("Exception silenciada en _enviar_analisis_jornada_bg", exc_info=True)
 
 
 if __name__ == "__main__":

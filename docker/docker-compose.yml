@@ -1,10 +1,22 @@
 version: '3.8'
+
+# Despliegue local del bot Survivor Liga MX.
+# El contexto de build es la RAÍZ del repo (..), porque el Dockerfile necesita
+# copiar requirements.txt y el código fuente desde ahí. Los volúmenes y el
+# .env también se referencian relativos a este archivo (docker/), por eso el "../".
 services:
   bot:
-    build: .
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    # Modo por defecto: API web (uvicorn, puerto 8000).
+    # Para el ciclo batch/cron, descomenta la siguiente línea:
+    # command: bash run_bot_prod.sh
     volumes:
-      - ./data:/app/data
-      - ./reports:/app/reports
-      - ./logs:/app/logs
-    env_file: .env
+      - ../data:/app/data
+      - ../reports:/app/reports
+      - ../logs:/app/logs
+    env_file: ../.env
+    ports:
+      - "8000:8000"
     restart: unless-stopped
