@@ -97,7 +97,7 @@ def _buscar_web(query: str, max_results: int = 5) -> List[Dict[str, str]]:
         # ESPN site search
         resp = requests.get(
             "https://site.api.espn.com/apis/v2/sports/search",
-            params={"query": query, "limit": max_results},
+            params={"query": query, "limit": str(max_results)},
             timeout=10,
             headers={"User-Agent": "Mozilla/5.0 (compatible; LigaMXBot/1.0)"},
         )

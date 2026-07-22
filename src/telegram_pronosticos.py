@@ -50,7 +50,7 @@ def _usados_persistidos() -> Optional[List[str]]:
             from database import get_equipos_usados
         except ImportError:  # pragma: no cover
             from src.database import get_equipos_usados  # type: ignore
-        return get_equipos_usados()
+        return list(get_equipos_usados())
     except Exception:  # pragma: no cover - BD no disponible
         return None
 
@@ -108,7 +108,7 @@ def _formatear_contexto(ctx: Optional[Dict[str, Any]]) -> List[str]:
     if ali_ok:
         forms = " · ".join(
             f"{e.get('equipo', '')} {e.get('formacion') or ''}".strip()
-            for e in ali.get("equipos", [])
+            for e in (ali or {}).get("equipos", [])
             if e.get("equipo")
         )
         lineas.append(f"📋 XI CONFIRMADO — {forms}")
@@ -123,7 +123,7 @@ def _formatear_contexto(ctx: Optional[Dict[str, Any]]) -> List[str]:
     elif probable_ok:
         forms = " · ".join(
             f"{e.get('equipo', '')} {e.get('formacion') or ''}".strip()
-            for e in probable
+            for e in (probable or [])
             if isinstance(e, dict) and e.get("equipo")
         )
         lineas.append(f"🔮 XI PROBABLE (aún no confirmado) — {forms}")
@@ -245,11 +245,11 @@ def _lineas_mercado(p: Dict[str, Any]) -> List[str]:
 
 def _pick_club(p: Dict[str, Any]) -> str:
     """Traduce el pick 1X2 al nombre real del club (o 'Empate')."""
-    pick = p.get("pick_1x2", "")
+    pick = str(p.get("pick_1x2", ""))
     if pick == "Gana Local":
-        return p.get("local", pick)
+        return str(p.get("local", pick))
     if pick == "Gana Visitante":
-        return p.get("visitante", pick)
+        return str(p.get("visitante", pick))
     return pick  # "Empate"
 
 
@@ -317,10 +317,10 @@ def _porteros_partido(p: Dict[str, Any], porteros_map: Dict[str, Dict[str, Any]]
                     break
         if not gk or not gk.get("nombre"):
             return ""
-        nom = gk["nombre"]
+        nom = str(gk["nombre"])
         try:
-            v = int(gk.get("vallas_invictas"))
-            return f"{nom} ({v} {'valla invicta' if v == 1 else 'vallas invictas'})"
+            v_val = int(gk.get("vallas_invictas") or 0)
+            return f"{nom} ({v_val} {'valla invicta' if v_val == 1 else 'vallas invictas'})"
         except (TypeError, ValueError):
             return nom
 
@@ -906,7 +906,7 @@ def _contexto_top_pick(
                     dossier["alineacion_probable"] = prob.get("equipos") or []
         except Exception:  # pragma: no cover
             pass
-        return dossier
+        return dossier if isinstance(dossier, dict) else None
     except Exception:  # pragma: no cover - nunca debe tumbar el envío
         return None
 
@@ -1308,9 +1308,10 @@ def _plan_temporada(equipos_usados: Optional[List[str]]) -> Dict[str, Any]:
         datos = fuentes_datos.obtener_resultados(meses=18)
         fuerzas = pm.calcular_fuerzas(datos["resultados"])
         odds = plan_mod.construir_odds_por_partido(calendario)
-        return plan_mod.planificar(
+        res_plan = plan_mod.planificar(
             calendario, fuerzas, equipos_usados=equipos_usados, peso_victoria=0.5, odds_por_partido=odds
         )
+        return dict(res_plan) if isinstance(res_plan, dict) else {}
     except Exception:  # pragma: no cover - nunca debe tumbar /seguir
         return {}
 
@@ -1679,9 +1680,10 @@ def enviar_plan(
     plan_texto = construir_mensaje_plan(plan)
     mensaje_completo = "\n".join(partes_mensaje) + "\n" + plan_texto
     enviado = enviar_mensaje(mensaje_completo)
+    plan_lista = plan.get("plan")
     return {
         "enviado": enviado,
-        "jornadas": len(plan.get("plan", [])),
+        "jornadas": len(plan_lista) if isinstance(plan_lista, list) else 0,
         "calendario_incompleto": bool(plan.get("calendario_incompleto")),
     }
 
