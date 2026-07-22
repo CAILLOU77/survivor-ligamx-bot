@@ -11,7 +11,7 @@ jobs:
     steps:
       - name: Disparar análisis de jornada
         run: |
-          curl -X POST https://survivor-ligamx-bot.onrender.com/cron/analisis-semanal
+          curl -X POST -H "X-API-Key: ${{ secrets.API_KEY }}" https://survivor-ligamx-bot.onrender.com/cron/analisis-semanal
 
       - name: Verificar envío (opcional)
         run: |
