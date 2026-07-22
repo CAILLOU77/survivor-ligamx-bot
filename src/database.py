@@ -501,7 +501,6 @@ def registrar_pick_usuario(
 
 
 def settle_survivor(resultados) -> int:
-def settle_survivor(resultados) -> int:
     """
     Resuelve picks de Survivor pendientes con resultados reales. Determina si el
     equipo elegido GANÓ (punto), EMPATÓ (sobrevive sin punto) o PERDIÓ (eliminado).
