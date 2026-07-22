@@ -354,7 +354,10 @@ def cargar_calendario(path: Path = CALENDARIO_PATH) -> List[Dict[str, Any]]:
     
     # Fallback: usar datos incrustados
     try:
-        from calendario_data import CALENDARIO_2026
+        try:
+            from calendario_data import CALENDARIO_2026
+        except ImportError:
+            from src.calendario_data import CALENDARIO_2026
         return [j for j in CALENDARIO_2026 if isinstance(j, dict) and "jornada" in j and isinstance(j.get("partidos"), list)]
     except Exception:
         return []
