@@ -338,54 +338,26 @@ def construir_odds_por_partido(
 
 def cargar_calendario(path: Path = CALENDARIO_PATH) -> List[Dict[str, Any]]:
     """
-    Carga data/calendario.json con el esquema:
-        [{"jornada": 1, "partidos": [{"home_team","away_team"}, ...]}, ...]
-    Devuelve [] si no existe o no tiene el esquema esperado (no rompe).
+    Carga data/calendario.json (o usa fallback incrustado).
     """
-    import os
-    print(f"[DIAGNOSTICO] CALENDARIO_PATH = {CALENDARIO_PATH}")
-    print(f"[DIAGNOSTICO] CWD = {os.getcwd()}")
-    print(f"[DIAGNOSTICO] __file__ = {__file__}")
-    print(f"[DIAGNOSTICO] BASE_DIR = {BASE_DIR}")
-    
+    # Intentar cargar desde archivo
     p = Path(path)
-    print(f"[DIAGNOSTICO] Buscando en: {p}")
-    print(f"[DIAGNOSTICO] Existe? {p.exists()}")
-    
-    if p.exists():
-        print(f"[DIAGNOSTICO] Es archivo? {p.is_file()}")
+    if p.exists() and p.is_file():
         try:
             data = json.loads(p.read_text(encoding="utf-8"))
-            print(f"[DIAGNOSTICO] JSON cargado, tipo: {type(data)}")
             if isinstance(data, list):
-                print(f"[DIAGNOSTICO] Lista con {len(data)} elementos")
-        except Exception as e:
-            print(f"[DIAGNOSTICO] Error leyendo JSON: {e}")
-    else:
-        print(f"[DIAGNOSTICO] Archivo NO existe")
-        # Listar contenido de data/ si existe
-        data_dir = BASE_DIR / "data"
-        if data_dir.exists():
-            print(f"[DIAGNOSTICO] Contenido de {data_dir}:")
-            for item in data_dir.iterdir():
-                print(f"[DIAGNOSTICO]   - {item.name}")
-        else:
-            print(f"[DIAGNOSTICO] Directorio {data_dir} NO existe")
+                salida = [j for j in data if isinstance(j, dict) and "jornada" in j and isinstance(j.get("partidos"), list)]
+                if salida:
+                    return salida
+        except (json.JSONDecodeError, OSError):
+            pass
     
-    if not p.exists():
-        return []
+    # Fallback: usar datos incrustados
     try:
-        data = json.loads(p.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+        from calendario_data import CALENDARIO_2026
+        return [j for j in CALENDARIO_2026 if isinstance(j, dict) and "jornada" in j and isinstance(j.get("partidos"), list)]
+    except Exception:
         return []
-    if not isinstance(data, list):
-        return []
-    salida = []
-    for j in data:
-        if isinstance(j, dict) and "jornada" in j and isinstance(j.get("partidos"), list):
-            salida.append(j)
-    print(f"[DIAGNOSTICO] Retornando {len(salida)} jornadas")
-    return salida
 
 def main() -> int:
     try:
