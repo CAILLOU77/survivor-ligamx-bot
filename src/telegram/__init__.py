@@ -1,12 +1,4 @@
-#!/usr/bin/env python3
-"""
-telegram_pronosticos.py — Alertas de Telegram con PRONÓSTICOS REALES.
-
-Este archivo es ahora un wrapper del paquete src.telegram para mantener
-compatibilidad con los scripts existentes y los tests unitarios.
-"""
-
-from src.telegram import (
+from .envio import (
     enviar_mensaje,
     enviar_pronosticos,
     enviar_resumen_rentabilidad,
@@ -20,8 +12,6 @@ from src.telegram import (
     enviar_derrotas,
     enviar_ganadores,
     proxima_jornada,
-    construir_mensaje,
-    construir_mensaje_seguimiento,
     _dividir_mensaje,
     _cargar_calendario_local,
     _cerca_de_jornada,
@@ -32,7 +22,10 @@ from src.telegram import (
     _rec_desde_plan,
     _mapa_horarios,
     requests,
-    motor,
+    motor
+)
+from .formato import construir_mensaje, construir_mensaje_seguimiento
+from .contexto import (
     _contexto_top_pick,
     _alerta_xi,
     _falta_en_xi,
@@ -40,14 +33,17 @@ from src.telegram import (
     _ajustar_pick_top,
     _norm_simple,
     _jugadores_seguir_partido,
-    _porteros_partido,
-    _pct,
-    _fecha_mx,
+    _porteros_partido
+)
+from .utils import _pct, _fecha_mx
+from .formato_partidos import (
     _linea_goles,
     _totales_jornada,
     construir_mensaje_momios,
     construir_recordatorio,
-    render_partidos,
+    render_partidos
+)
+from .formato_pick import (
     construir_mensaje_plan,
     construir_mensaje_rentabilidad,
     construir_mensaje_prueba,
@@ -58,7 +54,3 @@ from src.telegram import (
     construir_mensaje_ganadores,
     render_survivor
 )
-
-if __name__ == "__main__":
-    res = enviar_pronosticos()
-    print(f"Enviado: {res['enviado']} | pronósticos: {res['total_pronosticos']} | fuente: {res['fuente']}")
