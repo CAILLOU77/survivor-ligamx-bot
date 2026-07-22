@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 from src import fuentes_datos, espn_data
 from src import poisson_model as pm
 from src.cache_ttl import ttl_cache
+from src.team_normalizer import canonical_team_key
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 PRONOSTICOS_PATH = BASE_DIR / "data" / "pronosticos.json"
@@ -305,7 +306,7 @@ def mejores_picks_survivor(
     empate/push) y `nivel` (ALTA / MEDIA / RIESGOSA). `motivacion` es CONTEXTO.
     El criterio principal es la probabilidad del modelo (fuente de verdad).
     """
-    usados = {_norm(e) for e in (equipos_usados or [])}
+    usados = {canonical_team_key(e) for e in (equipos_usados or [])}
     mot = motivacion or {}
     candidatos: List[Dict[str, Any]] = []
     for p in pronosticos:
@@ -314,7 +315,7 @@ def mejores_picks_survivor(
             (p["local"], p["visitante"], "Local", p["no_perder_local_pct"], p.get("prob_local_pct")),
             (p["visitante"], p["local"], "Visitante", p["no_perder_visitante_pct"], p.get("prob_visitante_pct")),
         ):
-            if _norm(equipo) in usados:
+            if canonical_team_key(equipo) in usados:
                 continue
             candidatos.append(
                 {
@@ -344,7 +345,7 @@ def mejores_picks_survivor(
 
 def _clave_partido(c: Dict[str, Any]) -> frozenset:
     """Clave del partido (ignora quién es local): {equipo, rival} normalizados."""
-    return frozenset({_norm(c.get("equipo", "")), _norm(c.get("rival", ""))})
+    return frozenset({canonical_team_key(c.get("equipo", "")), canonical_team_key(c.get("rival", ""))})
 
 
 def _uno_por_partido(candidatos: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:

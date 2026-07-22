@@ -165,7 +165,7 @@ def _registrar_survivor_historial(picks, pronosticos) -> None:
     if not picks:
         return
     try:
-        from src.database import registrar_survivor_pick
+        from src.database import registrar_pick_recomendado, registrar_survivor_pick
         from src.team_normalizer import canonical_team_key
     except ImportError:  # pragma: no cover - instalación incompleta
         logger.warning("No se pudo importar la persistencia del historial Survivor", exc_info=True)
@@ -206,8 +206,21 @@ def _registrar_survivor_historial(picks, pronosticos) -> None:
         return
 
     try:
+        clave_jornada = _clave_jornada_historial(jornada, fecha)
+        registrar_pick_recomendado(
+            temporada=clave_jornada.rsplit("-J", 1)[0],
+            jornada=int(jornada),
+            equipo=equipo,
+            rival=rival,
+            condicion=condicion,
+            local=local,
+            visitante=visitante,
+            no_perder_pct=float(pick.get("no_perder_pct") or 0.0),
+            prob_victoria_pct=float(pick.get("prob_victoria_pct") or pick.get("prob_ganar_pct") or 0.0),
+            fecha=fecha,
+        )
         registrar_survivor_pick(
-            jornada=_clave_jornada_historial(jornada, fecha),
+            jornada=clave_jornada,
             equipo=equipo,
             rival=rival,
             condicion=condicion,

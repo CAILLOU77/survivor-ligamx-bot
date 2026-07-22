@@ -20,12 +20,17 @@ el envío informativo. INFORMATIVO / REVISIÓN HUMANA.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Tuple, cast
+from html import escape
+from typing import Any, Dict, Optional, Tuple
 
 AYUDA = (
     "🤖 <b>Comandos Survivor</b>\n"
     "/pick (o /picks) — pronóstico + pick recomendado de la jornada\n"
-    "/plan — ANÁLISIS INTELIGENTE + plan de temporada (revisa TODO lo que pasa y te dice qué hacer)"
+    "/plan — ANÁLISIS INTELIGENTE + plan de temporada (revisa TODO lo que pasa y te dice qué hacer)\n"
+    "/mipick — tu estado actual, racha, usados e historial\n"
+    "/confirmar &lt;jornada&gt; &lt;equipo&gt; — confirma tu selección real\n"
+    "/bloquear &lt;jornada&gt; — protege el pick confirmado contra cambios\n"
+    "/resolver &lt;jornada&gt; &lt;gano|empate|perdio&gt; — registra el resultado\n"
     "/momios — baja los momios (1X2/OU/hándicap) y muestra la cobertura\n"
     "/seguir — lista de seguimiento: candidatos por hora para decidir secuencial\n"
     "/analisis — análisis post-partido: goles, tarjetas, alineaciones y conclusión IA\n"
@@ -38,7 +43,7 @@ AYUDA = (
     "/usado &lt;equipo&gt; — marca un equipo como usado (lo excluye)\n"
     "/usados — lista tus equipos usados\n"
     "/quitar &lt;equipo&gt; — quita un equipo de la lista\n"
-    "/reset — reinicia la lista (nueva temporada)\n"
+    "/reset — limpia usados manuales; conserva picks confirmados\n"
     "/ayuda — esta ayuda\n\n"
     "ℹ️ Informativo / revisión humana. No es consejo de apuesta."
 )
@@ -94,6 +99,43 @@ def _db():
     return db
 
 
+def _jornada_y_valor(arg: str, uso: str) -> Tuple[Optional[int], str, Optional[str]]:
+    """Separa ``<jornada> <valor>`` y devuelve un mensaje de uso si es inválido."""
+    partes = str(arg or "").split(maxsplit=1)
+    if len(partes) != 2:
+        return None, "", uso
+    try:
+        jornada = int(partes[0])
+    except ValueError:
+        return None, "", uso
+    if not 1 <= jornada <= 17 or not partes[1].strip():
+        return None, "", uso
+    return jornada, partes[1].strip(), None
+
+
+def _formatear_mi_survivor(resumen: Dict[str, Any]) -> str:
+    """Resumen compacto y seguro para Telegram del estado persistido."""
+    temporada = escape(str(resumen.get("temporada") or ""))
+    vivo = bool(resumen.get("sigue_vivo", True))
+    estado = "🟢 VIVO" if vivo else "🔴 ELIMINADO"
+    usados = [escape(str(equipo)) for equipo in resumen.get("usados", [])]
+    lineas = [
+        f"🏆 <b>MI SURVIVOR · {temporada}</b>",
+        f"Estado: <b>{estado}</b>",
+        f"🔥 Racha: <b>{int(resumen.get('racha', 0) or 0)}</b>",
+        f"✅ Victorias: <b>{int(resumen.get('victorias', 0) or 0)}</b>",
+        f"🔒 Usados ({len(usados)}): {', '.join(usados) or '—'}",
+    ]
+    actual = resumen.get("pick_actual")
+    if actual:
+        lineas.append(
+            f"🎯 J{actual.get('jornada')}: <b>{escape(str(actual.get('equipo') or ''))}</b> "
+            f"({escape(str(actual.get('estado') or ''))})"
+        )
+    lineas.append("\nℹ️ Informativo / revisión humana. No es consejo de apuesta.")
+    return "\n".join(lineas)
+
+
 def responder(cmd: Optional[str], arg: str) -> str:
     """
     Ejecuta un comando (que NO sea de pick) y devuelve el texto de respuesta.
@@ -103,6 +145,55 @@ def responder(cmd: Optional[str], arg: str) -> str:
         return AYUDA
 
     db = _db()
+
+    if cmd in ("mipick", "mio", "miestado") or cmd in CMDS_RACHA:
+        try:
+            return _formatear_mi_survivor(db.resumen_mi_survivor())
+        except Exception as exc:  # pragma: no cover - BD no disponible
+            return f"⚠️ No se pudo leer Mi Survivor: {escape(str(exc))}"
+
+    if cmd in ("confirmar", "elegir", "seleccionar"):
+        jornada, equipo, error = _jornada_y_valor(
+            arg,
+            "Uso: <code>/confirmar &lt;jornada&gt; &lt;equipo&gt;</code> (ej. /confirmar 3 América)",
+        )
+        if error or jornada is None:
+            return str(error)
+        try:
+            pick = db.confirmar_survivor_pick(db.temporada_survivor_actual(), jornada, equipo)
+        except Exception as exc:
+            return f"⚠️ No se pudo confirmar: {escape(str(exc))}"
+        return (
+            f"✅ Pick confirmado para J{jornada}: <b>{escape(str(pick['equipo']))}</b>\n"
+            "Ya quedó excluido de las próximas jornadas."
+        )
+
+    if cmd in ("bloquear", "lock"):
+        try:
+            jornada = int(str(arg).strip())
+        except (TypeError, ValueError):
+            return "Uso: <code>/bloquear &lt;jornada&gt;</code> (ej. /bloquear 3)"
+        try:
+            pick = db.bloquear_survivor_pick(db.temporada_survivor_actual(), jornada)
+        except Exception as exc:
+            return f"⚠️ No se pudo bloquear: {escape(str(exc))}"
+        return f"🔐 Pick bloqueado J{jornada}: <b>{escape(str(pick['equipo']))}</b>"
+
+    if cmd in ("resolver", "resultado"):
+        jornada, resultado, error = _jornada_y_valor(
+            arg,
+            "Uso: <code>/resolver &lt;jornada&gt; &lt;gano|empate|perdio&gt;</code>",
+        )
+        if error or jornada is None:
+            return str(error)
+        try:
+            pick = db.resolver_survivor_pick(db.temporada_survivor_actual(), jornada, resultado)
+        except Exception as exc:
+            return f"⚠️ No se pudo resolver: {escape(str(exc))}"
+        return (
+            f"🏁 J{jornada} resuelta: <b>{escape(str(pick['equipo']))}</b> — "
+            f"<b>{escape(str(pick['resultado']).upper())}</b>"
+        )
 
     if cmd in ("usado", "uso", "use"):
         if not arg:
@@ -138,16 +229,7 @@ def responder(cmd: Optional[str], arg: str) -> str:
             borrados = db.clear_equipos_usados()
         except Exception as exc:  # pragma: no cover
             return f"⚠️ No se pudo reiniciar: {exc}"
-        return f"♻️ Lista de usados reiniciada ({borrados} borrados). Nueva temporada."
-
-    if cmd in CMDS_RACHA:
-        try:
-            resumen = db.resumen_survivor()
-        except Exception as exc:  # pragma: no cover - BD no disponible
-            return f"⚠️ No se pudo leer la racha: {exc}"
-        from src import telegram_pronosticos as tp
-
-        return cast(str, tp.construir_mensaje_survivor_historial(resumen))
+        return f"♻️ Lista manual reiniciada ({borrados}). Los picks confirmados se conservan."
 
     return "❓ Comando no reconocido. Usa /ayuda"
 

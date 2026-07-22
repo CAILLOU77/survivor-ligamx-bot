@@ -48,6 +48,7 @@ class UsadosResponse(BaseModel):
 
     usados: List[str]
     total: int
+    temporada: Optional[str] = None
     decision: str = "INFORMATIVO / REVISIÓN HUMANA"
     error: Optional[str] = None
 
@@ -60,6 +61,45 @@ class UsadoResponse(BaseModel):
     quitado: Optional[bool] = None
     ya_estaba: Optional[bool] = None
     usados: List[str]
+    temporada: Optional[str] = None
+
+
+class SurvivorPickResponse(BaseModel):
+    """Selección Survivor persistida para una temporada y jornada."""
+
+    temporada: str
+    jornada: int
+    fecha: Optional[str] = None
+    equipo: str
+    rival: Optional[str] = None
+    condicion: Optional[str] = None
+    local: Optional[str] = None
+    visitante: Optional[str] = None
+    no_perder_pct: float = 0.0
+    prob_victoria_pct: float = 0.0
+    estado: str
+    resultado: Optional[str] = None
+    marcador_real: Optional[str] = None
+    origen: str
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    confirmado_at: Optional[datetime] = None
+    bloqueado_at: Optional[datetime] = None
+    resuelto_at: Optional[datetime] = None
+
+
+class MiSurvivorResponse(BaseModel):
+    """Estado completo de la participación Survivor del dueño."""
+
+    temporada: str
+    sigue_vivo: bool
+    racha: int
+    victorias: int
+    empates: int
+    derrotas: int
+    usados: List[str]
+    pick_actual: Optional[SurvivorPickResponse] = None
+    picks: List[SurvivorPickResponse]
 
 
 class MetricsResponse(BaseModel):
@@ -367,47 +407,205 @@ def get_fichajes(request: Request, equipo: str):
     tags=["Survivor"],
 )
 @limiter.limit("30/minute")
-def survivor_usados_listar(request: Request):
+def survivor_usados_listar(request: Request, temporada: Optional[str] = None):
     """Equipos que ya gastaste (se excluyen automáticamente del pick y del plan)."""
     try:
-        from src.database import get_equipos_usados
+        from src.database import get_equipos_usados, temporada_survivor_actual
 
-        usados = get_equipos_usados()
+        temporada = temporada or temporada_survivor_actual()
+        usados = get_equipos_usados(temporada)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        return {"usados": [], "total": 0, "error": str(exc)}
-    return {"usados": usados, "total": len(usados), "decision": "INFORMATIVO / REVISIÓN HUMANA"}
+        return {"usados": [], "total": 0, "temporada": temporada, "error": str(exc)}
+    return {
+        "usados": usados,
+        "total": len(usados),
+        "temporada": temporada,
+        "decision": "INFORMATIVO / REVISIÓN HUMANA",
+    }
 
 
 @app.post("/survivor/usados", response_model=UsadoResponse, summary="Marcar un equipo como usado", tags=["Survivor"])
 @limiter.limit("30/minute")
-def survivor_usados_agregar(request: Request, equipo: str, api_key: str = Depends(verify_api_key)):
-    """Registra el equipo que escogiste esta jornada para que ya no se sugiera."""
-    from src.database import add_equipo_usado, get_equipos_usados
+def survivor_usados_agregar(
+    request: Request,
+    equipo: str,
+    temporada: Optional[str] = None,
+    jornada: Optional[int] = None,
+    api_key: str = Depends(verify_api_key),
+):
+    """Compatibilidad: registra un usado; para el ciclo completo usa /survivor/picks/confirmar."""
+    from src.database import add_equipo_usado, get_equipos_usados, temporada_survivor_actual
 
     if not equipo or not equipo.strip():
         raise HTTPException(status_code=400, detail="Falta el parámetro 'equipo'.")
-    agregado = add_equipo_usado(equipo)
-    return {"equipo": equipo.strip(), "agregado": agregado, "ya_estaba": not agregado, "usados": get_equipos_usados()}
+    temporada = temporada or temporada_survivor_actual()
+    try:
+        agregado = add_equipo_usado(equipo, temporada=temporada, jornada=jornada)
+        usados = get_equipos_usados(temporada)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {
+        "equipo": equipo.strip(),
+        "agregado": agregado,
+        "ya_estaba": not agregado,
+        "usados": usados,
+        "temporada": temporada,
+    }
 
 
 @app.delete("/survivor/usados", summary="Quitar un equipo usado", tags=["Survivor"])
 @limiter.limit("30/minute")
-def survivor_usados_quitar(request: Request, equipo: str, api_key: str = Depends(verify_api_key)):
-    """Quita un equipo de la lista de usados (por si te equivocaste al registrarlo)."""
-    from src.database import remove_equipo_usado, get_equipos_usados
+def survivor_usados_quitar(
+    request: Request,
+    equipo: str,
+    temporada: Optional[str] = None,
+    api_key: str = Depends(verify_api_key),
+):
+    """Quita un equipo de usados en la temporada activa; no borra picks resueltos."""
+    from src.database import get_equipos_usados, remove_equipo_usado, temporada_survivor_actual
 
-    filas = remove_equipo_usado(equipo)
-    return {"equipo": equipo.strip(), "quitado": bool(filas), "usados": get_equipos_usados()}
+    temporada = temporada or temporada_survivor_actual()
+    try:
+        filas = remove_equipo_usado(equipo, temporada)
+        usados = get_equipos_usados(temporada)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {
+        "equipo": equipo.strip(),
+        "quitado": bool(filas),
+        "usados": usados,
+        "temporada": temporada,
+    }
 
 
-@app.post("/survivor/usados/reset", summary="Reiniciar equipos usados (nueva temporada)", tags=["Survivor"])
+@app.post("/survivor/usados/reset", summary="Limpiar marcadores manuales de usados", tags=["Survivor"])
 @limiter.limit("10/minute")
-def survivor_usados_reset(request: Request, api_key: str = Depends(verify_api_key)):
-    """Vacía la lista de usados (úsalo al empezar una temporada nueva)."""
-    from src.database import clear_equipos_usados
+def survivor_usados_reset(
+    request: Request,
+    temporada: Optional[str] = None,
+    api_key: str = Depends(verify_api_key),
+):
+    """Vacía usados solo para la temporada indicada; conserva el historial."""
+    from src.database import clear_equipos_usados, get_equipos_usados, temporada_survivor_actual
 
-    borrados = clear_equipos_usados()
-    return {"borrados": borrados, "usados": []}
+    temporada = temporada or temporada_survivor_actual()
+    try:
+        borrados = clear_equipos_usados(temporada)
+        usados = get_equipos_usados(temporada)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"borrados": borrados, "usados": usados, "temporada": temporada}
+
+
+@app.get(
+    "/survivor/mio",
+    response_model=MiSurvivorResponse,
+    summary="Mi participación Survivor por temporada",
+    tags=["Survivor"],
+)
+@limiter.limit("30/minute")
+def mi_survivor(
+    request: Request,
+    temporada: Optional[str] = None,
+    api_key: str = Depends(verify_api_key),
+):
+    """Devuelve racha, usados, pick actual e historial; es la vista principal del producto."""
+    from src.database import resumen_mi_survivor
+
+    try:
+        return resumen_mi_survivor(temporada)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post(
+    "/survivor/picks/confirmar",
+    response_model=SurvivorPickResponse,
+    summary="Confirmar el pick real de una jornada",
+    tags=["Survivor"],
+)
+@limiter.limit("20/minute")
+def survivor_pick_confirmar(
+    request: Request,
+    jornada: int,
+    equipo: str,
+    temporada: Optional[str] = None,
+    rival: str = "",
+    condicion: str = "",
+    local: str = "",
+    visitante: str = "",
+    fecha: str = "",
+    api_key: str = Depends(verify_api_key),
+):
+    """Confirma la decisión humana y excluye el equipo de futuras recomendaciones."""
+    from src.database import confirmar_survivor_pick, temporada_survivor_actual
+
+    try:
+        return confirmar_survivor_pick(
+            temporada or temporada_survivor_actual(),
+            jornada,
+            equipo,
+            rival=rival,
+            condicion=condicion,
+            local=local,
+            visitante=visitante,
+            fecha=fecha,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post(
+    "/survivor/picks/{jornada}/bloquear",
+    response_model=SurvivorPickResponse,
+    summary="Bloquear el pick confirmado",
+    tags=["Survivor"],
+)
+@limiter.limit("20/minute")
+def survivor_pick_bloquear(
+    request: Request,
+    jornada: int,
+    temporada: Optional[str] = None,
+    api_key: str = Depends(verify_api_key),
+):
+    """Bloquea una selección confirmada para evitar cambios accidentales."""
+    from src.database import bloquear_survivor_pick, temporada_survivor_actual
+
+    try:
+        return bloquear_survivor_pick(temporada or temporada_survivor_actual(), jornada)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post(
+    "/survivor/picks/{jornada}/resolver",
+    response_model=SurvivorPickResponse,
+    summary="Resolver el resultado del pick",
+    tags=["Survivor"],
+)
+@limiter.limit("20/minute")
+def survivor_pick_resolver(
+    request: Request,
+    jornada: int,
+    resultado: str,
+    temporada: Optional[str] = None,
+    marcador_real: str = "",
+    api_key: str = Depends(verify_api_key),
+):
+    """Cierra la jornada como gano, empate o perdio, conservando el historial."""
+    from src.database import resolver_survivor_pick, temporada_survivor_actual
+
+    try:
+        return resolver_survivor_pick(
+            temporada or temporada_survivor_actual(),
+            jornada,
+            resultado,
+            marcador_real=marcador_real,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 # ---------------------------------------------------------------------------
