@@ -68,8 +68,8 @@ def ajustar_dixon_coles(
             ag = int(p["away_goals"])
         except (KeyError, TypeError, ValueError):
             continue
-        h = pm._norm(p.get("home_team"))
-        a = pm._norm(p.get("away_team"))
+        h = pm._norm(str(p.get("home_team") or ""))
+        a = pm._norm(str(p.get("away_team") or ""))
         if not h or not a:
             continue
         filas.append((h, a, hg, ag, _ordinal(p.get("fecha"))))

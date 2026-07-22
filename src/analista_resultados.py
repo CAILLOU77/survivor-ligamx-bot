@@ -437,7 +437,7 @@ def obtener_detalle_partido(home: str, away: str, event_id: Optional[str] = None
             mid = lmx.match_id_de_partido(home, away)
             if mid:
                 try:
-                    eventos_lmx = lmx.eventos_partido(mid) or []
+                    eventos_lmx = lmx.eventos_partido(mid)
                     if eventos_lmx:
                         out["eventos"] = eventos_lmx
                 except Exception:

@@ -3,9 +3,10 @@ from typing import Any, Dict, List, Optional
 
 from src import motor_pronosticos as motor
 from .contexto import _formatear_contexto
-from .utils import _pct, _fecha_mx
+from .utils import _pct
 
 DISCLAIMER = "ℹ️ Informativo / revisión humana. No es consejo de apuesta."
+
 
 def _pick_club(p: Dict[str, Any]) -> str:
     """Traduce el pick 1X2 al nombre real del club (o 'Empate')."""
@@ -15,6 +16,7 @@ def _pick_club(p: Dict[str, Any]) -> str:
     if pick == "Gana Visitante":
         return str(p.get("visitante", pick))
     return pick  # "Empate"
+
 
 def _iso_week(fecha: str) -> str:
     """Etiqueta de jornada = semana ISO de la fecha (YYYY-Www). '' si no se puede."""
@@ -26,6 +28,7 @@ def _iso_week(fecha: str) -> str:
         return f"{yr}-W{wk:02d}"
     except Exception:
         return ""
+
 
 def construir_mensaje_rentabilidad(data: Dict[str, Any]) -> str:
     """Mensaje (HTML) con el track-record de pronósticos (aciertos 1X2 y marcador)."""
@@ -52,6 +55,7 @@ def construir_mensaje_rentabilidad(data: Dict[str, Any]) -> str:
         DISCLAIMER,
     ]
     return "\n".join(lineas)
+
 
 def render_survivor(
     pronosticos: List[Dict[str, Any]],
@@ -120,8 +124,16 @@ def render_survivor(
             lineas.extend(contexto_lineas)
     return lineas
 
+
 def construir_mensaje_plan(plan: Dict[str, Any]) -> str:
     """Mensaje (HTML) con el plan de temporada del Survivor."""
+    if plan.get("temporada_finalizada"):
+        return (
+            "📅 <b>PLAN SURVIVOR</b>\n\n"
+            "La temporada ya finalizó; no quedan jornadas por planificar. "
+            "El próximo plan se habilitará cuando haya calendario de un nuevo torneo.\n\n"
+            f"{DISCLAIMER}"
+        )
     if plan.get("calendario_incompleto") or not plan.get("plan"):
         return (
             "📅 <b>PLAN SURVIVOR</b>\n\n"
@@ -148,11 +160,16 @@ def construir_mensaje_plan(plan: Dict[str, Any]) -> str:
     if no_usados:
         lineas.append("")
         if len(no_usados) == 1:
-            lineas.append(f"🚫 Equipo que NO usarás (sacrificado): <b>{no_usados[0]}</b> — no tiene una jornada suficientemente buena.")
+            lineas.append(
+                f"🚫 Equipo que NO usarás (sacrificado): <b>{no_usados[0]}</b> — no tiene una jornada suficientemente buena."
+            )
         else:
-            lineas.append(f"🚫 Equipos que NO usarás (sacrificados): <b>{', '.join(no_usados)}</b> — sin jornada lo bastante buena.")
+            lineas.append(
+                f"🚫 Equipos que NO usarás (sacrificados): <b>{', '.join(no_usados)}</b> — sin jornada lo bastante buena."
+            )
     lineas += ["", DISCLAIMER]
     return "\n".join(lineas)
+
 
 def construir_mensaje_prueba(comp: Dict[str, Any]) -> str:
     """Mensaje (HTML, simple) del backtest de estrategias, para el comando /prueba."""
@@ -175,9 +192,13 @@ def construir_mensaje_prueba(comp: Dict[str, Any]) -> str:
         f"🏆 Victorias por torneo: <b>{real.get('victorias_prom_por_torneo')}</b>",
     ]
     if ingenua and ingenua.get("torneos_evaluados"):
-        lineas += ["", f"🎲 <b>Elegir a lo simple</b>: Sobrevivió <b>{ingenua.get('torneos_sobrevividos_completos')}/{ingenua.get('torneos_evaluados')}</b>"]
+        lineas += [
+            "",
+            f"🎲 <b>Elegir a lo simple</b>: Sobrevivió <b>{ingenua.get('torneos_sobrevividos_completos')}/{ingenua.get('torneos_evaluados')}</b>",
+        ]
     lineas += [div, DISCLAIMER]
     return "\n".join(lineas)
+
 
 def construir_mensaje_confianza(rep: Dict[str, Any]) -> str:
     """Mensaje del reporte de calibración, para el comando /confianza."""
@@ -189,11 +210,14 @@ def construir_mensaje_confianza(rep: Dict[str, Any]) -> str:
     lineas = [
         "📐 <b>¿LA CONFIANZA DEL BOT ES HONESTA?</b>",
         f"<i>Revisé {rep.get('n_muestras')} pronósticos pasados</i>",
-        div, diag,
+        div,
+        diag,
         f"🔧 Ajuste sugerido: <b>{int(round(alpha * 100))}%</b> menos de confianza",
-        "", DISCLAIMER
+        "",
+        DISCLAIMER,
     ]
     return "\n".join(lineas)
+
 
 def construir_mensaje_derrotas(rep: Dict[str, Any]) -> str:
     """Mensaje del análisis de derrotas, para el comando /derrotas."""
@@ -203,18 +227,23 @@ def construir_mensaje_derrotas(rep: Dict[str, Any]) -> str:
         return f"🔍 <b>APRENDER DE LAS DERROTAS</b>\n\nAún no hay eliminaciones.\n\n{DISCLAIMER}"
     lineas = [
         "🔍 <b>APRENDER DE LAS DERROTAS</b>",
-        div, f"💀 Cayó <b>{n}</b> veces. Patrones:",
+        div,
+        f"💀 Cayó <b>{n}</b> veces. Patrones:",
         f"🟡 Evitables: <b>{rep.get('patrones', {}).get('evitables')}/{n}</b>",
         f"🎲 Mala suerte: <b>{rep.get('patrones', {}).get('mala_suerte')}/{n}</b>",
-        "", DISCLAIMER
+        "",
+        DISCLAIMER,
     ]
     return "\n".join(lineas)
+
 
 def _marcador_a_favor(marcador: str, es_local: bool) -> str:
     try:
         hg, ag = str(marcador or "").split("-")
         return f"{hg.strip()}-{ag.strip()}" if es_local else f"{ag.strip()}-{hg.strip()}"
-    except Exception: return str(marcador or "")
+    except Exception:
+        return str(marcador or "")
+
 
 def construir_mensaje_survivor_historial(resumen: Dict[str, Any]) -> str:
     """Mensaje de la racha del pick de Survivor, para /racha."""
@@ -229,6 +258,7 @@ def construir_mensaje_survivor_historial(resumen: Dict[str, Any]) -> str:
     lineas += [div, DISCLAIMER]
     return "\n".join(lineas)
 
+
 def construir_mensaje_ganadores(rep: Dict[str, Any]) -> str:
     """Mensaje del Survivor perfecto vs el bot, para /ganadores."""
     div = "━━━━━━━━━━"
@@ -240,6 +270,7 @@ def construir_mensaje_ganadores(rep: Dict[str, Any]) -> str:
         div,
         f"🔮 Camino perfecto en <b>{rep.get('con_camino_perfecto')}/{n}</b> torneos",
         f"🤖 El bot completó <b>{rep.get('bot_completos')}/{n}</b>",
-        "", DISCLAIMER
+        "",
+        DISCLAIMER,
     ]
     return "\n".join(lineas)

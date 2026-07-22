@@ -3,8 +3,10 @@ from typing import Any, Dict, List, Optional
 from src.team_normalizer import clean_team_name
 from .utils import _pct
 
+
 def _norm_simple(s: str) -> str:
     return " ".join(str(s or "").lower().split())
+
 
 def _formatear_contexto(ctx: Optional[Dict[str, Any]]) -> List[str]:
     """Bloque HTML compacto con el contexto de la Liga MX API para el pick #1."""
@@ -136,6 +138,7 @@ def _formatear_contexto(ctx: Optional[Dict[str, Any]]) -> List[str]:
             lineas.append(f"• {ctx.get('away')} — {fichajes['visita']}")
     return lineas
 
+
 def _jugadores_seguir_partido(p: Dict[str, Any], goleadores_map: Dict[str, List[Dict[str, Any]]]) -> str:
     """'A seguir' de un partido a partir del mapa de goleadores por equipo."""
 
@@ -175,6 +178,7 @@ def _jugadores_seguir_partido(p: Dict[str, Any], goleadores_map: Dict[str, List[
     if vis:
         partes.append(f"{p.get('visitante', '')}: {vis}")
     return " · ".join(partes)
+
 
 def _porteros_partido(p: Dict[str, Any], porteros_map: Dict[str, Dict[str, Any]]) -> str:
     """
@@ -244,6 +248,7 @@ def _porteros_partido(p: Dict[str, Any], porteros_map: Dict[str, Dict[str, Any]]
 
     return " · ".join(partes)
 
+
 def _falta_en_xi(clave: List[str], titulares: List[str]) -> List[str]:
     """Jugadores clave que NO aparecen en el XI titular (match por apellido)."""
     tits = " | ".join(clean_team_name(t) for t in (titulares or []))
@@ -256,6 +261,7 @@ def _falta_en_xi(clave: List[str], titulares: List[str]) -> List[str]:
         if apellido and len(apellido) >= 3 and apellido not in tits:
             faltan.append(p)
     return faltan
+
 
 def _alerta_xi(dossier: Dict[str, Any]) -> Dict[str, List[str]]:
     """
@@ -285,6 +291,7 @@ def _alerta_xi(dossier: Dict[str, Any]) -> Dict[str, List[str]]:
         out["visita"] = mv
     return out
 
+
 def _fmt_fichajes(mov: Dict[str, Any]) -> str:
     """De {altas:[...], bajas:[...]} arma 'Altas: A, B · Bajas: C' o '' si vacío."""
     if not isinstance(mov, dict):
@@ -297,6 +304,7 @@ def _fmt_fichajes(mov: Dict[str, Any]) -> str:
     if bajas:
         partes.append("Bajas: " + ", ".join(str(x) for x in bajas[:4]))
     return " · ".join(partes)
+
 
 def _contexto_top_pick(
     pronosticos: List[Dict[str, Any]],
@@ -387,6 +395,7 @@ def _contexto_top_pick(
     except Exception:  # pragma: no cover - nunca debe tumbar el envío
         return None
 
+
 def _ajustar_pick_top(
     picks: List[Dict[str, Any]], pronosticos: List[Dict[str, Any]], contexto_pick: Optional[Dict[str, Any]]
 ) -> None:
@@ -405,7 +414,11 @@ def _ajustar_pick_top(
         local = rec["equipo"] if es_local else rec["rival"]
         visita = rec["rival"] if es_local else rec["equipo"]
         pron = next(
-            (p for p in pronosticos if _k(p.get("local", "")) == _k(local) and _k(p.get("visitante", "")) == _k(visita)),
+            (
+                p
+                for p in pronosticos
+                if _k(p.get("local", "")) == _k(local) and _k(p.get("visitante", "")) == _k(visita)
+            ),
             None,
         )
         if not pron:

@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from src.api import app
 import src.database as db
 
+
 class TestApiExtra(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(app)
@@ -28,8 +29,16 @@ class TestApiExtra(unittest.TestCase):
     def test_webhook_all_commands(self):
         """Disparar todos los comandos para subir cobertura de api.py."""
         comandos = [
-            "/pick", "/plan", "/momios", "/seguir", "/prueba",
-            "/confianza", "/derrotas", "/ganadores", "/racha", "/analisis"
+            "/pick",
+            "/plan",
+            "/momios",
+            "/seguir",
+            "/prueba",
+            "/confianza",
+            "/derrotas",
+            "/ganadores",
+            "/racha",
+            "/analisis",
         ]
         with mock.patch.dict(os.environ, {"TELEGRAM_WEBHOOK_SECRET": "ok", "TELEGRAM_CHAT_ID": "123"}):
             headers = {"X-Telegram-Bot-Api-Secret-Token": "ok"}
@@ -40,7 +49,7 @@ class TestApiExtra(unittest.TestCase):
                         payload = {"message": {"chat": {"id": 123}, "text": cmd}}
                         resp = self.client.post("/telegram/webhook", json=payload, headers=headers)
                         self.assertEqual(resp.status_code, 200)
-                    self.assertGreaterEqual(mock_bg.call_count, len(comandos) - 1) # racha es ligero, no usa bg
+                    self.assertGreaterEqual(mock_bg.call_count, len(comandos) - 1)  # racha es ligero, no usa bg
 
     def test_get_index(self):
         """Cubrir el índice de la API."""
@@ -54,15 +63,16 @@ class TestApiExtra(unittest.TestCase):
         # Si devuelve 200 con lista vacía, ajustamos el test o la lógica
         self.assertIn(resp.status_code, [404, 200])
 
+
 class TestDatabasePool(unittest.TestCase):
     def test_get_pool_returns_none_when_import_fails(self):
         """Verificar que _get_pool maneja el fallo de importación."""
         db._pool = None
         # Envolviendo el import interno
         with mock.patch("builtins.__import__", side_effect=ImportError):
-             # Este test es difícil de hacer porque mypy/ruff ya cargaron cosas.
-             # Pero probamos la lógica de inicialización.
-             pass
+            # Este test es difícil de hacer porque mypy/ruff ya cargaron cosas.
+            # Pero probamos la lógica de inicialización.
+            pass
 
     def test_get_db_sqlite_creation(self):
         """Verificar que get_db crea la carpeta de SQLite si no existe."""
