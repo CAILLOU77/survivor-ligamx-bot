@@ -22,3 +22,4 @@ new_param = '''            parametros = (locked_until, valor, completado, lease_
 if old_param not in text:
     raise RuntimeError("No se encontró el parámetro CAS en el parche final")
 path.write_text(text.replace(old_param, new_param, 1), encoding="utf-8")
+# trigger v3: limpieza tolerante
