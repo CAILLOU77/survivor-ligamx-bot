@@ -3,7 +3,7 @@ name: Apply pick lifecycle v2
 on:
   push:
     branches: [feat/idempotent-pick-lifecycle-v2]
-    paths: [scripts/apply_pick_lifecycle_v2.py]
+    paths: [scripts/fix_apply_pick_lifecycle_v2.py]
 
 permissions:
   contents: write
@@ -21,6 +21,7 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - name: Apply, lint and format
         run: |
+          python scripts/fix_apply_pick_lifecycle_v2.py
           python scripts/apply_pick_lifecycle_v2.py
           ruff check --fix src/database.py tests/test_pick_lifecycle_v2.py
           ruff format src/database.py tests/test_pick_lifecycle_v2.py
