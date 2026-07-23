@@ -1,0 +1,43 @@
+name: Diagnose pick lifecycle v2
+
+on:
+  push:
+    branches: [feat/idempotent-pick-lifecycle-v2]
+    paths: [.github/workflows/diagnose-pick-lifecycle-v2.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/idempotent-pick-lifecycle-v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements-dev.txt
+      - name: Run each lifecycle test with timeout
+        shell: bash
+        run: |
+          set +e
+          : > lifecycle-diagnostic.txt
+          for test in \
+            test_migracion_aditiva_desde_schema_legacy \
+            test_snapshot_identidad_y_reintento_persisten_tras_reinicio \
+            test_cancelacion_idempotente_libera_equipo \
+            test_resolucion_prefiere_match_key_estable
+          do
+            echo "=== $test ===" >> lifecycle-diagnostic.txt
+            timeout 45s python -m pytest -vv -s "tests/test_pick_lifecycle_v2.py::$test" >> lifecycle-diagnostic.txt 2>&1
+            echo "exit=$?" >> lifecycle-diagnostic.txt
+          done
+      - name: Commit diagnostic
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lifecycle-diagnostic.txt
+          git commit -m "chore: registra diagnóstico temporal del ciclo v2"
+          git push
