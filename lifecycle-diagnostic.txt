@@ -1,0 +1,52 @@
+=== test_migracion_aditiva_desde_schema_legacy ===
+============================= test session starts ==============================
+platform linux -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0 -- /opt/hostedtoolcache/Python/3.12.13/x64/bin/python
+cachedir: .pytest_cache
+rootdir: /home/runner/work/survivor-ligamx-bot/survivor-ligamx-bot
+configfile: pyproject.toml
+plugins: cov-7.1.0, anyio-4.14.2, mock-3.15.1
+collecting ... collected 1 item
+
+tests/test_pick_lifecycle_v2.py::test_migracion_aditiva_desde_schema_legacy PASSED
+
+============================== 1 passed in 0.08s ===============================
+exit=0
+=== test_snapshot_identidad_y_reintento_persisten_tras_reinicio ===
+============================= test session starts ==============================
+platform linux -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0 -- /opt/hostedtoolcache/Python/3.12.13/x64/bin/python
+cachedir: .pytest_cache
+rootdir: /home/runner/work/survivor-ligamx-bot/survivor-ligamx-bot
+configfile: pyproject.toml
+plugins: cov-7.1.0, anyio-4.14.2, mock-3.15.1
+collecting ... collected 1 item
+
+tests/test_pick_lifecycle_v2.py::test_snapshot_identidad_y_reintento_persisten_tras_reinicio PASSED
+
+============================== 1 passed in 0.04s ===============================
+exit=0
+=== test_cancelacion_idempotente_libera_equipo ===
+============================= test session starts ==============================
+platform linux -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0 -- /opt/hostedtoolcache/Python/3.12.13/x64/bin/python
+cachedir: .pytest_cache
+rootdir: /home/runner/work/survivor-ligamx-bot/survivor-ligamx-bot
+configfile: pyproject.toml
+plugins: cov-7.1.0, anyio-4.14.2, mock-3.15.1
+collecting ... collected 1 item
+
+tests/test_pick_lifecycle_v2.py::test_cancelacion_idempotente_libera_equipo PASSED
+
+============================== 1 passed in 0.04s ===============================
+exit=0
+=== test_resolucion_prefiere_match_key_estable ===
+============================= test session starts ==============================
+platform linux -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0 -- /opt/hostedtoolcache/Python/3.12.13/x64/bin/python
+cachedir: .pytest_cache
+rootdir: /home/runner/work/survivor-ligamx-bot/survivor-ligamx-bot
+configfile: pyproject.toml
+plugins: cov-7.1.0, anyio-4.14.2, mock-3.15.1
+collecting ... collected 1 item
+
+tests/test_pick_lifecycle_v2.py::test_resolucion_prefiere_match_key_estable PASSED
+
+============================== 1 passed in 0.04s ===============================
+exit=0
