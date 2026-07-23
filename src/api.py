@@ -831,7 +831,7 @@ def root():
 @app.get("/dashboard/assets/{asset_name}", include_in_schema=False)
 def dashboard_asset(asset_name: str):
     """Sirve únicamente los dos assets permitidos; nunca publica el HTML alterno."""
-    media_types = {"app.css": "text/css", "app.js": "text/javascript"}
+    media_types = {"app.css": "text/css", "app.js": "application/javascript"}
     media_type = media_types.get(asset_name)
     if media_type is None:
         raise HTTPException(status_code=404, detail="Asset no encontrado")
