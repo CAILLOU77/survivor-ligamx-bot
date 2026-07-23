@@ -366,6 +366,7 @@ def _reclamar_idempotencia(
         if estado != "fallido" and not vencido:
             conn.commit()
             return False
+        parametros: tuple[Any, ...]
         if estado == "fallido":
             condicion_reclamo = "status='fallido'"
             parametros = (locked_until, valor, completado)

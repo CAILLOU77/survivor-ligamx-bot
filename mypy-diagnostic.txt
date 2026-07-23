@@ -1,7 +1,0 @@
-src/database.py:374: error: Incompatible types in assignment (expression has
-type "tuple[datetime, Any, str, Any]", variable has type
-"tuple[datetime, Any, str]")  [assignment]
-                parametros = (locked_until, valor, completado, lease_origi...
-                             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
-Found 1 error in 1 file (checked 54 source files)
-exit=1
