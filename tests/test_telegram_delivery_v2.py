@@ -24,6 +24,15 @@ def _sqlite_temporal(tmp: Path):
     )
 
 
+def test_lease_activo_bloquea_reclamo_duplicado():
+    with tempfile.TemporaryDirectory() as carpeta:
+        patches = _sqlite_temporal(Path(carpeta))
+        with patches[0], patches[1], patches[2]:
+            db.init_db()
+            assert db.reclamar_telegram_update(7000)
+            assert not db.reclamar_telegram_update(7000)
+
+
 def test_lease_abandonado_se_recupera_una_sola_vez():
     with tempfile.TemporaryDirectory() as carpeta:
         patches = _sqlite_temporal(Path(carpeta))
