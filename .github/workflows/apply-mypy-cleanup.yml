@@ -29,20 +29,22 @@ jobs:
           ruff format --check .
       - name: Mypy
         run: mypy src/
-      - name: Structure sanity
-        run: python scripts/final_security_gate.py
-      - name: Full tests and coverage
-        run: python -m pytest tests/ --cov=src --cov-report=term-missing --cov-fail-under=64
-      - name: Commit fix and remove temporary diagnostics
+      - name: Remove temporary diagnostics
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git rm -f --ignore-unmatch \
             scripts/debug_mypy.txt \
             scripts/fix_mypy_cleanup.py \
             .github/workflows/diagnose-mypy.yml \
             .github/workflows/apply-mypy-cleanup.yml \
             mypy-diagnostic.txt
+      - name: Structure sanity
+        run: python scripts/final_security_gate.py
+      - name: Full tests and coverage
+        run: python -m pytest tests/ --cov=src --cov-report=term-missing --cov-fail-under=64
+      - name: Commit final source
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/database.py
           git commit -m "fix: tipa la comparación CAS de Telegram"
           git push
