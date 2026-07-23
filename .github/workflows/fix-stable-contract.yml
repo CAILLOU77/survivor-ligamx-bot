@@ -3,7 +3,7 @@ name: Fix stable match contract formatting
 on:
   push:
     branches: [feat/stable-match-contract-consumer]
-    paths: [.github/workflows/fix-stable-contract.yml]
+    paths: [scripts/format_stable_contract.py]
 
 permissions:
   contents: write
@@ -18,12 +18,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install Ruff
-        run: pip install ruff
+      - name: Install project tooling
+        run: pip install -r requirements-dev.txt
       - name: Apply Ruff fixes and format
-        run: |
-          ruff check --fix src/ligamx_api.py tests/test_ligamx_contract.py
-          ruff format src/ligamx_api.py tests/test_ligamx_contract.py
+        run: python scripts/format_stable_contract.py
       - name: Commit formatting
         run: |
           git config user.name "github-actions[bot]"
