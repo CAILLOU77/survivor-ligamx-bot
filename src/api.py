@@ -698,49 +698,73 @@ async def telegram_webhook(
     if cmd is None:
         return {"ok": True}  # texto normal, no comando
 
-    enviado = True
+    update_id_raw = update.get("update_id")
+    update_id = update_id_raw if isinstance(update_id_raw, int) and not isinstance(update_id_raw, bool) else None
+    update_reclamado = False
+    if update_id is not None:
+        from src.database import reclamar_telegram_update
 
-    def _enviar(mensaje: str) -> bool:
-        ok = bool(tp.enviar_mensaje(mensaje))
-        if not ok:
-            logger.error("Telegram rechazó la respuesta al comando /%s", cmd)
-        return ok
+        update_reclamado = reclamar_telegram_update(update_id)
+        if not update_reclamado:
+            return {"ok": True, "duplicado": True, "update_id": update_id}
 
-    if cmd in tw.CMDS_PICK:
-        # Generación pesada (ESPN+modelo) en segundo plano; responde rápido.
-        background_tasks.add_task(tp.enviar_pronosticos)
-        enviado = _enviar("🔄 Generando tu pronóstico y pick de la jornada...")
-    elif cmd in tw.CMDS_PLAN:
-        background_tasks.add_task(tp.enviar_plan)
-        enviado = _enviar("🔄 Armando tu plan de temporada (las 17 jornadas)...")
-    elif cmd in tw.CMDS_MOMIOS:
-        background_tasks.add_task(tp.enviar_momios_estado)
-        enviado = _enviar("🔄 Bajando momios y revisando cobertura...")
-    elif cmd in tw.CMDS_SEGUIMIENTO:
-        background_tasks.add_task(tp.enviar_seguimiento)
-        enviado = _enviar("🔄 Armando tu lista de seguimiento de la jornada...")
-    elif cmd in tw.CMDS_PRUEBA:
-        background_tasks.add_task(tp.enviar_prueba)
-        enviado = _enviar("🔄 Probando la estrategia con torneos pasados (tarda un poco)...")
-    elif cmd in tw.CMDS_CONFIANZA:
-        background_tasks.add_task(tp.enviar_confianza)
-        enviado = _enviar("🔄 Revisando qué tan honesta es la confianza del bot...")
-    elif cmd in tw.CMDS_DERROTAS:
-        background_tasks.add_task(tp.enviar_derrotas)
-        enviado = _enviar("🔄 Revisando en qué partidos cayó el bot y por qué...")
-    elif cmd in tw.CMDS_GANADORES:
-        background_tasks.add_task(tp.enviar_ganadores)
-        enviado = _enviar("🔄 Calculando el 'Survivor perfecto' y comparándolo con el bot...")
-    elif cmd in tw.CMDS_ANALISIS:
-        background_tasks.add_task(tp.enviar_analisis_jornada)
-        enviado = _enviar("🔄 Analizando la jornada: goles, tarjetas, alineaciones y conclusiones...")
-    else:
-        enviado = _enviar(tw.responder(cmd, arg))
+    try:
+        enviado = True
+
+        def _enviar(mensaje: str) -> bool:
+            ok = bool(tp.enviar_mensaje(mensaje))
+            if not ok:
+                logger.error("Telegram rechazó la respuesta al comando /%s", cmd)
+            return ok
+
+        if cmd in tw.CMDS_PICK:
+            # Generación pesada (ESPN+modelo) en segundo plano; responde rápido.
+            background_tasks.add_task(tp.enviar_pronosticos)
+            enviado = _enviar("🔄 Generando tu pronóstico y pick de la jornada...")
+        elif cmd in tw.CMDS_PLAN:
+            background_tasks.add_task(tp.enviar_plan)
+            enviado = _enviar("🔄 Armando tu plan de temporada (las 17 jornadas)...")
+        elif cmd in tw.CMDS_MOMIOS:
+            background_tasks.add_task(tp.enviar_momios_estado)
+            enviado = _enviar("🔄 Bajando momios y revisando cobertura...")
+        elif cmd in tw.CMDS_SEGUIMIENTO:
+            background_tasks.add_task(tp.enviar_seguimiento)
+            enviado = _enviar("🔄 Armando tu lista de seguimiento de la jornada...")
+        elif cmd in tw.CMDS_PRUEBA:
+            background_tasks.add_task(tp.enviar_prueba)
+            enviado = _enviar("🔄 Probando la estrategia con torneos pasados (tarda un poco)...")
+        elif cmd in tw.CMDS_CONFIANZA:
+            background_tasks.add_task(tp.enviar_confianza)
+            enviado = _enviar("🔄 Revisando qué tan honesta es la confianza del bot...")
+        elif cmd in tw.CMDS_DERROTAS:
+            background_tasks.add_task(tp.enviar_derrotas)
+            enviado = _enviar("🔄 Revisando en qué partidos cayó el bot y por qué...")
+        elif cmd in tw.CMDS_GANADORES:
+            background_tasks.add_task(tp.enviar_ganadores)
+            enviado = _enviar("🔄 Calculando el 'Survivor perfecto' y comparándolo con el bot...")
+        elif cmd in tw.CMDS_ANALISIS:
+            background_tasks.add_task(tp.enviar_analisis_jornada)
+            enviado = _enviar("🔄 Analizando la jornada: goles, tarjetas, alineaciones y conclusiones...")
+        else:
+            enviado = _enviar(tw.responder(cmd, arg))
+            if not enviado:
+                # Las operaciones ligeras son idempotentes; 502 hace que Telegram
+                # reintente el update en lugar de perder /mipick silenciosamente.
+                raise HTTPException(status_code=502, detail="No se pudo entregar la respuesta en Telegram")
         if not enviado:
-            # Las operaciones ligeras son idempotentes; 502 hace que Telegram
-            # reintente el update en lugar de perder /mipick silenciosamente.
             raise HTTPException(status_code=502, detail="No se pudo entregar la respuesta en Telegram")
-    return {"ok": enviado, "comando": cmd}
+    except Exception as exc:
+        if update_reclamado and update_id is not None:
+            from src.database import fallar_telegram_update
+
+            fallar_telegram_update(update_id, type(exc).__name__)
+        raise
+    else:
+        if update_reclamado and update_id is not None:
+            from src.database import completar_telegram_update
+
+            completar_telegram_update(update_id)
+        return {"ok": enviado, "comando": cmd, "update_id": update_id}
 
 
 @app.get("/stats", summary="Métricas de rendimiento", tags=["Analytics"])

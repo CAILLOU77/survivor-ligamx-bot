@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -104,7 +105,7 @@ def _dividir_mensaje(texto: str, limite: int = _TELEGRAM_LIMITE) -> List[str]:
     return partes
 
 
-def enviar_mensaje(mensaje: str) -> bool:
+def enviar_mensaje(mensaje: str, idempotency_key: Optional[str] = None) -> bool:
     """
     Envía un mensaje a Telegram. Si excede el tope (~4096), lo parte en varios
     y los manda en orden. Devuelve True solo si TODOS los trozos se enviaron.
@@ -119,15 +120,43 @@ def enviar_mensaje(mensaje: str) -> bool:
         return False
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     ok = True
-    for parte in _dividir_mensaje(mensaje):
+    for indice, parte in enumerate(_dividir_mensaje(mensaje), start=1):
+        clave_parte = None
+        if idempotency_key:
+            digest = hashlib.sha256(parte.encode("utf-8")).hexdigest()[:16]
+            clave_parte = f"{idempotency_key}:parte:{indice}:{digest}"
+            try:
+                from src.database import reclamar_entrega_telegram
+
+                if not reclamar_entrega_telegram(clave_parte):
+                    continue
+            except Exception:
+                logger.warning("No se pudo reclamar la entrega Telegram", exc_info=True)
+                ok = False
+                continue
         try:
             resp = requests.post(url, data={"chat_id": chat_id, "text": parte, "parse_mode": "HTML"}, timeout=20)
-            if resp.status_code != 200:
+            if resp.status_code == 200:
+                if clave_parte:
+                    from src.database import completar_entrega_telegram
+
+                    completar_entrega_telegram(clave_parte)
+            else:
+                if clave_parte:
+                    from src.database import fallar_entrega_telegram
+
+                    fallar_entrega_telegram(clave_parte, f"HTTP {resp.status_code}")
                 ok = False
                 print(f"Telegram HTTP {resp.status_code}: {resp.text[:200]}")
         except Exception as exc:  # pragma: no cover
-            # requests puede incluir la URL (y por tanto el bot token) en la
-            # excepción; registra solo el tipo para no filtrar credenciales.
+            if clave_parte:
+                try:
+                    from src.database import fallar_entrega_telegram
+
+                    fallar_entrega_telegram(clave_parte, type(exc).__name__)
+                except Exception:
+                    logger.warning("No se pudo marcar la entrega Telegram como fallida", exc_info=True)
+            # Nunca registrar URL ni token de Telegram.
             logger.error("Error enviando Telegram (%s)", type(exc).__name__)
             ok = False
     return ok
