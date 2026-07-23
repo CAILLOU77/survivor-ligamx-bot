@@ -20,7 +20,7 @@ import os
 import re
 import unicodedata
 from contextlib import contextmanager
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Dict, Generator, List, Optional, cast
 
 if TYPE_CHECKING:
@@ -210,6 +210,27 @@ def init_db() -> None:
                 PRIMARY KEY (temporada, jornada)
             )
         """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS telegram_updates (
+                update_id BIGINT PRIMARY KEY,
+                status TEXT NOT NULL DEFAULT 'procesando',
+                locked_until TIMESTAMP,
+                last_error TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS telegram_deliveries (
+                idempotency_key TEXT PRIMARY KEY,
+                status TEXT NOT NULL DEFAULT 'procesando',
+                locked_until TIMESTAMP,
+                last_error TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                sent_at TIMESTAMP
+            )
+        """)
         _asegurar_columnas_survivor(cur)
         cur.execute("""
             CREATE UNIQUE INDEX IF NOT EXISTS ux_survivor_picks_match_activo
@@ -302,6 +323,106 @@ def _snapshot_decode(valor: Any) -> Optional[Dict[str, Any]]:
     except (TypeError, ValueError):
         return None
     return data if isinstance(data, dict) else None
+
+
+def _reclamar_idempotencia(
+    tabla: str,
+    columna: str,
+    valor: Any,
+    completado: str,
+    lease_seconds: int = 300,
+) -> bool:
+    """Adquiere una llave persistente; permite reintentos fallidos o leases vencidos."""
+    if tabla not in {"telegram_updates", "telegram_deliveries"}:
+        raise ValueError("Tabla de idempotencia inválida")
+    ahora = datetime.now(timezone.utc)
+    locked_until = ahora + timedelta(seconds=max(30, int(lease_seconds)))
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"INSERT INTO {tabla} ({columna}, status, locked_until) VALUES ({PH}, 'procesando', {PH}) "
+            f"ON CONFLICT ({columna}) DO NOTHING",
+            (valor, locked_until),
+        )
+        if cur.rowcount:
+            conn.commit()
+            return True
+        cur.execute(f"SELECT status, locked_until FROM {tabla} WHERE {columna}={PH}", (valor,))
+        fila = cur.fetchone()
+        if not fila or str(fila[0]) == completado:
+            conn.commit()
+            return False
+        estado = str(fila[0])
+        lease_original = fila[1]
+        lease = lease_original
+        if isinstance(lease, str):
+            try:
+                lease = datetime.fromisoformat(lease.replace("Z", "+00:00"))
+            except ValueError:
+                lease = None
+        if isinstance(lease, datetime) and lease.tzinfo is None:
+            lease = lease.replace(tzinfo=timezone.utc)
+        vencido = not isinstance(lease, datetime) or lease <= ahora
+        if estado != "fallido" and not vencido:
+            conn.commit()
+            return False
+        parametros: tuple[Any, ...]
+        if estado == "fallido":
+            condicion_reclamo = "status='fallido'"
+            parametros = (locked_until, valor, completado)
+        else:
+            condicion_reclamo = f"locked_until={PH}"
+            parametros = (locked_until, valor, completado, lease_original)
+        cur.execute(
+            f"UPDATE {tabla} SET status='procesando', locked_until={PH}, last_error=NULL, "
+            f"updated_at=CURRENT_TIMESTAMP WHERE {columna}={PH} AND status<>{PH} "
+            f"AND {condicion_reclamo}",
+            parametros,
+        )
+        adquirido = bool(cur.rowcount)
+        conn.commit()
+        return adquirido
+
+
+def _finalizar_idempotencia(tabla: str, columna: str, valor: Any, status: str, error: str = "") -> None:
+    if tabla not in {"telegram_updates", "telegram_deliveries"}:
+        raise ValueError("Tabla de idempotencia inválida")
+    sent_sql = ", sent_at=CURRENT_TIMESTAMP" if tabla == "telegram_deliveries" and status == "enviado" else ""
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"UPDATE {tabla} SET status={PH}, locked_until=NULL, last_error={PH}, "
+            f"updated_at=CURRENT_TIMESTAMP{sent_sql} WHERE {columna}={PH}",
+            (status, str(error or "")[:500] or None, valor),
+        )
+        conn.commit()
+
+
+def reclamar_telegram_update(update_id: int, lease_seconds: int = 300) -> bool:
+    return _reclamar_idempotencia("telegram_updates", "update_id", int(update_id), "procesado", lease_seconds)
+
+
+def completar_telegram_update(update_id: int) -> None:
+    _finalizar_idempotencia("telegram_updates", "update_id", int(update_id), "procesado")
+
+
+def fallar_telegram_update(update_id: int, error: str = "") -> None:
+    _finalizar_idempotencia("telegram_updates", "update_id", int(update_id), "fallido", error)
+
+
+def reclamar_entrega_telegram(idempotency_key: str, lease_seconds: int = 300) -> bool:
+    clave = str(idempotency_key or "").strip()
+    if not clave:
+        raise ValueError("La llave de idempotencia es obligatoria")
+    return _reclamar_idempotencia("telegram_deliveries", "idempotency_key", clave, "enviado", lease_seconds)
+
+
+def completar_entrega_telegram(idempotency_key: str) -> None:
+    _finalizar_idempotencia("telegram_deliveries", "idempotency_key", str(idempotency_key), "enviado")
+
+
+def fallar_entrega_telegram(idempotency_key: str, error: str = "") -> None:
+    _finalizar_idempotencia("telegram_deliveries", "idempotency_key", str(idempotency_key), "fallido", error)
 
 
 def _insertar_usado_cursor(cur: Any, temporada: str, equipo: str, jornada: Optional[int] = None) -> bool:

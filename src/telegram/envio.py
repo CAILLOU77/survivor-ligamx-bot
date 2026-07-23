@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -104,7 +105,7 @@ def _dividir_mensaje(texto: str, limite: int = _TELEGRAM_LIMITE) -> List[str]:
     return partes
 
 
-def enviar_mensaje(mensaje: str) -> bool:
+def enviar_mensaje(mensaje: str, idempotency_key: Optional[str] = None) -> bool:
     """
     Envía un mensaje a Telegram. Si excede el tope (~4096), lo parte en varios
     y los manda en orden. Devuelve True solo si TODOS los trozos se enviaron.
@@ -119,15 +120,43 @@ def enviar_mensaje(mensaje: str) -> bool:
         return False
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     ok = True
-    for parte in _dividir_mensaje(mensaje):
+    for indice, parte in enumerate(_dividir_mensaje(mensaje), start=1):
+        clave_parte = None
+        if idempotency_key:
+            digest = hashlib.sha256(parte.encode("utf-8")).hexdigest()[:16]
+            clave_parte = f"{idempotency_key}:parte:{indice}:{digest}"
+            try:
+                from src.database import reclamar_entrega_telegram
+
+                if not reclamar_entrega_telegram(clave_parte):
+                    continue
+            except Exception:
+                logger.warning("No se pudo reclamar la entrega Telegram", exc_info=True)
+                ok = False
+                continue
         try:
             resp = requests.post(url, data={"chat_id": chat_id, "text": parte, "parse_mode": "HTML"}, timeout=20)
-            if resp.status_code != 200:
+            if resp.status_code == 200:
+                if clave_parte:
+                    from src.database import completar_entrega_telegram
+
+                    completar_entrega_telegram(clave_parte)
+            else:
+                if clave_parte:
+                    from src.database import fallar_entrega_telegram
+
+                    fallar_entrega_telegram(clave_parte, f"HTTP {resp.status_code}")
                 ok = False
                 print(f"Telegram HTTP {resp.status_code}: {resp.text[:200]}")
         except Exception as exc:  # pragma: no cover
-            # requests puede incluir la URL (y por tanto el bot token) en la
-            # excepción; registra solo el tipo para no filtrar credenciales.
+            if clave_parte:
+                try:
+                    from src.database import fallar_entrega_telegram
+
+                    fallar_entrega_telegram(clave_parte, type(exc).__name__)
+                except Exception:
+                    logger.warning("No se pudo marcar la entrega Telegram como fallida", exc_info=True)
+            # Nunca registrar URL ni token de Telegram.
             logger.error("Error enviando Telegram (%s)", type(exc).__name__)
             ok = False
     return ok
@@ -181,6 +210,7 @@ def _registrar_survivor_historial(picks, pronosticos) -> None:
     local = ""
     visitante = ""
     fecha = ""
+    partido_match: Dict[str, Any] = {}
     equipo_key = canonical_team_key(equipo)
     for pronostico in pronosticos or []:
         local_candidato = str(pronostico.get("local") or "")
@@ -192,6 +222,7 @@ def _registrar_survivor_historial(picks, pronosticos) -> None:
             local = local_candidato
             visitante = visitante_candidato
             fecha = str(pronostico.get("fecha") or "")
+            partido_match = pronostico
             break
 
     condicion = str(pick.get("condicion") or "")
@@ -220,6 +251,15 @@ def _registrar_survivor_historial(picks, pronosticos) -> None:
             no_perder_pct=float(pick.get("no_perder_pct") or 0.0),
             prob_victoria_pct=float(pick.get("prob_victoria_pct") or pick.get("prob_ganar_pct") or 0.0),
             fecha=fecha,
+            espn_event_id=partido_match.get("espn_event_id"),
+            match_key=str(partido_match.get("match_key") or ""),
+            kickoff_utc=str(partido_match.get("kickoff_utc") or partido_match.get("fecha") or ""),
+            probability_snapshot={
+                "no_perder_pct": float(pick.get("no_perder_pct") or 0.0),
+                "prob_victoria_pct": float(pick.get("prob_victoria_pct") or pick.get("prob_ganar_pct") or 0.0),
+            },
+            model_version=os.getenv("SURVIVOR_MODEL_VERSION", "survivor-v1"),
+            decision_reason=str(pick.get("razon") or pick.get("motivo") or ""),
         )
         registrar_survivor_pick(
             jornada=clave_jornada,
@@ -358,7 +398,11 @@ def proxima_jornada(hoy: Optional[date] = None) -> Optional[Dict[str, Any]]:
     return None
 
 
-def enviar_pronosticos(equipos_usados: Optional[List[str]] = None, incluir_contexto: bool = True) -> Dict[str, Any]:
+def enviar_pronosticos(
+    equipos_usados: Optional[List[str]] = None,
+    incluir_contexto: bool = True,
+    idempotency_key: Optional[str] = None,
+) -> Dict[str, Any]:
     """Genera pronósticos reales y los envía por Telegram."""
     resultado = motor.generar_pronosticos()
     pronosticos = resultado.get("pronosticos", [])
@@ -489,7 +533,7 @@ def enviar_pronosticos(equipos_usados: Optional[List[str]] = None, incluir_conte
         goleadores_map=goleadores_map,
         porteros_map=porteros_map,
     )
-    enviado = enviar_mensaje(mensaje)
+    enviado = enviar_mensaje(mensaje, idempotency_key=idempotency_key)
     return {
         "enviado": enviado,
         "total_pronosticos": resultado.get("total_pronosticos", 0),
@@ -511,7 +555,7 @@ def enviar_resumen_rentabilidad() -> Dict[str, Any]:
     return {"enviado": enviado, "resueltos": data.get("resueltos"), "pendientes": data.get("pendientes")}
 
 
-def enviar_momios_estado(solo_si_hay: bool = False) -> Dict[str, Any]:
+def enviar_momios_estado(solo_si_hay: bool = False, idempotency_key: Optional[str] = None) -> Dict[str, Any]:
     """Envía por Telegram un resumen de cobertura de momios."""
     try:
         from src import comparador_mercado as cm
@@ -521,7 +565,7 @@ def enviar_momios_estado(solo_si_hay: bool = False) -> Dict[str, Any]:
         return {"enviado": False, "error": str(exc)}
     if solo_si_hay and not momios:
         return {"enviado": False, "silencioso": True, "partidos_con_momios": 0}
-    enviado = enviar_mensaje(construir_mensaje_momios(momios, fuente))
+    enviado = enviar_mensaje(construir_mensaje_momios(momios, fuente), idempotency_key=idempotency_key)
     return {"enviado": enviado, "partidos_con_momios": len(momios), "fuente": fuente}
 
 
@@ -537,7 +581,8 @@ def enviar_recordatorio_si_aplica(dias_antes: int = 1, hoy: Optional[date] = Non
     dias = (ini - hoy).days
     if not (0 <= dias <= dias_antes):
         return {"enviado": False, "motivo": f"faltan {dias} días", "jornada": j.get("jornada")}
-    enviado = enviar_mensaje(construir_recordatorio(j, dias))
+    clave = f"recordatorio:{hoy.isoformat()}:J{j.get('jornada')}:{dias_antes}"
+    enviado = enviar_mensaje(construir_recordatorio(j, dias), idempotency_key=clave)
     return {"enviado": enviado, "jornada": j.get("jornada"), "dias": dias}
 
 
