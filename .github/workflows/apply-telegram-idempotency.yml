@@ -3,7 +3,7 @@ name: Apply Telegram idempotency
 on:
   push:
     branches: [feat/idempotent-telegram-delivery]
-    paths: [scripts/apply_telegram_idempotency.py]
+    paths: [scripts/fix_telegram_idempotency.py]
 
 permissions:
   contents: write
@@ -21,6 +21,7 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - name: Apply and format
         run: |
+          python scripts/fix_telegram_idempotency.py
           python scripts/apply_telegram_idempotency.py
           ruff check --fix src/database.py src/api.py src/telegram/envio.py tests/test_telegram_idempotency.py
           ruff format src/database.py src/api.py src/telegram/envio.py tests/test_telegram_idempotency.py
