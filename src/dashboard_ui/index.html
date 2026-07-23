@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="es-MX">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#071711">
+  <meta name="color-scheme" content="dark">
+  <title>Mi Survivor · Liga MX</title>
+  <meta name="description" content="Tu racha, picks y estrategia Survivor Liga MX en un solo lugar.">
+  <link rel="stylesheet" href="/dashboard/assets/app.css">
+  <script src="/dashboard/assets/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#contenido">Ir al contenido</a>
+
+  <header class="topbar">
+    <a class="brand" href="/dashboard" aria-label="Mi Survivor, inicio">
+      <span class="brand-mark" aria-hidden="true">S</span>
+      <span><strong>Mi Survivor</strong><small>Liga MX</small></span>
+    </a>
+    <div class="top-actions">
+      <span id="syncStatus" class="sync-pill" data-state="idle"><span></span> Sin conectar</span>
+      <button id="logoutButton" class="icon-button hidden" type="button" title="Cerrar sesión" aria-label="Cerrar sesión">Salir</button>
+    </div>
+  </header>
+
+  <main id="contenido" class="shell">
+    <section id="authGate" class="auth-card" aria-labelledby="authTitle">
+      <div class="auth-emblem" aria-hidden="true">17</div>
+      <p class="eyebrow">ACCESO DEL DUEÑO</p>
+      <h1 id="authTitle">Tu temporada, bajo control.</h1>
+      <p class="muted">Escribe la misma <strong>API_KEY</strong> configurada en Render. Se conserva únicamente en esta pestaña y nunca se agrega a la URL.</p>
+      <form id="authForm" class="auth-form">
+        <label for="apiKeyInput">Clave privada</label>
+        <div class="password-row">
+          <input id="apiKeyInput" name="apiKey" type="password" autocomplete="current-password" required placeholder="••••••••••••" spellcheck="false">
+          <button id="toggleKey" class="text-button" type="button" aria-label="Mostrar clave">Ver</button>
+        </div>
+        <button id="loginButton" class="primary-button" type="submit">Entrar a Mi Survivor</button>
+        <p id="authError" class="form-error" role="alert"></p>
+      </form>
+      <p class="security-note">Sesión privada · Sin cookies · Sin rastreadores</p>
+    </section>
+
+    <div id="app" class="app hidden">
+      <section class="hero panel">
+        <div>
+          <p id="seasonLabel" class="eyebrow">APERTURA 2026</p>
+          <h1><span id="aliveIcon" aria-hidden="true">●</span> <span id="aliveLabel">Sigues vivo</span></h1>
+          <p id="heroMessage" class="hero-copy">Dos decisiones perfectas. La siguiente se toma con calma.</p>
+        </div>
+        <div class="streak-orbit" aria-label="Racha actual">
+          <span id="streakValue">0</span>
+          <small>RACHA</small>
+        </div>
+      </section>
+
+      <section class="stat-grid" aria-label="Resumen de temporada">
+        <article class="stat-card"><span>Victorias</span><strong id="winsValue">0</strong><small>picks ganadores</small></article>
+        <article class="stat-card"><span>Empates</span><strong id="drawsValue">0</strong><small>también sobreviven</small></article>
+        <article class="stat-card"><span>Usados</span><strong id="usedValue">0</strong><small>de 17 posibles</small></article>
+        <article class="stat-card accent"><span>Próxima</span><strong id="nextRoundValue">J—</strong><small id="nextDateValue">por confirmar</small></article>
+      </section>
+
+      <div class="content-grid">
+        <section class="panel decision-panel" aria-labelledby="decisionTitle">
+          <div class="section-heading">
+            <div><p class="eyebrow">PRÓXIMA DECISIÓN</p><h2 id="decisionTitle">Jornada <span id="roundNumber">—</span></h2></div>
+            <span id="pickState" class="state-badge" data-state="sin_pick">Sin confirmar</span>
+          </div>
+
+          <div class="deadline-card">
+            <span class="deadline-icon" aria-hidden="true">◷</span>
+            <div><small>Inicio de jornada</small><strong id="roundDate">Fecha por confirmar</strong><span id="countdownText">Sin hora límite oficial</span></div>
+          </div>
+
+          <article class="recommendation-card">
+            <div class="recommendation-top">
+              <div><p id="recommendationEyebrow" class="eyebrow">RECOMENDACIÓN DEL MODELO</p><h3 id="recommendedTeam">Calculando…</h3></div>
+              <div class="confidence"><strong id="confidenceValue">—</strong><span>no perder</span></div>
+            </div>
+            <p id="matchupLabel" class="matchup">Esperando los datos de la jornada</p>
+            <p id="recommendationNote" class="muted">La recomendación es informativa y requiere tu revisión.</p>
+          </article>
+
+          <form id="pickForm" class="pick-form">
+            <label for="teamInput">Tu selección real</label>
+            <div class="pick-row">
+              <input id="teamInput" type="text" list="roundTeams" required maxlength="60" autocomplete="off" placeholder="Equipo para esta jornada">
+              <datalist id="roundTeams"></datalist>
+              <button id="confirmPickButton" class="primary-button" type="submit">Confirmar pick</button>
+            </div>
+            <p id="pickHint" class="field-hint">Puedes corregirla hasta bloquearla.</p>
+          </form>
+
+          <button id="lockPickButton" class="danger-button hidden" type="button">Bloquear selección</button>
+        </section>
+
+        <aside class="side-column">
+          <section class="panel" aria-labelledby="usedTitle">
+            <div class="section-heading compact"><div><p class="eyebrow">NO REPETIR</p><h2 id="usedTitle">Equipos usados</h2></div><span id="usedCountBadge" class="count-badge">0</span></div>
+            <div id="usedTeams" class="chip-list" aria-live="polite"></div>
+          </section>
+
+          <section class="panel season-progress" aria-labelledby="progressTitle">
+            <div class="section-heading compact"><div><p class="eyebrow">CAMINO</p><h2 id="progressTitle">Progreso</h2></div><span id="progressText">0 / 17</span></div>
+            <div id="progressTrack" class="progress-track" data-progress="0" role="progressbar" aria-valuemin="0" aria-valuemax="17" aria-valuenow="0"><span></span></div>
+            <p class="muted">Cada equipo se utiliza una sola vez durante la temporada.</p>
+          </section>
+        </aside>
+      </div>
+
+      <section class="panel history-panel" aria-labelledby="historyTitle">
+        <div class="section-heading"><div><p class="eyebrow">TU RECORRIDO</p><h2 id="historyTitle">Historial de picks</h2></div><button id="refreshButton" class="secondary-button" type="button">Actualizar</button></div>
+        <ol id="historyList" class="history-list"></ol>
+        <p id="emptyHistory" class="empty-state hidden">Aún no hay picks registrados.</p>
+      </section>
+
+      <footer>
+        <span>Datos reales · ESPN + modelo Poisson</span>
+        <span>Informativo / revisión humana</span>
+      </footer>
+    </div>
+  </main>
+
+  <dialog id="confirmDialog" class="confirm-dialog">
+    <form method="dialog">
+      <p class="eyebrow">CONFIRMA TU DECISIÓN</p>
+      <h2 id="dialogTitle">¿Usar este equipo?</h2>
+      <p id="dialogMessage" class="muted"></p>
+      <div class="dialog-actions"><button class="secondary-button" value="cancel">Cancelar</button><button id="dialogConfirm" class="primary-button" value="confirm">Sí, continuar</button></div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

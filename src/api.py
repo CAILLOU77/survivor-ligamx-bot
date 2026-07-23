@@ -1,15 +1,15 @@
 import logging
-
-logger = logging.getLogger(__name__)
-from fastapi import FastAPI, Request
-from slowapi import _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
-from fastapi import HTTPException, Header, Depends, BackgroundTasks
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
 import os
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
+from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, RedirectResponse
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 # Cargar .env en local (en Render/prod las vars vienen del entorno; esto es no-op).
 try:
@@ -155,6 +155,7 @@ from src.auth import verify_api_key  # noqa: E402
 
 
 app = FastAPI(title="Survivor LigaMX API Premium", version="2.1.0", docs_url="/docs")
+DASHBOARD_DIR = Path(__file__).resolve().parent / "dashboard_ui"
 # CORS configurable: en producción usa CORS_ORIGINS="https://tudominio.com,https://otro.com"
 # En desarrollo deja vacío (solo localhost) o define CORS_ORIGINS=* explícitamente.
 _cors_raw = os.getenv("CORS_ORIGINS", "").strip()
@@ -806,86 +807,49 @@ def settle_pick_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/dashboard", response_class=HTMLResponse, summary="Dashboard visual", tags=["Dashboard"])
-def dashboard():
-    stats = get_metrics()
+DASHBOARD_SECURITY_HEADERS = {
+    "Cache-Control": "no-store, max-age=0",
+    "Content-Security-Policy": (
+        "default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; "
+        "form-action 'self'; connect-src 'self'; img-src 'self' data:; "
+        "style-src 'self'; script-src 'self'"
+    ),
+    "Cross-Origin-Opener-Policy": "same-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+}
 
-    html = """<!DOCTYPE html>
-<html>
-<head>
-    <title>Survivor LigaMX Dashboard</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-        body {{ font-family: Arial, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; background: #f5f5f5; }}
-        .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 10px; margin-bottom: 30px; }}
-        .metrics {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }}
-        .metric {{ background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
-        .metric h3 {{ margin: 0; color: #666; font-size: 14px; }}
-        .metric .value {{ font-size: 32px; font-weight: bold; color: #333; margin-top: 10px; }}
-        .chart-container {{ background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }}
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h1>📊 Survivor LigaMX Premium</h1>
-        <p>Dashboard de Rendimiento en Vivo</p>
-    </div>
-    <div class="metrics">
-        <div class="metric">
-            <h3>Total Picks</h3>
-            <div class="value">{total_picks}</div>
-        </div>
-        <div class="metric">
-            <h3>Wins</h3>
-            <div class="value">{wins}</div>
-        </div>
-        <div class="metric">
-            <h3>Win Rate</h3>
-            <div class="value">{win_rate}%</div>
-        </div>
-        <div class="metric">
-            <h3>Total Profit</h3>
-            <div class="value">{total_profit}</div>
-        </div>
-    </div>
-    <div class="chart-container">
-        <h3>📈 Rendimiento</h3>
-        <canvas id="performanceChart"></canvas>
-    </div>
-    <script>
-        const ctx = document.getElementById('performanceChart').getContext('2d');
-        new Chart(ctx, {{
-            type: 'bar',
-            data: {{
-                labels: ['Total Picks', 'Wins', 'Losses'],
-                datasets: [{{
-                    label: 'Estadísticas',
-                    data: [{total_picks}, {wins}, {losses}],
-                    backgroundColor: ['#667eea', '#10b981', '#ef4444']
-                }}]
-            }},
-            options: {{
-                responsive: true,
-                plugins: {{
-                    legend: {{ display: false }}
-                }}
-            }}
-        }});
-    </script>
-    <p><a href="/docs">📚 Ver documentación API</a></p>
-</body>
-</html>"""
 
-    losses = stats["total_picks"] - stats["wins"]
-    html = html.format(
-        total_picks=stats["total_picks"],
-        wins=stats["wins"],
-        win_rate=f"{stats['win_rate']:.1f}",
-        total_profit=f"{stats['total_profit']:.2f}",
-        losses=losses,
+@app.get("/", include_in_schema=False)
+def root():
+    """Entrada del producto: lleva directamente a Mi Survivor."""
+    return RedirectResponse(url="/dashboard", status_code=307, headers={"Cache-Control": "no-store"})
+
+
+@app.get("/dashboard/assets/{asset_name}", include_in_schema=False)
+def dashboard_asset(asset_name: str):
+    """Sirve únicamente los dos assets permitidos; nunca publica el HTML alterno."""
+    media_types = {"app.css": "text/css", "app.js": "text/javascript"}
+    media_type = media_types.get(asset_name)
+    if media_type is None:
+        raise HTTPException(status_code=404, detail="Asset no encontrado")
+    return FileResponse(
+        DASHBOARD_DIR / asset_name,
+        media_type=media_type,
+        headers=DASHBOARD_SECURITY_HEADERS,
     )
 
-    return HTMLResponse(content=html)
+
+@app.get("/dashboard", summary="Mi Survivor", tags=["Dashboard"])
+def dashboard():
+    """Shell owner-only: los datos se solicitan con X-API-Key desde la pestaña."""
+    return FileResponse(
+        DASHBOARD_DIR / "index.html",
+        media_type="text/html",
+        headers=DASHBOARD_SECURITY_HEADERS,
+    )
 
 
 @app.get("/debug/jornadas", summary="Debug: ver contenido de jornadas.json", tags=["Debug"])

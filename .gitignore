@@ -39,6 +39,7 @@ data/fbref/raw/
 data/cache/
 data/*.csv
 *.html
+!src/dashboard_ui/index.html
 
 
 # v1.39.0 — Assisted Sportsbook Odds Import (todo local, nunca se commitea)
