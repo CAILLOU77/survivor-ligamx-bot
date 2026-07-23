@@ -127,10 +127,7 @@ def normalizar_partido_api(partido: Dict[str, Any]) -> Dict[str, Any]:
     if espn_event_id:
         match_key = f"espn:{espn_event_id}"
     else:
-        match_key = (
-            f"legacy:{canonical_team_key(home_name)}:"
-            f"{canonical_team_key(away_name)}:{kickoff_utc}"
-        )
+        match_key = f"legacy:{canonical_team_key(home_name)}:{canonical_team_key(away_name)}:{kickoff_utc}"
     salida.update(
         {
             "espn_event_id": espn_event_id,
@@ -651,9 +648,7 @@ def match_id_de_partido(home: str, away: str, espn_event_id: Optional[str] = Non
                 a = m.get("away_team") or {}
                 hn = h.get("name") if isinstance(h, dict) else h
                 an = a.get("name") if isinstance(a, dict) else a
-                if not hn or not an or not (
-                    teams_match(str(hn), home) and teams_match(str(an), away)
-                ):
+                if not hn or not an or not (teams_match(str(hn), home) and teams_match(str(an), away)):
                     continue
             mid = _campo(m, "id", "match_id", "matchId")
             try:

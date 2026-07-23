@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Contrato estable entre survivor-ligamx-bot y ligamx-api. Sin red."""
+
 from unittest import mock
 
 from src import ligamx_api as api
