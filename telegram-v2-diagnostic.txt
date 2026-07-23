@@ -1,0 +1,18 @@
+apply_exit=0
+All checks passed!
+ruff_exit=0
+1 file reformatted, 3 files left unchanged
+format_exit=0
+...F...............................................                      [100%]
+=================================== FAILURES ===================================
+________________ test_lease_abandonado_se_recupera_una_sola_vez ________________
+tests/test_telegram_delivery_v2.py:38: in test_lease_abandonado_se_recupera_una_sola_vez
+    assert db.reclamar_telegram_update(7001)
+E   assert False
+E    +  where False = <function reclamar_telegram_update at 0x7f6fe91a6480>(7001)
+E    +    where <function reclamar_telegram_update at 0x7f6fe91a6480> = db.reclamar_telegram_update
+=========================== short test summary info ============================
+FAILED tests/test_telegram_delivery_v2.py::test_lease_abandonado_se_recupera_una_sola_vez - assert False
+ +  where False = <function reclamar_telegram_update at 0x7f6fe91a6480>(7001)
+ +    where <function reclamar_telegram_update at 0x7f6fe91a6480> = db.reclamar_telegram_update
+pytest_exit=1
