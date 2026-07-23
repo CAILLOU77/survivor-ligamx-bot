@@ -96,9 +96,7 @@ def test_lote_repetido_cruza_todo_el_flujo_y_solo_se_entrega_una_vez():
             assert asyncio.run(notifier.notify_predicciones())
 
             with db.get_db() as conn:
-                fila = conn.execute(
-                    "SELECT COUNT(*), MIN(status) FROM telegram_deliveries"
-                ).fetchone()
+                fila = conn.execute("SELECT COUNT(*), MIN(status) FROM telegram_deliveries").fetchone()
 
     assert post.call_count == 1
     assert fila is not None
