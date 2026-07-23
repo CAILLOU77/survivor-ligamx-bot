@@ -126,7 +126,9 @@ def enviar_mensaje(mensaje: str) -> bool:
                 ok = False
                 print(f"Telegram HTTP {resp.status_code}: {resp.text[:200]}")
         except Exception as exc:  # pragma: no cover
-            print(f"Error enviando Telegram: {exc}")
+            # requests puede incluir la URL (y por tanto el bot token) en la
+            # excepción; registra solo el tipo para no filtrar credenciales.
+            logger.error("Error enviando Telegram (%s)", type(exc).__name__)
             ok = False
     return ok
 

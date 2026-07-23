@@ -202,6 +202,15 @@ from src.routers.api_ligamx import router as api_ligamx_router
 app.include_router(api_ligamx_router)
 init_db()
 
+# Render repara idempotentemente el webhook y sincroniza el menú de comandos
+# sin bloquear el arranque del servicio.
+try:
+    from src.telegram.configuracion import iniciar_sincronizacion_telegram
+
+    iniciar_sincronizacion_telegram()
+except Exception:  # pragma: no cover - Telegram es una integración externa
+    logger.exception("No se pudo iniciar la sincronización de Telegram")
+
 # NOTA: el viejo path de "picks de alto EV" leia un parquet de momios scrapeados
 # (data_kiro/ligamx_odds_clean.parquet) que NO existe en produccion (Render) y
 # dependia de momios. El proyecto pivoto a predicciones reales (ESPN + Poisson).
@@ -235,7 +244,12 @@ def health():
     """
     import requests
 
-    deps = {"base_de_datos": "error", "espn": "error", "ligamx_api": "error"}
+    deps = {
+        "base_de_datos": "error",
+        "espn": "error",
+        "ligamx_api": "error",
+        "telegram_webhook": "error",
+    }
     status_global = "ok"
 
     # 1) Base de datos
@@ -270,6 +284,29 @@ def health():
             status_global = "degradado"
     except Exception as e:
         deps["ligamx_api"] = f"error: {e}"
+        status_global = "degradado"
+
+    # 4) Telegram: configuración local + último resultado remoto de sincronización.
+    try:
+        from src.telegram.configuracion import estado_sincronizacion_telegram, obtener_secreto_webhook
+
+        token_configurado = bool(os.getenv("TELEGRAM_BOT_TOKEN", "").strip())
+        chat_configurado = bool(os.getenv("TELEGRAM_CHAT_ID", "").strip())
+        telegram_local = token_configurado and chat_configurado and bool(obtener_secreto_webhook())
+        estado_telegram = estado_sincronizacion_telegram()
+        if telegram_local and (not os.getenv("RENDER") or estado_telegram.get("ok")):
+            deps["telegram_webhook"] = "ok"
+        elif telegram_local and estado_telegram.get("estado") == "sincronizando":
+            deps["telegram_webhook"] = "sincronizando"
+            status_global = "degradado"
+        elif os.getenv("RENDER") or token_configurado or chat_configurado:
+            detalle = str(estado_telegram.get("error") or "configuración incompleta")[:160]
+            deps["telegram_webhook"] = f"error: {detalle}"
+            status_global = "degradado"
+        else:
+            deps["telegram_webhook"] = "deshabilitado"
+    except Exception as e:
+        deps["telegram_webhook"] = f"error: {e}"
         status_global = "degradado"
 
     return {
@@ -619,14 +656,19 @@ async def telegram_webhook(
     x_telegram_bot_api_secret_token: Optional[str] = Header(None),
 ):
     """
-    Recibe updates de Telegram y responde a comandos del DUEÑO (/usado, /usados,
-    /quitar, /reset, /pick, /ayuda). Solo atiende el TELEGRAM_CHAT_ID configurado
-    y, si hay TELEGRAM_WEBHOOK_SECRET, valida el header secreto de Telegram.
+    Recibe updates de Telegram y responde a todos los comandos del dueño,
+    incluidos /mipick, /confirmar, /bloquear y /resolver. Si hay un secreto
+    explícito lo usa; si no, deriva uno estable de API_KEY + BOT_TOKEN.
     """
     # 1) Validación del secreto del webhook (fail-closed en producción).
-    secreto = os.getenv("TELEGRAM_WEBHOOK_SECRET", "").strip()
+    from src.telegram.configuracion import obtener_secreto_webhook
+
+    secreto = obtener_secreto_webhook()
     if os.getenv("RENDER") and not secreto:
-        raise HTTPException(status_code=503, detail="TELEGRAM_WEBHOOK_SECRET no configurado en producción")
+        raise HTTPException(
+            status_code=503,
+            detail="TELEGRAM_WEBHOOK_SECRET no configurado y no se pudo derivar de API_KEY + BOT_TOKEN",
+        )
 
     if secreto and x_telegram_bot_api_secret_token != secreto:
         raise HTTPException(status_code=403, detail="Secreto de webhook inválido")
@@ -641,9 +683,11 @@ async def telegram_webhook(
 
     chat_id, texto = tw.extraer_mensaje(update)
 
-    # 2) Solo el dueño (chat configurado) puede operar.
+    # 2) Solo el dueño (chat configurado) puede operar; falla cerrado.
     chat_cfg = os.getenv("TELEGRAM_CHAT_ID", "").strip()
-    if chat_cfg and str(chat_id) != chat_cfg:
+    if not chat_cfg:
+        raise HTTPException(status_code=503, detail="TELEGRAM_CHAT_ID no configurado")
+    if str(chat_id) != chat_cfg:
         return {"ok": True}  # ignora mensajes de otros chats
 
     if not texto:
@@ -653,37 +697,49 @@ async def telegram_webhook(
     if cmd is None:
         return {"ok": True}  # texto normal, no comando
 
+    enviado = True
+
+    def _enviar(mensaje: str) -> bool:
+        ok = bool(tp.enviar_mensaje(mensaje))
+        if not ok:
+            logger.error("Telegram rechazó la respuesta al comando /%s", cmd)
+        return ok
+
     if cmd in tw.CMDS_PICK:
         # Generación pesada (ESPN+modelo) en segundo plano; responde rápido.
         background_tasks.add_task(tp.enviar_pronosticos)
-        tp.enviar_mensaje("🔄 Generando tu pronóstico y pick de la jornada...")
+        enviado = _enviar("🔄 Generando tu pronóstico y pick de la jornada...")
     elif cmd in tw.CMDS_PLAN:
         background_tasks.add_task(tp.enviar_plan)
-        tp.enviar_mensaje("🔄 Armando tu plan de temporada (las 17 jornadas)...")
+        enviado = _enviar("🔄 Armando tu plan de temporada (las 17 jornadas)...")
     elif cmd in tw.CMDS_MOMIOS:
         background_tasks.add_task(tp.enviar_momios_estado)
-        tp.enviar_mensaje("🔄 Bajando momios y revisando cobertura...")
+        enviado = _enviar("🔄 Bajando momios y revisando cobertura...")
     elif cmd in tw.CMDS_SEGUIMIENTO:
         background_tasks.add_task(tp.enviar_seguimiento)
-        tp.enviar_mensaje("🔄 Armando tu lista de seguimiento de la jornada...")
+        enviado = _enviar("🔄 Armando tu lista de seguimiento de la jornada...")
     elif cmd in tw.CMDS_PRUEBA:
         background_tasks.add_task(tp.enviar_prueba)
-        tp.enviar_mensaje("🔄 Probando la estrategia con torneos pasados (tarda un poco)...")
+        enviado = _enviar("🔄 Probando la estrategia con torneos pasados (tarda un poco)...")
     elif cmd in tw.CMDS_CONFIANZA:
         background_tasks.add_task(tp.enviar_confianza)
-        tp.enviar_mensaje("🔄 Revisando qué tan honesta es la confianza del bot...")
+        enviado = _enviar("🔄 Revisando qué tan honesta es la confianza del bot...")
     elif cmd in tw.CMDS_DERROTAS:
         background_tasks.add_task(tp.enviar_derrotas)
-        tp.enviar_mensaje("🔄 Revisando en qué partidos cayó el bot y por qué...")
+        enviado = _enviar("🔄 Revisando en qué partidos cayó el bot y por qué...")
     elif cmd in tw.CMDS_GANADORES:
         background_tasks.add_task(tp.enviar_ganadores)
-        tp.enviar_mensaje("🔄 Calculando el 'Survivor perfecto' y comparándolo con el bot...")
+        enviado = _enviar("🔄 Calculando el 'Survivor perfecto' y comparándolo con el bot...")
     elif cmd in tw.CMDS_ANALISIS:
         background_tasks.add_task(tp.enviar_analisis_jornada)
-        tp.enviar_mensaje("🔄 Analizando la jornada: goles, tarjetas, alineaciones y conclusiones...")
+        enviado = _enviar("🔄 Analizando la jornada: goles, tarjetas, alineaciones y conclusiones...")
     else:
-        tp.enviar_mensaje(tw.responder(cmd, arg))
-    return {"ok": True}
+        enviado = _enviar(tw.responder(cmd, arg))
+        if not enviado:
+            # Las operaciones ligeras son idempotentes; 502 hace que Telegram
+            # reintente el update en lugar de perder /mipick silenciosamente.
+            raise HTTPException(status_code=502, detail="No se pudo entregar la respuesta en Telegram")
+    return {"ok": enviado, "comando": cmd}
 
 
 @app.get("/stats", summary="Métricas de rendimiento", tags=["Analytics"])
