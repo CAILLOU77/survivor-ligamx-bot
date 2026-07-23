@@ -14,6 +14,7 @@ Las funciones públicas (init_db, save_pick, get_metrics, get_history,
 settle_pick) funcionan igual en ambos backends.
 """
 
+import json
 import logging
 import os
 import re
@@ -61,7 +62,7 @@ PH = "%s" if USE_POSTGRES else "?"
 # Ruta del archivo SQLite cuando no hay Postgres.
 SQLITE_PATH = DATABASE_URL if (DATABASE_URL and not USE_POSTGRES) else os.path.join("data", "premium_history.db")
 
-SURVIVOR_ESTADOS = {"recomendado", "confirmado", "bloqueado", "resuelto"}
+SURVIVOR_ESTADOS = {"recomendado", "confirmado", "bloqueado", "resuelto", "cancelado"}
 SURVIVOR_RESULTADOS = {"gano", "empate", "perdio"}
 SURVIVOR_LEGACY_MIGRATION = "2026-07-survivor-usados-por-temporada-v1"
 SURVIVOR_SEED_MIGRATION = "2026-07-survivor-apertura-picks-v1"
@@ -191,6 +192,13 @@ def init_db() -> None:
                 visitante TEXT,
                 no_perder_pct REAL DEFAULT 0,
                 prob_victoria_pct REAL DEFAULT 0,
+                espn_event_id TEXT,
+                match_key TEXT,
+                kickoff_utc TEXT,
+                probability_snapshot TEXT,
+                model_version TEXT,
+                decision_reason TEXT,
+                selected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 estado TEXT NOT NULL DEFAULT 'recomendado',
                 resultado TEXT,
                 marcador_real TEXT,
@@ -198,8 +206,15 @@ def init_db() -> None:
                 confirmado_at TIMESTAMP,
                 bloqueado_at TIMESTAMP,
                 resuelto_at TIMESTAMP,
+                cancelled_at TIMESTAMP,
                 PRIMARY KEY (temporada, jornada)
             )
+        """)
+        _asegurar_columnas_survivor(cur)
+        cur.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS ux_survivor_picks_match_activo
+            ON survivor_picks (match_key)
+            WHERE match_key IS NOT NULL AND match_key <> '' AND estado <> 'cancelado'
         """)
         cur.execute("""
             CREATE UNIQUE INDEX IF NOT EXISTS ux_survivor_picks_equipo_activo
@@ -246,6 +261,47 @@ def init_db() -> None:
         """)
         _migrar_y_sembrar_survivor(cur)
         conn.commit()
+
+
+def _asegurar_columnas_survivor(cur: Any) -> None:
+    """Migración aditiva e idempotente para SQLite y PostgreSQL/Neon."""
+    columnas = {
+        "espn_event_id": "TEXT",
+        "match_key": "TEXT",
+        "kickoff_utc": "TEXT",
+        "probability_snapshot": "TEXT",
+        "model_version": "TEXT",
+        "decision_reason": "TEXT",
+        "selected_at": "TIMESTAMP",
+        "cancelled_at": "TIMESTAMP",
+    }
+    if USE_POSTGRES:
+        for nombre, definicion in columnas.items():
+            cur.execute(f"ALTER TABLE survivor_picks ADD COLUMN IF NOT EXISTS {nombre} {definicion}")
+        cur.execute("UPDATE survivor_picks SET selected_at=created_at WHERE selected_at IS NULL")
+        return
+    cur.execute("PRAGMA table_info(survivor_picks)")
+    existentes = {str(fila[1]) for fila in cur.fetchall()}
+    for nombre, definicion in columnas.items():
+        if nombre not in existentes:
+            cur.execute(f"ALTER TABLE survivor_picks ADD COLUMN {nombre} {definicion}")
+    cur.execute("UPDATE survivor_picks SET selected_at=created_at WHERE selected_at IS NULL")
+
+
+def _snapshot_json(snapshot: Optional[Dict[str, Any]]) -> Optional[str]:
+    if snapshot is None:
+        return None
+    return json.dumps(snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _snapshot_decode(valor: Any) -> Optional[Dict[str, Any]]:
+    if not valor:
+        return None
+    try:
+        data = json.loads(str(valor))
+    except (TypeError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
 
 
 def _insertar_usado_cursor(cur: Any, temporada: str, equipo: str, jornada: Optional[int] = None) -> bool:
@@ -508,8 +564,10 @@ def _validar_jornada(jornada: int) -> int:
 def _pick_desde_cursor(cur: Any, temporada: str, jornada: int) -> Optional[Dict[str, Any]]:
     cur.execute(
         f"""SELECT temporada, jornada, fecha, equipo, rival, condicion, local, visitante,
-                   no_perder_pct, prob_victoria_pct, estado, resultado, marcador_real,
-                   origen, created_at, updated_at, confirmado_at, bloqueado_at, resuelto_at
+                   no_perder_pct, prob_victoria_pct, espn_event_id, match_key, kickoff_utc,
+                   probability_snapshot, model_version, decision_reason, selected_at,
+                   estado, resultado, marcador_real, origen, created_at, updated_at,
+                   confirmado_at, bloqueado_at, resuelto_at, cancelled_at
             FROM survivor_picks WHERE temporada={PH} AND jornada={PH}""",
         (temporada, jornada),
     )
@@ -517,7 +575,9 @@ def _pick_desde_cursor(cur: Any, temporada: str, jornada: int) -> Optional[Dict[
     if fila is None:
         return None
     columnas = [descripcion[0] for descripcion in cur.description]
-    return dict(zip(columnas, fila))
+    pick = dict(zip(columnas, fila))
+    pick["probability_snapshot"] = _snapshot_decode(pick.get("probability_snapshot"))
+    return pick
 
 
 def get_survivor_pick(temporada: str, jornada: int) -> Optional[Dict[str, Any]]:
@@ -535,13 +595,18 @@ def get_survivor_picks(temporada: Optional[str] = None) -> List[Dict[str, Any]]:
         cur = conn.cursor()
         cur.execute(
             f"""SELECT temporada, jornada, fecha, equipo, rival, condicion, local, visitante,
-                       no_perder_pct, prob_victoria_pct, estado, resultado, marcador_real,
-                       origen, created_at, updated_at, confirmado_at, bloqueado_at, resuelto_at
+                       no_perder_pct, prob_victoria_pct, espn_event_id, match_key, kickoff_utc,
+                       probability_snapshot, model_version, decision_reason, selected_at,
+                       estado, resultado, marcador_real, origen, created_at, updated_at,
+                       confirmado_at, bloqueado_at, resuelto_at, cancelled_at
                 FROM survivor_picks WHERE temporada={PH} ORDER BY jornada""",
             (temporada,),
         )
         columnas = [descripcion[0] for descripcion in cur.description]
-        return [dict(zip(columnas, fila)) for fila in cur.fetchall()]
+        picks = [dict(zip(columnas, fila)) for fila in cur.fetchall()]
+        for pick in picks:
+            pick["probability_snapshot"] = _snapshot_decode(pick.get("probability_snapshot"))
+        return picks
 
 
 def registrar_pick_recomendado(
@@ -555,6 +620,12 @@ def registrar_pick_recomendado(
     no_perder_pct: float = 0.0,
     prob_victoria_pct: float = 0.0,
     fecha: str = "",
+    espn_event_id: Optional[str] = None,
+    match_key: str = "",
+    kickoff_utc: str = "",
+    probability_snapshot: Optional[Dict[str, Any]] = None,
+    model_version: str = "",
+    decision_reason: str = "",
 ) -> bool:
     """Crea o refresca una recomendación; nunca pisa una decisión confirmada."""
     temporada = normalizar_temporada(temporada)
@@ -563,6 +634,11 @@ def registrar_pick_recomendado(
     if not equipo:
         raise ValueError("El equipo es obligatorio.")
     norm = _survivor_equipo_key(equipo)
+    espn_id = str(espn_event_id).strip() if espn_event_id not in (None, "") else None
+    match_key = str(match_key or "").strip()
+    if not match_key and espn_id:
+        match_key = f"espn:{espn_id}"
+    snapshot_json = _snapshot_json(probability_snapshot)
     with get_db() as conn:
         cur = conn.cursor()
         _bloquear_operacion_survivor(cur, temporada, jornada)
@@ -580,12 +656,20 @@ def registrar_pick_recomendado(
             str(visitante or ""),
             float(no_perder_pct or 0),
             float(prob_victoria_pct or 0),
+            espn_id,
+            match_key or None,
+            str(kickoff_utc or ""),
+            snapshot_json,
+            str(model_version or ""),
+            str(decision_reason or ""),
         )
         if existente:
             cur.execute(
                 f"""UPDATE survivor_picks SET fecha={PH}, equipo_norm={PH}, equipo={PH}, rival={PH},
                     condicion={PH}, local={PH}, visitante={PH}, no_perder_pct={PH},
-                    prob_victoria_pct={PH}, updated_at=CURRENT_TIMESTAMP
+                    prob_victoria_pct={PH}, espn_event_id={PH}, match_key={PH}, kickoff_utc={PH},
+                    probability_snapshot={PH}, model_version={PH}, decision_reason={PH},
+                    updated_at=CURRENT_TIMESTAMP
                     WHERE temporada={PH} AND jornada={PH} AND estado='recomendado'""",
                 (*valores, temporada, jornada),
             )
@@ -596,9 +680,10 @@ def registrar_pick_recomendado(
             cur.execute(
                 f"""INSERT INTO survivor_picks
                     (temporada, jornada, fecha, equipo_norm, equipo, rival, condicion, local,
-                     visitante, no_perder_pct, prob_victoria_pct, estado, origen)
+                     visitante, no_perder_pct, prob_victoria_pct, espn_event_id, match_key,
+                     kickoff_utc, probability_snapshot, model_version, decision_reason, estado, origen)
                     VALUES ({PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH},
-                            'recomendado', 'modelo')""",
+                            {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, 'recomendado', 'modelo')""",
                 (temporada, jornada, *valores),
             )
         conn.commit()
@@ -631,6 +716,8 @@ def confirmar_survivor_pick(
         norm_anterior = _survivor_equipo_key(str(existente.get("equipo") or "")) if existente else ""
         mismo_equipo = norm_anterior == norm
 
+        if existente and estado == "cancelado":
+            raise ValueError(f"La jornada {jornada} fue cancelada y no puede confirmarse.")
         if existente and estado in {"bloqueado", "resuelto"}:
             if not mismo_equipo:
                 raise ValueError(f"La jornada {jornada} ya está {estado} con {existente['equipo']}.")
@@ -735,6 +822,38 @@ def confirmar_survivor_pick(
         return pick
 
 
+def cancelar_survivor_pick(temporada: str, jornada: int) -> Dict[str, Any]:
+    """Cancela de forma idempotente un pick aún no bloqueado y libera el equipo."""
+    temporada = normalizar_temporada(temporada)
+    jornada = _validar_jornada(jornada)
+    with get_db() as conn:
+        cur = conn.cursor()
+        _bloquear_operacion_survivor(cur, temporada, jornada)
+        pick = _pick_desde_cursor(cur, temporada, jornada)
+        if pick is None:
+            raise ValueError("No existe un pick para esa jornada.")
+        if pick["estado"] == "cancelado":
+            conn.commit()
+            return pick
+        if pick["estado"] in {"bloqueado", "resuelto"}:
+            raise ValueError(f"Un pick {pick['estado']} no puede cancelarse.")
+        cur.execute(
+            f"""UPDATE survivor_picks SET estado='cancelado', cancelled_at=CURRENT_TIMESTAMP,
+                updated_at=CURRENT_TIMESTAMP WHERE temporada={PH} AND jornada={PH}
+                AND estado IN ('recomendado', 'confirmado')""",
+            (temporada, jornada),
+        )
+        cur.execute(
+            f"DELETE FROM survivor_equipos_usados WHERE temporada={PH} AND jornada={PH}",
+            (temporada, jornada),
+        )
+        conn.commit()
+        actualizado = _pick_desde_cursor(cur, temporada, jornada)
+        if actualizado is None:
+            raise RuntimeError("No se pudo recuperar el pick cancelado.")
+        return actualizado
+
+
 def bloquear_survivor_pick(temporada: str, jornada: int) -> Dict[str, Any]:
     """Bloquea el pick confirmado para impedir cambios accidentales antes del juego."""
     temporada = normalizar_temporada(temporada)
@@ -745,8 +864,8 @@ def bloquear_survivor_pick(temporada: str, jornada: int) -> Dict[str, Any]:
         pick = _pick_desde_cursor(cur, temporada, jornada)
         if pick is None:
             raise ValueError("No existe un pick para esa jornada.")
-        if pick["estado"] == "recomendado":
-            raise ValueError("Primero debes confirmar el pick.")
+        if pick["estado"] in {"recomendado", "cancelado"}:
+            raise ValueError("Primero debes confirmar un pick activo.")
         if pick["estado"] == "resuelto":
             raise ValueError("El pick ya está resuelto y no puede bloquearse.")
         if pick["estado"] == "confirmado":
@@ -782,8 +901,8 @@ def resolver_survivor_pick(
         pick = _pick_desde_cursor(cur, temporada, jornada)
         if pick is None:
             raise ValueError("No existe un pick confirmado para esa jornada.")
-        if pick["estado"] == "recomendado":
-            raise ValueError("No se puede resolver un pick que aún no fue confirmado.")
+        if pick["estado"] in {"recomendado", "cancelado"}:
+            raise ValueError("No se puede resolver un pick no confirmado o cancelado.")
         if pick["estado"] == "resuelto":
             if pick["resultado"] != resultado:
                 raise ValueError(f"La jornada {jornada} ya fue resuelta como {pick['resultado']}.")
@@ -1033,6 +1152,7 @@ def registrar_survivor_pick(
 
 def settle_survivor(resultados: List[Dict[str, Any]]) -> int:
     """Resuelve automáticamente tanto el ciclo nuevo como el historial legado."""
+    por_match_key: Dict[str, Any] = {}
     por_equipos: Dict[str, Any] = {}
     por_equipos_canon: Dict[str, Any] = {}
     por_clave_canon: Dict[str, Any] = {}
@@ -1046,6 +1166,11 @@ def settle_survivor(resultados: List[Dict[str, Any]]) -> int:
         visitante = str(resultado.get("away_team", ""))
         fecha = str(resultado.get("fecha", ""))[:10]
         info = {"hg": hg, "ag": ag}
+        match_key_resultado = str(resultado.get("match_key") or "").strip()
+        if not match_key_resultado and resultado.get("espn_event_id") not in (None, ""):
+            match_key_resultado = f"espn:{str(resultado['espn_event_id']).strip()}"
+        if match_key_resultado:
+            por_match_key[match_key_resultado] = info
         clave_legacy = f"{_norm_equipo(local)}|{_norm_equipo(visitante)}"
         clave_canon = f"{_survivor_equipo_key(local)}|{_survivor_equipo_key(visitante)}"
         por_equipos.setdefault(clave_legacy, info)
@@ -1076,15 +1201,17 @@ def settle_survivor(resultados: List[Dict[str, Any]]) -> int:
             legacy_resueltos += int(cur.rowcount)
 
         cur.execute(
-            """SELECT temporada, jornada, fecha, equipo, condicion, local, visitante
+            """SELECT temporada, jornada, fecha, equipo, condicion, local, visitante, match_key
                FROM survivor_picks WHERE estado='bloqueado'"""
         )
-        for temporada, jornada, fecha, equipo, condicion, local, visitante in cur.fetchall():
+        for temporada, jornada, fecha, equipo, condicion, local, visitante, match_key in cur.fetchall():
             if not local or not visitante:
                 continue
             clave = f"{_survivor_equipo_key(str(local))}|{_survivor_equipo_key(str(visitante))}"
             fecha_pick = str(fecha or "")[:10]
-            info_nuevo: Optional[Dict[str, Any]] = por_clave_canon.get(f"{clave}|{fecha_pick}") if fecha_pick else None
+            info_nuevo: Optional[Dict[str, Any]] = por_match_key.get(str(match_key or ""))
+            if info_nuevo is None:
+                info_nuevo = por_clave_canon.get(f"{clave}|{fecha_pick}") if fecha_pick else None
             info_nuevo = info_nuevo or por_equipos_canon.get(clave)
             if info_nuevo is None:
                 continue
