@@ -343,7 +343,8 @@ def alerts_pronosticos(request: Request, api_key: str = Depends(verify_api_key))
     """Genera predicciones reales (ESPN + Poisson) y las envía por Telegram."""
     from src import telegram_pronosticos
 
-    return telegram_pronosticos.enviar_pronosticos()
+    clave = f"cron:pronosticos:{datetime.now(timezone.utc).date().isoformat()}"
+    return telegram_pronosticos.enviar_pronosticos(idempotency_key=clave)
 
 
 @app.post("/alerts/high-ev", summary="(Deprecado) Alias → pronósticos reales", tags=["Alerts"])
@@ -393,7 +394,8 @@ def alerts_momios(request: Request, solo_si_hay: bool = False, api_key: str = De
     """
     from src import telegram_pronosticos
 
-    return telegram_pronosticos.enviar_momios_estado(solo_si_hay=solo_si_hay)
+    clave = f"cron:momios:{datetime.now(timezone.utc).date().isoformat()}" if solo_si_hay else None
+    return telegram_pronosticos.enviar_momios_estado(solo_si_hay=solo_si_hay, idempotency_key=clave)
 
 
 @app.post("/alerts/recordatorio", summary="Recordar por Telegram que se acerca la jornada", tags=["Alerts"])

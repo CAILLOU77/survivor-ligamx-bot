@@ -353,7 +353,8 @@ def _reclamar_idempotencia(
             conn.commit()
             return False
         estado = str(fila[0])
-        lease = fila[1]
+        lease_original = fila[1]
+        lease = lease_original
         if isinstance(lease, str):
             try:
                 lease = datetime.fromisoformat(lease.replace("Z", "+00:00"))
@@ -365,10 +366,17 @@ def _reclamar_idempotencia(
         if estado != "fallido" and not vencido:
             conn.commit()
             return False
+        if estado == "fallido":
+            condicion_reclamo = "status='fallido'"
+            parametros = (locked_until, valor, completado)
+        else:
+            condicion_reclamo = f"locked_until={PH}"
+            parametros = (locked_until, valor, completado, lease_original)
         cur.execute(
             f"UPDATE {tabla} SET status='procesando', locked_until={PH}, last_error=NULL, "
-            f"updated_at=CURRENT_TIMESTAMP WHERE {columna}={PH} AND status<>{PH}",
-            (locked_until, valor, completado),
+            f"updated_at=CURRENT_TIMESTAMP WHERE {columna}={PH} AND status<>{PH} "
+            f"AND {condicion_reclamo}",
+            parametros,
         )
         adquirido = bool(cur.rowcount)
         conn.commit()

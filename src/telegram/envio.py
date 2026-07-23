@@ -210,6 +210,7 @@ def _registrar_survivor_historial(picks, pronosticos) -> None:
     local = ""
     visitante = ""
     fecha = ""
+    partido_match: Dict[str, Any] = {}
     equipo_key = canonical_team_key(equipo)
     for pronostico in pronosticos or []:
         local_candidato = str(pronostico.get("local") or "")
@@ -221,6 +222,7 @@ def _registrar_survivor_historial(picks, pronosticos) -> None:
             local = local_candidato
             visitante = visitante_candidato
             fecha = str(pronostico.get("fecha") or "")
+            partido_match = pronostico
             break
 
     condicion = str(pick.get("condicion") or "")
@@ -249,6 +251,15 @@ def _registrar_survivor_historial(picks, pronosticos) -> None:
             no_perder_pct=float(pick.get("no_perder_pct") or 0.0),
             prob_victoria_pct=float(pick.get("prob_victoria_pct") or pick.get("prob_ganar_pct") or 0.0),
             fecha=fecha,
+            espn_event_id=partido_match.get("espn_event_id"),
+            match_key=str(partido_match.get("match_key") or ""),
+            kickoff_utc=str(partido_match.get("kickoff_utc") or partido_match.get("fecha") or ""),
+            probability_snapshot={
+                "no_perder_pct": float(pick.get("no_perder_pct") or 0.0),
+                "prob_victoria_pct": float(pick.get("prob_victoria_pct") or pick.get("prob_ganar_pct") or 0.0),
+            },
+            model_version=os.getenv("SURVIVOR_MODEL_VERSION", "survivor-v1"),
+            decision_reason=str(pick.get("razon") or pick.get("motivo") or ""),
         )
         registrar_survivor_pick(
             jornada=clave_jornada,
@@ -387,7 +398,11 @@ def proxima_jornada(hoy: Optional[date] = None) -> Optional[Dict[str, Any]]:
     return None
 
 
-def enviar_pronosticos(equipos_usados: Optional[List[str]] = None, incluir_contexto: bool = True) -> Dict[str, Any]:
+def enviar_pronosticos(
+    equipos_usados: Optional[List[str]] = None,
+    incluir_contexto: bool = True,
+    idempotency_key: Optional[str] = None,
+) -> Dict[str, Any]:
     """Genera pronósticos reales y los envía por Telegram."""
     resultado = motor.generar_pronosticos()
     pronosticos = resultado.get("pronosticos", [])
@@ -518,7 +533,7 @@ def enviar_pronosticos(equipos_usados: Optional[List[str]] = None, incluir_conte
         goleadores_map=goleadores_map,
         porteros_map=porteros_map,
     )
-    enviado = enviar_mensaje(mensaje)
+    enviado = enviar_mensaje(mensaje, idempotency_key=idempotency_key)
     return {
         "enviado": enviado,
         "total_pronosticos": resultado.get("total_pronosticos", 0),
@@ -540,7 +555,7 @@ def enviar_resumen_rentabilidad() -> Dict[str, Any]:
     return {"enviado": enviado, "resueltos": data.get("resueltos"), "pendientes": data.get("pendientes")}
 
 
-def enviar_momios_estado(solo_si_hay: bool = False) -> Dict[str, Any]:
+def enviar_momios_estado(solo_si_hay: bool = False, idempotency_key: Optional[str] = None) -> Dict[str, Any]:
     """Envía por Telegram un resumen de cobertura de momios."""
     try:
         from src import comparador_mercado as cm
@@ -550,7 +565,7 @@ def enviar_momios_estado(solo_si_hay: bool = False) -> Dict[str, Any]:
         return {"enviado": False, "error": str(exc)}
     if solo_si_hay and not momios:
         return {"enviado": False, "silencioso": True, "partidos_con_momios": 0}
-    enviado = enviar_mensaje(construir_mensaje_momios(momios, fuente))
+    enviado = enviar_mensaje(construir_mensaje_momios(momios, fuente), idempotency_key=idempotency_key)
     return {"enviado": enviado, "partidos_con_momios": len(momios), "fuente": fuente}
 
 
@@ -566,7 +581,8 @@ def enviar_recordatorio_si_aplica(dias_antes: int = 1, hoy: Optional[date] = Non
     dias = (ini - hoy).days
     if not (0 <= dias <= dias_antes):
         return {"enviado": False, "motivo": f"faltan {dias} días", "jornada": j.get("jornada")}
-    enviado = enviar_mensaje(construir_recordatorio(j, dias))
+    clave = f"recordatorio:{hoy.isoformat()}:J{j.get('jornada')}:{dias_antes}"
+    enviado = enviar_mensaje(construir_recordatorio(j, dias), idempotency_key=clave)
     return {"enviado": enviado, "jornada": j.get("jornada"), "dias": dias}
 
 
