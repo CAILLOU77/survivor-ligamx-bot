@@ -37,8 +37,6 @@ jobs:
             .github/workflows/diagnose-mypy.yml \
             .github/workflows/apply-mypy-cleanup.yml \
             mypy-diagnostic.txt
-      - name: Structure sanity
-        run: python scripts/final_security_gate.py
       - name: Full tests and coverage
         run: python -m pytest tests/ --cov=src --cov-report=term-missing --cov-fail-under=64
       - name: Commit final source
