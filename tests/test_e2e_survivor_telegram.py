@@ -83,7 +83,11 @@ def test_lote_repetido_cruza_todo_el_flujo_y_solo_se_entrega_una_vez():
                 {"TELEGRAM_BOT_TOKEN": "tok", "TELEGRAM_CHAT_ID": "chat"},
                 clear=False,
             ),
-            mock.patch.object(notifier.httpx, "AsyncClient", lambda *args, **kwargs: cliente_api),
+            mock.patch.object(
+                notifier.httpx,
+                "AsyncClient",
+                lambda *args, **kwargs: cliente_api,
+            ),
             mock.patch.object(envio.requests, "post", return_value=respuesta_telegram) as post,
         ):
             db.init_db()
