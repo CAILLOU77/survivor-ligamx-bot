@@ -13,3 +13,4 @@ new = '''        parametros: tuple[Any, ...]
 if old not in text:
     raise RuntimeError("No se encontró el bloque CAS para tipar")
 path.write_text(text.replace(old, new, 1), encoding="utf-8")
+# trigger v2: formateo antes de gates

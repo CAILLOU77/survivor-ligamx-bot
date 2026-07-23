@@ -20,7 +20,9 @@ jobs:
           python-version: '3.12'
       - run: pip install -r requirements-dev.txt
       - name: Apply fix
-        run: python scripts/fix_mypy_cleanup.py
+        run: |
+          python scripts/fix_mypy_cleanup.py
+          ruff format scripts/fix_mypy_cleanup.py src/database.py
       - name: Ruff
         run: |
           ruff check .
