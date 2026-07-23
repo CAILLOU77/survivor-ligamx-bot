@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Flujo integrado API de predicciones → formato → entrega durable Telegram."""
+"""Prueba E2E: predicciones → formato → entrega durable Telegram."""
 
 from __future__ import annotations
 
