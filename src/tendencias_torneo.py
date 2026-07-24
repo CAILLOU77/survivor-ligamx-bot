@@ -25,7 +25,14 @@ def _numero(valor: Any) -> Optional[float]:
         return None
 
 
-def _registro(equipo: str, rival: str, gf: float, gc: float, condicion: str, fecha: str) -> Dict[str, Any]:
+def _registro(
+    equipo: str,
+    rival: str,
+    gf: float,
+    gc: float,
+    condicion: str,
+    fecha: str,
+) -> Dict[str, Any]:
     resultado = "G" if gf > gc else "E" if gf == gc else "P"
     return {
         "equipo": equipo,
@@ -38,9 +45,14 @@ def _registro(equipo: str, rival: str, gf: float, gc: float, condicion: str, fec
     }
 
 
-def _partidos_por_equipo(resultados: Sequence[Mapping[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+def _partidos_por_equipo(
+    resultados: Sequence[Mapping[str, Any]],
+) -> Dict[str, List[Dict[str, Any]]]:
     partidos: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
-    ordenados = sorted(resultados, key=lambda p: str(p.get("fecha") or p.get("kickoff_utc") or ""))
+    ordenados = sorted(
+        resultados,
+        key=lambda p: str(p.get("fecha") or p.get("kickoff_utc") or ""),
+    )
     for partido in ordenados:
         local = str(partido.get("home_team") or "").strip()
         visita = str(partido.get("away_team") or "").strip()
@@ -49,8 +61,12 @@ def _partidos_por_equipo(resultados: Sequence[Mapping[str, Any]]) -> Dict[str, L
         if not local or not visita or gl is None or gv is None:
             continue
         fecha = str(partido.get("fecha") or partido.get("kickoff_utc") or "")
-        partidos[canonical_team_key(local)].append(_registro(local, visita, gl, gv, "Local", fecha))
-        partidos[canonical_team_key(visita)].append(_registro(visita, local, gv, gl, "Visitante", fecha))
+        partidos[canonical_team_key(local)].append(
+            _registro(local, visita, gl, gv, "Local", fecha)
+        )
+        partidos[canonical_team_key(visita)].append(
+            _registro(visita, local, gv, gl, "Visitante", fecha)
+        )
     return dict(partidos)
 
 
@@ -89,7 +105,10 @@ def _metricas(partidos: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
     anota = sum(float(p.get("gf") or 0.0) > 0 for p in partidos)
     recibe = sum(float(p.get("gc") or 0.0) > 0 for p in partidos)
     cero = sum(float(p.get("gc") or 0.0) == 0 for p in partidos)
-    btts = sum(float(p.get("gf") or 0.0) > 0 and float(p.get("gc") or 0.0) > 0 for p in partidos)
+    btts = sum(
+        float(p.get("gf") or 0.0) > 0 and float(p.get("gc") or 0.0) > 0
+        for p in partidos
+    )
     return {
         "pj": pj,
         "pg": pg,
@@ -110,7 +129,10 @@ def _metricas(partidos: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
     }
 
 
-def _fortaleza_base(equipo: str, fortalezas_base: Optional[Mapping[str, float]]) -> float:
+def _fortaleza_base(
+    equipo: str,
+    fortalezas_base: Optional[Mapping[str, float]],
+) -> float:
     if not fortalezas_base:
         return 1.0
     try:
@@ -119,7 +141,9 @@ def _fortaleza_base(equipo: str, fortalezas_base: Optional[Mapping[str, float]])
         return 1.0
 
 
-def _etiquetas(metricas: Mapping[str, Any], fortaleza: float) -> Tuple[List[str], List[str]]:
+def _etiquetas(
+    metricas: Mapping[str, Any], fortaleza: float
+) -> Tuple[List[str], List[str]]:
     pj = int(metricas.get("pj") or 0)
     if pj < 2:
         return [], []
@@ -137,10 +161,14 @@ def _etiquetas(metricas: Mapping[str, Any], fortaleza: float) -> Tuple[List[str]
         razones.append(f"anota {gf_pp:.1f} por partido y marcó en {anota:.0f}%")
     if gc_pp >= 1.5 and recibe >= 75.0:
         etiquetas.append("DEFENSA_VULNERABLE")
-        razones.append(f"recibe {gc_pp:.1f} por partido y concedió en {recibe:.0f}%")
+        razones.append(
+            f"recibe {gc_pp:.1f} por partido y concedió en {recibe:.0f}%"
+        )
     if gc_pp <= 0.75 and cero >= 40.0:
         etiquetas.append("PORTERIA_SOLIDA")
-        razones.append(f"recibe {gc_pp:.1f} por partido y dejó su arco en cero en {cero:.0f}%")
+        razones.append(
+            f"recibe {gc_pp:.1f} por partido y dejó su arco en cero en {cero:.0f}%"
+        )
     if fortaleza < 1.08 and ppg >= 2.0 and diferencia >= 0.5:
         etiquetas.append("EQUIPO_SORPRESA")
         razones.append(f"rinde por encima de su base: {ppg:.1f} puntos por partido")
@@ -166,15 +194,21 @@ def calcular_tendencias(
         peso = pj / (pj + PRIOR_PARTIDOS)
         ppg = float(reciente.get("puntos_pp") or 0.0)
         diferencia = float(reciente.get("diferencia_pp") or 0.0)
-        bruto = 0.025 * ((ppg - 1.35) / 1.65) + 0.015 * max(-1.5, min(1.5, diferencia))
+        bruto = 0.025 * ((ppg - 1.35) / 1.65) + 0.015 * max(
+            -1.5, min(1.5, diferencia)
+        )
         senal = max(-MAX_AJUSTE, min(MAX_AJUSTE, bruto * peso))
         salida[equipo] = {
             "equipo": partidos[-1]["equipo"],
             "pj_torneo": len(partidos),
             "ventanas": ventanas,
             "total": total,
-            "local": _metricas([p for p in partidos if p.get("condicion") == "Local"]),
-            "visitante": _metricas([p for p in partidos if p.get("condicion") == "Visitante"]),
+            "local": _metricas(
+                [p for p in partidos if p.get("condicion") == "Local"]
+            ),
+            "visitante": _metricas(
+                [p for p in partidos if p.get("condicion") == "Visitante"]
+            ),
             "etiquetas": etiquetas,
             "razones": razones,
             "peso_actual": round(peso, 4),
@@ -203,7 +237,10 @@ def ajustar_probabilidades(
     total = sum(ajustadas)
     ajustadas = [p / total for p in ajustadas]
     razones = list((tendencia_local or {}).get("razones") or [])
-    razones.extend(f"rival: {r}" for r in ((tendencia_visita or {}).get("razones") or []))
+    razones.extend(
+        f"rival: {razon}"
+        for razon in ((tendencia_visita or {}).get("razones") or [])
+    )
     return {
         "base": base,
         "ajustadas": ajustadas,
@@ -213,7 +250,10 @@ def ajustar_probabilidades(
     }
 
 
-def ajustar_fuerzas(fuerzas: Mapping[str, Any], tendencias: Mapping[str, Mapping[str, Any]]) -> Dict[str, Any]:
+def ajustar_fuerzas(
+    fuerzas: Mapping[str, Any],
+    tendencias: Mapping[str, Mapping[str, Any]],
+) -> Dict[str, Any]:
     """Devuelve copia de fuerzas Poisson enriquecida sin mutar el histórico."""
     ajustadas = deepcopy(dict(fuerzas))
     equipos = ajustadas.get("equipos")
@@ -225,7 +265,10 @@ def ajustar_fuerzas(fuerzas: Mapping[str, Any], tendencias: Mapping[str, Mapping
         tendencia = tendencias.get(canonical_team_key(str(clave)))
         if not tendencia:
             continue
-        senal = max(-MAX_AJUSTE, min(MAX_AJUSTE, float(tendencia.get("senal") or 0.0)))
+        senal = max(
+            -MAX_AJUSTE,
+            min(MAX_AJUSTE, float(tendencia.get("senal") or 0.0)),
+        )
         for campo in ("ataque_local", "ataque_visita"):
             if campo in valores:
                 valores[campo] = max(0.1, float(valores[campo]) * (1.0 + senal))
@@ -235,7 +278,9 @@ def ajustar_fuerzas(fuerzas: Mapping[str, Any], tendencias: Mapping[str, Mapping
     return ajustadas
 
 
-def cargar_resultados_torneo_actual(fecha_inicio: Optional[str] = None) -> Dict[str, Any]:
+def cargar_resultados_torneo_actual(
+    fecha_inicio: Optional[str] = None,
+) -> Dict[str, Any]:
     """Liga MX API primero; ESPN/fuentes_datos filtrado como respaldo seguro."""
     try:
         from src import ligamx_api
@@ -244,7 +289,11 @@ def cargar_resultados_torneo_actual(fecha_inicio: Optional[str] = None) -> Dict[
         temporada = str(estado.get("tournament_now") or "") or None
         resultados = ligamx_api.resultados_historicos(season=temporada)
         if resultados:
-            return {"fuente": "LigaMX-API", "temporada": temporada, "resultados": resultados}
+            return {
+                "fuente": "LigaMX-API",
+                "temporada": temporada,
+                "resultados": resultados,
+            }
     except Exception:
         pass
     try:
@@ -255,7 +304,19 @@ def cargar_resultados_torneo_actual(fecha_inicio: Optional[str] = None) -> Dict[
         if not isinstance(resultados, list):
             resultados = []
         if fecha_inicio:
-            resultados = [r for r in resultados if str(r.get("fecha") or "")[:10] >= fecha_inicio[:10]]
-        return {"fuente": datos.get("fuente", "respaldo"), "temporada": None, "resultados": resultados}
+            resultados = [
+                resultado
+                for resultado in resultados
+                if str(resultado.get("fecha") or "")[:10] >= fecha_inicio[:10]
+            ]
+        return {
+            "fuente": datos.get("fuente", "respaldo"),
+            "temporada": None,
+            "resultados": resultados,
+        }
     except Exception:
-        return {"fuente": "no_disponible", "temporada": None, "resultados": []}
+        return {
+            "fuente": "no_disponible",
+            "temporada": None,
+            "resultados": [],
+        }
