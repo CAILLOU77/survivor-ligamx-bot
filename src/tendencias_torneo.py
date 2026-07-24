@@ -5,6 +5,8 @@ arranque se regulariza con un prior de ocho partidos y cualquier ajuste queda
 limitado a pocos puntos porcentuales.
 """
 
+from __future__ import annotations
+
 from collections import defaultdict
 from copy import deepcopy
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
