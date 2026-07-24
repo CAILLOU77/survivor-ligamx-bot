@@ -29,7 +29,7 @@ def _cargar_historial_cerrado() -> List[Dict[str, Any]]:
         if estado not in _ESTADOS_CERRADOS:
             continue
         try:
-            jornada = int(pick.get("jornada"))
+            jornada = int(str(pick.get("jornada")))
         except (TypeError, ValueError):
             continue
         historial.append(
