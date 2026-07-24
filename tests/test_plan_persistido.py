@@ -5,8 +5,18 @@ from src.telegram import plan_persistido as pp
 
 def _historial():
     return [
-        {"jornada": 1, "equipo": "Monterrey", "estado": "resuelto", "resultado": "gano"},
-        {"jornada": 2, "equipo": "Cruz Azul", "estado": "resuelto", "resultado": "gano"},
+        {
+            "jornada": 1,
+            "equipo": "Monterrey",
+            "estado": "resuelto",
+            "resultado": "gano",
+        },
+        {
+            "jornada": 2,
+            "equipo": "Cruz Azul",
+            "estado": "resuelto",
+            "resultado": "gano",
+        },
     ]
 
 
@@ -38,12 +48,27 @@ def test_plan_excluye_jornadas_cerradas_y_muestra_historial():
         {"jornada": 4, "partidos": []},
     ]
     with (
-        mock.patch("src.database.temporada_survivor_actual", return_value="Apertura-2026"),
+        mock.patch(
+            "src.database.temporada_survivor_actual",
+            return_value="Apertura-2026",
+        ),
         mock.patch("src.database.get_survivor_picks", return_value=_historial()),
-        mock.patch("src.planificador_survivor.cargar_calendario", return_value=calendario),
-        mock.patch("src.fuentes_datos.leer_cache", return_value=[{"home_team": "A", "away_team": "B"}]),
-        mock.patch("src.poisson_model.calcular_fuerzas", return_value={"equipos": {}}),
-        mock.patch("src.planificador_survivor.planificar", return_value=_resultado_plan()) as planificar,
+        mock.patch(
+            "src.planificador_survivor.cargar_calendario",
+            return_value=calendario,
+        ),
+        mock.patch(
+            "src.fuentes_datos.leer_cache",
+            return_value=[{"home_team": "A", "away_team": "B"}],
+        ),
+        mock.patch(
+            "src.poisson_model.calcular_fuerzas",
+            return_value={"equipos": {}},
+        ),
+        mock.patch(
+            "src.planificador_survivor.planificar",
+            return_value=_resultado_plan(),
+        ) as planificar,
     ):
         resultado = pp._plan_temporada(
             ["Monterrey", "Cruz Azul"],
@@ -72,13 +97,33 @@ def test_fallback_sin_bd_conserva_horizonte_actual():
     ]
     plan = _resultado_plan()
     with (
-        mock.patch("src.database.get_survivor_picks", side_effect=RuntimeError("sin BD")),
-        mock.patch("src.planificador_survivor.cargar_calendario", return_value=calendario),
-        mock.patch("src.fuentes_datos.leer_cache", return_value=[{"home_team": "A", "away_team": "B"}]),
-        mock.patch("src.poisson_model.calcular_fuerzas", return_value={"equipos": {}}),
-        mock.patch("src.planificador_survivor.planificar", return_value=plan) as planificar,
+        mock.patch(
+            "src.database.get_survivor_picks",
+            side_effect=RuntimeError("sin BD"),
+        ),
+        mock.patch(
+            "src.planificador_survivor.cargar_calendario",
+            return_value=calendario,
+        ),
+        mock.patch(
+            "src.fuentes_datos.leer_cache",
+            return_value=[{"home_team": "A", "away_team": "B"}],
+        ),
+        mock.patch(
+            "src.poisson_model.calcular_fuerzas",
+            return_value={"equipos": {}},
+        ),
+        mock.patch(
+            "src.planificador_survivor.planificar",
+            return_value=plan,
+        ) as planificar,
     ):
-        resultado = pp._plan_temporada([], usar_momios=False, jornada_desde=2, permitir_descarga=False)
+        resultado = pp._plan_temporada(
+            [],
+            usar_momios=False,
+            jornada_desde=2,
+            permitir_descarga=False,
+        )
 
     calendario_recibido = planificar.call_args.args[0]
     assert [bloque["jornada"] for bloque in calendario_recibido] == [2, 3]

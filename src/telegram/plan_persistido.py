@@ -73,7 +73,10 @@ def _plan_temporada(
         try:
             jornada = int(str(bloque.get("jornada")))
         except (TypeError, ValueError):
-            logger.warning("Se ignoró una jornada inválida del calendario: %r", bloque.get("jornada"))
+            logger.warning(
+                "Se ignoró una jornada inválida del calendario: %r",
+                bloque.get("jornada"),
+            )
             continue
         if jornada >= jornada_desde and jornada not in jornadas_cerradas:
             calendario_filtrado.append(bloque)
@@ -107,10 +110,14 @@ def _plan_temporada(
             resultado = {"calendario_incompleto": True, "plan": []}
     except Exception as exc:
         logger.warning("No se pudo construir el plan restante de temporada", exc_info=True)
-        resultado = {"calendario_incompleto": True, "plan": [], "error": str(exc)}
+        resultado = {
+            "calendario_incompleto": True,
+            "plan": [],
+            "error": str(exc),
+        }
 
     resultado["historial_cerrado"] = historial
-    resultado["jornada_plan_desde"] = min(int(b["jornada"]) for b in calendario_filtrado)
+    resultado["jornada_plan_desde"] = min(int(bloque["jornada"]) for bloque in calendario_filtrado)
     return resultado
 
 
@@ -151,13 +158,16 @@ def construir_mensaje_plan_persistido(plan: Dict[str, Any]) -> str:
             lineas.append(f"<b>J{jornada} · {equipo}</b> {_estado_historial(item)}")
 
     if futuro:
-        desde = plan.get("jornada_plan_desde") or min(int(p["jornada"]) for p in futuro)
+        desde = plan.get("jornada_plan_desde") or min(int(pick["jornada"]) for pick in futuro)
         lineas.extend(
             [
                 "",
                 f"<b>Plan restante desde J{desde}</b>",
-                f"<i>🛡️ Sobrevivir el tramo restante: {_pct(plan.get('prob_supervivencia_total_pct'))}% · "
-                f"🏆 victorias esperadas: {plan.get('victorias_esperadas')}</i>",
+                (
+                    f"<i>🛡️ Sobrevivir el tramo restante: "
+                    f"{_pct(plan.get('prob_supervivencia_total_pct'))}% · "
+                    f"🏆 victorias esperadas: {plan.get('victorias_esperadas')}</i>"
+                ),
                 "<i>Los picks cerrados no se recalculan ni consumen otro equipo.</i>",
                 "",
             ]
@@ -173,7 +183,8 @@ def construir_mensaje_plan_persistido(plan: Dict[str, Any]) -> str:
             )
         riesgosas = plan.get("jornadas_riesgosas") or []
         if riesgosas:
-            lineas.extend(["", f"⚠️ Jornadas riesgosas: {', '.join('J' + str(j) for j in riesgosas)}"])
+            jornadas_texto = ", ".join("J" + str(jornada) for jornada in riesgosas)
+            lineas.extend(["", f"⚠️ Jornadas riesgosas: {jornadas_texto}"])
     elif plan.get("temporada_finalizada"):
         lineas.extend(["", "No quedan jornadas pendientes por planificar."])
 
