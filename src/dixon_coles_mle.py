@@ -27,10 +27,7 @@ import math
 from datetime import date
 from typing import Any, Dict, Optional, Sequence, Tuple
 
-try:
-    import poisson_model as pm
-except ImportError:  # pragma: no cover
-    from src import poisson_model as pm  # type: ignore
+from src import poisson_model as pm
 
 # Defaults validados por walk-forward (ridge en el rango robusto 10–15).
 HALF_LIFE_DIAS_DEFAULT = 365.0
@@ -71,8 +68,8 @@ def ajustar_dixon_coles(
             ag = int(p["away_goals"])
         except (KeyError, TypeError, ValueError):
             continue
-        h = pm._norm(p.get("home_team"))
-        a = pm._norm(p.get("away_team"))
+        h = pm._norm(str(p.get("home_team") or ""))
+        a = pm._norm(str(p.get("away_team") or ""))
         if not h or not a:
             continue
         filas.append((h, a, hg, ag, _ordinal(p.get("fecha"))))

@@ -324,10 +324,8 @@ def analizar_partido(home: str, away: str) -> Dict[str, Any]:
     if not habilitado():
         return {"disponible": False, "motivo": "IA desactivada (sin PROXY_API_KEY ni GROQ_API_KEY)."}
     try:
-        try:
-            import ligamx_api as lmx
-        except ImportError:  # pragma: no cover
-            from src import ligamx_api as lmx  # type: ignore
+        from src import ligamx_api as lmx
+
         noticias = lmx.noticias_de_equipos([home, away], limit=10)
     except Exception:  # pragma: no cover
         noticias = []

@@ -455,10 +455,7 @@ def mezclar_pronosticos_con_mercado(
     Sin `momios` (o sin ODDS_API_IO_KEY) => devuelve los pronósticos SIN cambios
     (no-op seguro: el pick sigue siendo el del modelo).
     """
-    try:
-        import poisson_model as pm
-    except ImportError:  # pragma: no cover
-        from src import poisson_model as pm  # type: ignore
+    from src import poisson_model as pm
 
     if momios is None:
         if not mercado_habilitado():

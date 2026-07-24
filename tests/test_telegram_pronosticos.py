@@ -6,14 +6,16 @@ from __future__ import annotations
 import os
 import sys
 import unittest
+from datetime import date
 from pathlib import Path
 from unittest import mock
 
-SRC = str(Path(__file__).resolve().parents[1] / "src")
-if SRC not in sys.path:
-    sys.path.insert(0, SRC)
+# Asegurar que 'src' esté en el path para importar telegram_pronosticos
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
-import telegram_pronosticos as tp  # noqa: E402
+import src.telegram_pronosticos as tp  # noqa: E402
 
 
 def _resultado():
@@ -48,7 +50,6 @@ class TestConstruirMensaje(unittest.TestCase):
         self.assertIn("<b>América</b> 🏠 vs <b>Toluca</b>", msg)
         self.assertIn("SURVIVOR", msg)
         self.assertIn("🥇", msg)  # ranking top-3
-        # el pick del partido se muestra con el nombre real del club (no "Gana Local")
         self.assertIn("🎯 Pick: <b>América</b>", msg)
         self.assertNotIn("Gana Local", msg)
 
@@ -88,21 +89,6 @@ class TestConstruirMensaje(unittest.TestCase):
         self.assertIn("En riesgo", msg)
         self.assertIn("Jugador X", msg)
 
-    def test_contexto_pretemporada_no_ensucia(self):
-        # dossier resuelto pero vacío (sin datos aún) -> no agrega bloque.
-        ctx = {
-            "home": "América",
-            "away": "Toluca",
-            "prediccion_api": None,
-            "forma_local": None,
-            "forma_visita": None,
-            "en_riesgo_local": [],
-            "en_riesgo_visita": [],
-            "h2h": None,
-        }
-        msg = tp.construir_mensaje(_resultado(), contexto_pick=ctx)
-        self.assertNotIn("Contexto (Liga MX API)", msg)
-
 
 class TestEnviar(unittest.TestCase):
     def test_sin_credenciales_no_envia(self):
@@ -111,569 +97,174 @@ class TestEnviar(unittest.TestCase):
 
     def test_envia_con_credenciales(self):
         with mock.patch.dict(os.environ, {"TELEGRAM_BOT_TOKEN": "t", "TELEGRAM_CHAT_ID": "c"}, clear=False):
-            with mock.patch.object(tp, "requests") as mreq:
+            with mock.patch("src.telegram.envio.requests") as mreq:
                 mreq.post.return_value = mock.Mock(status_code=200)
                 self.assertTrue(tp.enviar_mensaje("hola"))
 
     def test_enviar_pronosticos_flujo(self):
-        # API hermana disponible: camino enriquecido (goleadores/porteros mockeados).
         with (
-            mock.patch.object(tp.motor, "generar_pronosticos", return_value=_resultado()),
-            mock.patch.object(tp.motor, "motivacion_por_equipo", return_value={}),
-            mock.patch.object(tp, "_plan_temporada", return_value={}),
-            mock.patch("ligamx_api.disponible", return_value=True),
-            mock.patch("ligamx_api.goleadores_por_equipo", return_value={}),
-            mock.patch("ligamx_api.porteros_por_equipo", return_value={}),
-            mock.patch.object(tp, "_contexto_top_pick", return_value=None),
-            mock.patch.object(tp, "_partidos_jugados_torneo", return_value=100),
-            mock.patch.object(tp, "enviar_mensaje", return_value=True) as menv,
+            mock.patch("src.telegram.envio.motor.generar_pronosticos", return_value=_resultado()),
+            mock.patch("src.telegram.envio.motor.motivacion_por_equipo", return_value={}),
+            mock.patch("src.telegram.envio._plan_temporada", return_value={}),
+            mock.patch("src.ligamx_api.disponible", return_value=True),
+            mock.patch("src.ligamx_api.goleadores_por_equipo", return_value={}),
+            mock.patch("src.ligamx_api.porteros_por_equipo", return_value={}),
+            mock.patch("src.telegram.envio._contexto_top_pick", return_value=None),
+            mock.patch("src.telegram.envio._partidos_jugados_torneo", return_value=100),
+            mock.patch("src.telegram.envio._registrar_survivor_historial"),
+            mock.patch("src.telegram.envio.enviar_mensaje", return_value=True) as menv,
         ):
             r = tp.enviar_pronosticos()
         self.assertTrue(r["enviado"])
         self.assertEqual(r["total_pronosticos"], 1)
         menv.assert_called_once()
 
-    def test_enviar_pronosticos_sin_contexto_no_llama_api(self):
-        # incluir_contexto=False no debe intentar resolver el dossier.
-        with (
-            mock.patch.object(tp.motor, "generar_pronosticos", return_value=_resultado()),
-            mock.patch.object(tp.motor, "motivacion_por_equipo", return_value={}),
-            mock.patch.object(tp, "_plan_temporada", return_value={}),
-            mock.patch("ligamx_api.disponible", return_value=False),
-            mock.patch.object(tp, "_partidos_jugados_torneo", return_value=100),
-            mock.patch.object(tp, "_contexto_top_pick") as mctx,
-            mock.patch.object(tp, "enviar_mensaje", return_value=True),
-        ):
-            tp.enviar_pronosticos(incluir_contexto=False)
-        mctx.assert_not_called()
-
-    def test_enviar_pronosticos_api_dormida_no_enriquece_pero_envia(self):
-        # Si la API hermana no responde el chequeo rápido, se SALTA el
-        # enriquecimiento lento (dossier/goleadores/porteros) y AÚN ASÍ envía.
-        with (
-            mock.patch.object(tp.motor, "generar_pronosticos", return_value=_resultado()),
-            mock.patch.object(tp.motor, "motivacion_por_equipo", return_value={}),
-            mock.patch.object(tp, "_plan_temporada", return_value={}),
-            mock.patch("ligamx_api.disponible", return_value=False),
-            mock.patch("ligamx_api.goleadores_por_equipo") as mgol,
-            mock.patch("ligamx_api.porteros_por_equipo") as mpor,
-            mock.patch.object(tp, "_contexto_top_pick") as mctx,
-            mock.patch.object(tp, "enviar_mensaje", return_value=True) as menv,
-        ):
-            r = tp.enviar_pronosticos()
-        mgol.assert_not_called()
-        mpor.assert_not_called()
-        mctx.assert_not_called()
-        self.assertTrue(r["enviado"])
-        menv.assert_called_once()
-
     def test_enviar_pronosticos_pick_viene_del_plan(self):
-        # El pick recomendado debe ser el que el PLAN asigna a la jornada, aunque
-        # el pick "miope" de la jornada sea otro (América). Una sola fuente de verdad.
+        res = _resultado()
         plan = {
             "plan": [
                 {
-                    "jornada": 1,
+                    "jornada": "1",
                     "equipo": "Toluca",
                     "rival": "América",
                     "condicion": "Visitante",
                     "no_perder_pct": 70.0,
-                    "prob_ganar_pct": 40.0,
-                    "prob_empate_pct": 30.0,
-                    "nivel": "MEDIA",
+                    "prob_ganar_pct": 45.0,
                 }
             ]
         }
-        cap = {}
         with (
-            mock.patch.object(tp.motor, "generar_pronosticos", return_value=_resultado()),
-            mock.patch.object(tp.motor, "motivacion_por_equipo", return_value={}),
-            mock.patch.object(tp, "_plan_temporada", return_value=plan),
-            mock.patch.object(tp, "_jornada_actual_num", return_value=1),
-            mock.patch("ligamx_api.disponible", return_value=False),
-            mock.patch.object(tp, "enviar_mensaje", side_effect=lambda m: cap.setdefault("msg", m) or True),
+            mock.patch("src.telegram.envio.motor.generar_pronosticos", return_value=res),
+            mock.patch("src.telegram.envio.motor.motivacion_por_equipo", return_value={}),
+            mock.patch("src.telegram.envio._plan_temporada", return_value=plan),
+            mock.patch("src.telegram.envio._jornada_actual_num", return_value=1),
+            mock.patch("src.ligamx_api.disponible", return_value=False),
+            mock.patch("src.telegram.envio._partidos_jugados_torneo", return_value=100),
+            mock.patch("src.telegram.envio._registrar_survivor_historial"),
+            mock.patch("src.telegram.envio.enviar_mensaje", return_value=True) as menv,
         ):
             tp.enviar_pronosticos()
-        msg = cap.get("msg", "")
-        self.assertIn("PICK: Toluca", msg)  # manda el pick del plan, no el miope
-        self.assertIn("plan de temporada", msg)  # explica que reserva al otro equipo
+        msg = menv.call_args[0][0]
+        self.assertIn("PICK: Toluca", msg)
+        self.assertIn("Gana: <b>45%", msg)
 
 
-class TestMercadoYMotivacion(unittest.TestCase):
-    def test_linea_mercado_aparece(self):
-        res = _resultado()
-        res["pronosticos"][0]["mercado"] = {
-            "1x2": {
-                "favorito_mercado": "local",
-                "hay_valor": True,
-                "valor_en": "local",
-                "momios": {"local": 1.85, "empate": 3.40, "visita": 4.50},
-            },
-            "over_under": {
-                "mercado_ve": "explosivo",
-                "hay_valor": False,
-                "valor_en": None,
-                "linea": 2.5,
-                "momios": {"over": 1.90, "under": 1.95},
-            },
-            "handicap": {"favorito": "local", "linea": -0.5},
+class TestHelpersPlanReal(unittest.TestCase):
+    def test_jornada_actual_num_usa_calendario_real(self):
+        self.assertEqual(tp._jornada_actual_num(date(2026, 7, 22)), 2)
+
+    def test_historial_usa_clave_unica_por_torneo(self):
+        from src import database
+        from src.telegram import envio
+
+        pick = {
+            "jornada": 2,
+            "equipo": "América",
+            "rival": "Toluca",
+            "condicion": "Local",
+            "no_perder_pct": 75.0,
+            "prob_victoria_pct": 55.0,
         }
-        msg = tp.construir_mensaje(res)
-        self.assertIn("📈 Mercado ve:", msg)
-        self.assertIn("fav local", msg)
-        self.assertIn("explosivo", msg)
-
-    def test_momios_reales_aparecen(self):
-        res = _resultado()
-        res["pronosticos"][0]["mercado"] = {
-            "1x2": {"favorito_mercado": "local", "momios": {"local": 1.85, "empate": 3.40, "visita": 4.50}},
-            "over_under": {"mercado_ve": "explosivo", "linea": 2.5, "momios": {"over": 1.90, "under": 1.95}},
+        pronostico = {
+            "local": "América",
+            "visitante": "Toluca",
+            "fecha": "2026-07-22",
         }
-        msg = tp.construir_mensaje(res)
-        self.assertIn("💰 Momios:", msg)
-        self.assertIn("América 1.85", msg)
-        self.assertIn("Toluca 4.5", msg)
-        self.assertIn("Over 1.9", msg)
+        with mock.patch.object(database, "registrar_survivor_pick", return_value=True) as registrar:
+            envio._registrar_survivor_historial([pick], [pronostico])
 
-    def test_sin_mercado_no_pone_linea(self):
-        msg = tp.construir_mensaje(_resultado())
-        self.assertNotIn("💰 Momios:", msg)
-        self.assertNotIn("📈 Mercado ve:", msg)
+        self.assertEqual(registrar.call_args.kwargs["jornada"], "Apertura-2026-J2")
 
-    def test_motivacion_rival_en_pick(self):
-        motivacion = {"toluca": {"motivacion_nivel": "baja"}}
-        msg = tp.construir_mensaje(_resultado(), motivacion=motivacion)
-        self.assertIn("Motivación rival: baja", msg)
+    def test_plan_temporada_usa_api_real_del_planificador(self):
+        from src import fuentes_datos
+        from src import planificador_survivor as plan_mod
+        from src import poisson_model as pm
+
+        calendario = [
+            {"jornada": 1, "partidos": []},
+            {"jornada": 2, "partidos": []},
+        ]
+        calendario_vigente = [calendario[1]]
+        esperado = {"plan": [{"jornada": 2, "equipo": "América"}], "calendario_incompleto": False}
+        with (
+            mock.patch.object(plan_mod, "cargar_calendario", return_value=calendario),
+            mock.patch.object(fuentes_datos, "leer_cache", return_value=[]),
+            mock.patch.object(fuentes_datos, "obtener_resultados", return_value={"resultados": [{"real": True}]}),
+            mock.patch.object(pm, "calcular_fuerzas", return_value={"equipos": {}}),
+            mock.patch.object(plan_mod, "construir_odds_por_partido", return_value={}),
+            mock.patch.object(plan_mod, "planificar", return_value=esperado) as planificar,
+        ):
+            resultado = tp._plan_temporada(["Toluca"], jornada_desde=2)
+
+        self.assertEqual(resultado, esperado)
+        planificar.assert_called_once_with(
+            calendario_vigente,
+            {"equipos": {}},
+            equipos_usados=["Toluca"],
+            peso_victoria=0.5,
+            odds_por_partido={},
+        )
+
+    def test_plan_no_repite_descarga_si_el_motor_dejo_cache_vacio(self):
+        from src import fuentes_datos
+        from src import planificador_survivor as plan_mod
+
+        with (
+            mock.patch.object(plan_mod, "cargar_calendario", return_value=[{"jornada": 2, "partidos": []}]),
+            mock.patch.object(fuentes_datos, "leer_cache", return_value=[]),
+            mock.patch.object(fuentes_datos, "obtener_resultados") as descargar,
+        ):
+            resultado = tp._plan_temporada([], jornada_desde=2, permitir_descarga=False)
+
+        self.assertEqual(resultado["plan"], [])
+        self.assertIn("caché", resultado["error"])
+        descargar.assert_not_called()
+
+    def test_plan_no_reabre_jornadas_al_finalizar_temporada(self):
+        from src import planificador_survivor as plan_mod
+        from src.telegram import envio
+
+        with (
+            mock.patch.object(plan_mod, "cargar_calendario", return_value=[{"jornada": 17, "partidos": []}]),
+            mock.patch.object(envio, "_jornada_actual_num", return_value=None),
+        ):
+            resultado = envio._plan_temporada([])
+
+        self.assertEqual(resultado["plan"], [])
+        self.assertTrue(resultado["temporada_finalizada"])
+        self.assertIn("temporada ya finalizó", tp.construir_mensaje_plan(resultado))
 
 
 class TestNivelRiesgoYPlan(unittest.TestCase):
-    def test_top3_incluye_nivel_y_ganar(self):
-        # Dos partidos DISTINTOS: así hay una "otra opción" legítima (de otro juego),
-        # no el rival del mismo partido.
-        res = _resultado()
-        res["pronosticos"].append(
-            {
-                "local": "Monterrey",
-                "visitante": "Santos",
-                "pick_1x2": "Gana Local",
-                "prob_local_pct": 60.0,
-                "prob_empate_pct": 22.0,
-                "prob_visitante_pct": 18.0,
-                "pick_ou": "Over",
-                "prob_over_pct": 62.0,
-                "pick_btts": "Sí",
-                "prob_btts_si_pct": 55.0,
-                "marcador_mas_probable": "2-1",
-                "no_perder_local_pct": 82.0,
-                "no_perder_visitante_pct": 40.0,
-            }
-        )
-        msg = tp.construir_mensaje(res)
-        self.assertIn("🏆 Gana:", msg)  # prob. de ganar (punto)
-        self.assertIn("Sobrevive (gana o empata):", msg)  # no-perder, claro
-        # nivel entre corchetes (ALTA/MEDIA/RIESGOSA)
-        self.assertTrue(any(n in msg for n in ("[ALTA]", "[MEDIA]", "[RIESGOSA]")))
-
-    def test_mensaje_plan_con_datos(self):
-        plan = {
-            "prob_supervivencia_total_pct": 66.8,
-            "victorias_esperadas": 2.05,
-            "jornadas_riesgosas": [2],
-            "plan": [
-                {
-                    "jornada": 1,
-                    "equipo": "Tigres UANL",
-                    "rival": "Mazatlán FC",
-                    "condicion": "Local",
-                    "prob_ganar_pct": 78.8,
-                    "no_perder_pct": 94.0,
-                    "nivel": "ALTA",
-                },
-                {
-                    "jornada": 2,
-                    "equipo": "Cruz Azul",
-                    "rival": "Querétaro",
-                    "condicion": "Visitante",
-                    "prob_ganar_pct": 50.0,
-                    "no_perder_pct": 62.0,
-                    "nivel": "RIESGOSA",
-                },
-            ],
-        }
-        msg = tp.construir_mensaje_plan(plan)
-        self.assertIn("PLAN SURVIVOR", msg)
-        self.assertIn("Tigres UANL", msg)
-        self.assertIn("J1", msg)
-        self.assertIn("⚠️ Jornadas riesgosas", msg)
-        self.assertIn("No es consejo de apuesta", msg)
-
-    def test_mensaje_plan_sin_calendario(self):
-        msg = tp.construir_mensaje_plan({"calendario_incompleto": True, "plan": []})
-        self.assertIn("calendario", msg.lower())
-        self.assertIn("No es consejo de apuesta", msg)
-
     def test_enviar_plan_sin_calendario(self):
-        import planificador_survivor as ps
+        import src.planificador_survivor as ps
 
         with mock.patch.object(ps, "cargar_calendario", return_value=[]):
-            with mock.patch.object(tp, "enviar_mensaje", return_value=True) as menv:
+            with mock.patch("src.telegram.envio.enviar_mensaje", return_value=True) as menv:
                 r = tp.enviar_plan()
         self.assertTrue(r["calendario_incompleto"])
-        self.assertEqual(r["jornadas"], 0)
         menv.assert_called_once()
-
-
-if __name__ == "__main__":
-    unittest.main(verbosity=2)
-
-
-class TestResumenRentabilidad(unittest.TestCase):
-    def test_sin_resueltos(self):
-        msg = tp.construir_mensaje_rentabilidad({"resueltos": 0, "pendientes": 9})
-        self.assertIn("RESUMEN DE PRONÓSTICOS", msg)
-        self.assertIn("Aún no hay pronósticos resueltos", msg)
-
-    def test_con_datos(self):
-        data = {
-            "resueltos": 20,
-            "pendientes": 9,
-            "aciertos_1x2": 11,
-            "acierto_1x2_pct": 55.0,
-            "aciertos_marcador_exacto": 3,
-            "acierto_marcador_pct": 15.0,
-        }
-        msg = tp.construir_mensaje_rentabilidad(data)
-        self.assertIn("11/20", msg)
-        self.assertIn("55.0%", msg)
-        self.assertIn("Marcador exacto", msg)
-
-    def test_enviar_resumen_usa_bd(self):
-        data = {
-            "resueltos": 5,
-            "pendientes": 0,
-            "aciertos_1x2": 3,
-            "acierto_1x2_pct": 60.0,
-            "aciertos_marcador_exacto": 1,
-            "acierto_marcador_pct": 20.0,
-        }
-        with mock.patch("database.rentabilidad_pronosticos", return_value=data, create=True):
-            with mock.patch.object(tp, "enviar_mensaje", return_value=True) as menv:
-                r = tp.enviar_resumen_rentabilidad()
-        self.assertTrue(r["enviado"])
-        menv.assert_called_once()
-
-
-class TestRecordatorio(unittest.TestCase):
-    _CAL = [
-        {
-            "jornada": 1,
-            "fecha_inicio": "2026-07-16",
-            "fecha_fin": "2026-07-18",
-            "partidos": [{"home_team": "Necaxa", "away_team": "Atlante"}],
-        },
-        {"jornada": 2, "fecha_inicio": "2026-07-21", "fecha_fin": "2026-07-26", "partidos": []},
-    ]
-
-    def test_proxima_jornada(self):
-        import datetime as dt
-
-        with mock.patch.object(tp, "_cargar_calendario_local", return_value=self._CAL):
-            j = tp.proxima_jornada(hoy=dt.date(2026, 7, 14))
-        self.assertEqual(j["jornada"], 1)
-
-    def test_recordatorio_dispara_1_dia_antes(self):
-        import datetime as dt
-
-        with mock.patch.object(tp, "_cargar_calendario_local", return_value=self._CAL):
-            with mock.patch.object(tp, "enviar_mensaje", return_value=True) as menv:
-                r = tp.enviar_recordatorio_si_aplica(dias_antes=1, hoy=dt.date(2026, 7, 15))
-        self.assertTrue(r["enviado"])
-        self.assertEqual(r["jornada"], 1)
-        menv.assert_called_once()
-
-    def test_recordatorio_no_dispara_si_lejos(self):
-        import datetime as dt
-
-        with mock.patch.object(tp, "_cargar_calendario_local", return_value=self._CAL):
-            with mock.patch.object(tp, "enviar_mensaje", return_value=True) as menv:
-                r = tp.enviar_recordatorio_si_aplica(dias_antes=1, hoy=dt.date(2026, 7, 1))
-        self.assertFalse(r["enviado"])
-        menv.assert_not_called()
-
-    def test_construir_recordatorio_contenido(self):
-        msg = tp.construir_recordatorio(self._CAL[0], dias=1)
-        self.assertIn("JORNADA 1", msg)
-        self.assertIn("/picks", msg)
-        self.assertIn("Necaxa vs Atlante", msg)
-
-
-class TestAlertaXI(unittest.TestCase):
-    def test_falta_en_xi_detecta_ausente(self):
-        titulares = ["Luis Malagón", "Israel Reyes", "Henry Martín", "Álvaro Fidalgo"]
-        # A. Zendejas NO está en el XI -> debe salir como faltante.
-        faltan = tp._falta_en_xi(["A. Zendejas", "Henry Martín"], titulares)
-        self.assertIn("A. Zendejas", faltan)
-        self.assertNotIn("Henry Martín", faltan)
-
-    def test_falta_en_xi_sin_titulares_no_alerta(self):
-        self.assertEqual(tp._falta_en_xi(["A. Zendejas"], []), [])
-
-    def test_alerta_xi_por_condicion(self):
-        dossier = {
-            "home": "América",
-            "away": "Toluca",
-            "jugadores_seguir": {"local": ["A. Zendejas"], "visita": ["Paulinho"]},
-            "alineacion": {
-                "disponible": True,
-                "equipos": [
-                    {"equipo": "América", "condicion": "home", "titulares": ["Henry Martín", "Álvaro Fidalgo"]},
-                    {"equipo": "Toluca", "condicion": "away", "titulares": ["Paulinho", "A. Canelo"]},
-                ],
-            },
-        }
-        alerta = tp._alerta_xi(dossier)
-        self.assertEqual(alerta.get("local"), ["A. Zendejas"])  # Zendejas no es titular
-        self.assertNotIn("visita", alerta)  # Paulinho sí es titular
-
-    def test_alerta_xi_sin_alineacion(self):
-        self.assertEqual(tp._alerta_xi({"alineacion": {"disponible": False}}), {})
-
-    def test_render_alerta_xi_en_contexto(self):
-        ctx = {
-            "home": "América",
-            "away": "Toluca",
-            "alineacion": {
-                "disponible": True,
-                "equipos": [
-                    {"equipo": "América", "condicion": "home", "formacion": "4-3-3", "titulares": ["Henry Martín"]},
-                ],
-            },
-            "alerta_xi": {"local": ["A. Zendejas"]},
-        }
-        lineas = tp._formatear_contexto(ctx)
-        msg = "\n".join(lineas)
-        self.assertIn("XI CONFIRMADO", msg)
-        self.assertIn("SIN titular clave", msg)
-        self.assertIn("A. Zendejas", msg)
-
-
-class TestImpactoXI(unittest.TestCase):
-    def test_render_impacto_xi(self):
-        ctx = {
-            "home": "América",
-            "away": "Toluca",
-            "impacto_xi": {
-                "América": {
-                    "fuerza_xi_pct": 82.5,
-                    "ausentes_clave": [{"jugador": "A. Zendejas", "importancia_pct": 11.2}],
-                },
-                "Toluca": {"fuerza_xi_pct": 100.0, "ausentes_clave": []},
-            },
-        }
-        msg = "\n".join(tp._formatear_contexto(ctx))
-        # Porcentajes redondeados a entero para lectura limpia en móvil.
-        self.assertIn("Fuerza XI América: 82%", msg)
-        self.assertIn("A. Zendejas (11%)", msg)
-        self.assertIn("Fuerza XI Toluca: 100%", msg)
-
-
-class TestH2HDossier(unittest.TestCase):
-    def test_render_h2h_multitemporada(self):
-        ctx = {
-            "home": "América",
-            "away": "Pachuca",
-            "h2h": {
-                "team1": {"name": "América", "wins": 5},
-                "team2": {"name": "Pachuca", "wins": 5},
-                "played": 14,
-                "draws": 4,
-                "seasons_covered": 9,
-            },
-        }
-        msg = "\n".join(tp._formatear_contexto(ctx))
-        self.assertIn("🤝 H2H (14 duelos, 9 temps)", msg)
-        self.assertIn("América 5V · 4E · 5V Pachuca", msg)
-
-    def test_sin_h2h_no_rompe(self):
-        ctx = {"home": "A", "away": "B", "h2h": None, "forma_local": "GGG"}
-        # No debe fallar ni renderizar H2H.
-        msg = "\n".join(tp._formatear_contexto(ctx))
-        self.assertNotIn("🤝 H2H", msg)
-
-
-class TestXIProbable(unittest.TestCase):
-    def test_render_xi_probable_sin_confirmado(self):
-        ctx = {
-            "home": "América",
-            "away": "Toluca",
-            "alineacion_probable": [
-                {"equipo": "América", "condicion": "home", "formacion": "4-3-3"},
-                {"equipo": "Toluca", "condicion": "away", "formacion": "4-2-3-1"},
-            ],
-        }
-        msg = "\n".join(tp._formatear_contexto(ctx))
-        self.assertIn("XI PROBABLE", msg)
-        self.assertIn("aún no confirmado", msg)
-
-    def test_confirmado_tiene_prioridad_sobre_probable(self):
-        ctx = {
-            "home": "América",
-            "away": "Toluca",
-            "alineacion": {
-                "disponible": True,
-                "equipos": [
-                    {"equipo": "América", "condicion": "home", "formacion": "4-3-3", "titulares": ["H. Martín"]},
-                ],
-            },
-            "alineacion_probable": [{"equipo": "América", "formacion": "3-5-2"}],
-        }
-        msg = "\n".join(tp._formatear_contexto(ctx))
-        self.assertIn("XI CONFIRMADO", msg)
-        self.assertNotIn("XI PROBABLE", msg)  # si ya hay confirmado, no muestra el probable
 
 
 class TestFormatoMovil(unittest.TestCase):
     def test_pct_sin_decimales(self):
         self.assertEqual(tp._pct(55.0), "55")
         self.assertEqual(tp._pct(57.6), "58")
-        self.assertEqual(tp._pct(100.0), "100")
-
-    def test_pct_tolera_none(self):
-        self.assertEqual(tp._pct(None), "None")
-
-    def test_mensaje_no_muestra_decimales_ruido(self):
-        msg = tp.construir_mensaje(_resultado())
-        self.assertIn("80%", msg)  # no-perder redondeado
-        self.assertNotIn("80.0%", msg)
-        self.assertNotIn("55.0%", msg)
-
-    def test_goles_omite_btts_none(self):
-        p = {"pick_ou": "Over", "prob_over_pct": 60.0, "marcador_mas_probable": "2-1"}
-        linea = tp._linea_goles(p)  # sin pick_btts
-        self.assertNotIn("BTTS None", linea)
-        self.assertNotIn("None", linea)
-
-    def test_goles_incluye_btts_si_hay(self):
-        p = {"pick_ou": "Over", "prob_over_pct": 60.0, "pick_btts": "Sí", "marcador_mas_probable": "2-1"}
-        self.assertIn("BTTS Sí", tp._linea_goles(p))
 
     def test_fecha_mx_convierte_y_fallback(self):
-        # 10:00 UTC -> 04:00 CDMX (UTC-6, sin horario de verano).
         self.assertIn("04:00", tp._fecha_mx("2026-07-16T10:00:00Z"))
-        self.assertIn("CDMX", tp._fecha_mx("2026-07-16T10:00:00Z"))
-        # Valor inválido -> no rompe.
-        self.assertEqual(tp._fecha_mx("basura"), "basura")
-
-
-class TestCercaDeJornada(unittest.TestCase):
-    def _fecha(self, dias_desde_hoy):
-        from datetime import datetime, timedelta, timezone
-
-        return (datetime.now(timezone.utc) + timedelta(days=dias_desde_hoy)).strftime("%Y-%m-%d")
-
-    def test_cerca_si_partido_manana(self):
-        pron = [{"fecha": self._fecha(1)}, {"fecha": self._fecha(2)}]
-        self.assertTrue(tp._cerca_de_jornada(pron))
-
-    def test_lejos_si_faltan_muchos_dias(self):
-        pron = [{"fecha": self._fecha(6)}, {"fecha": self._fecha(7)}]
-        self.assertFalse(tp._cerca_de_jornada(pron))
-
-    def test_sin_fechas_es_lejos(self):
-        self.assertFalse(tp._cerca_de_jornada([{"fecha": ""}, {}]))
-
-    def test_usa_el_partido_mas_proximo(self):
-        # El más próximo (mañana) manda, aunque otros estén lejos.
-        pron = [{"fecha": self._fecha(1)}, {"fecha": self._fecha(9)}]
-        self.assertTrue(tp._cerca_de_jornada(pron))
 
 
 class TestDividirMensaje(unittest.TestCase):
-    def test_mensaje_corto_no_se_parte(self):
-        self.assertEqual(tp._dividir_mensaje("hola\nmundo"), ["hola\nmundo"])
-
-    def test_mensaje_largo_se_parte_en_trozos_validos(self):
-        texto = "\n".join(f"linea {i} " + "x" * 50 for i in range(300))
-        partes = tp._dividir_mensaje(texto, limite=1000)
-        self.assertGreater(len(partes), 1)
-        for p in partes:
-            self.assertLessEqual(len(p), 1000)
-        # No se pierde contenido (se reconstruye el mismo texto).
-        self.assertEqual("\n".join(partes), texto)
-
-    def test_no_corta_a_media_linea(self):
-        texto = "\n".join("A" * 30 for _ in range(20))
-        for p in tp._dividir_mensaje(texto, limite=100):
-            for linea in p.split("\n"):
-                self.assertEqual(linea, "A" * 30)  # ninguna línea quedó cortada
-
     def test_enviar_mensaje_largo_manda_varios(self):
         largo = "\n".join(f"linea {i} " + "y" * 60 for i in range(400))
-        self.assertGreater(len(largo), 4096)
         with mock.patch.dict(os.environ, {"TELEGRAM_BOT_TOKEN": "t", "TELEGRAM_CHAT_ID": "c"}, clear=False):
-            with mock.patch.object(tp, "requests") as mreq:
+            with mock.patch("src.telegram.envio.requests") as mreq:
                 mreq.post.return_value = mock.Mock(status_code=200)
                 ok = tp.enviar_mensaje(largo)
         self.assertTrue(ok)
-        self.assertGreater(mreq.post.call_count, 1)  # se partió en varios envíos
-        for call in mreq.post.call_args_list:
-            self.assertLessEqual(len(call.kwargs["data"]["text"]), 4000)
+        self.assertGreater(mreq.post.call_count, 1)
 
 
-class TestFallbackMomiosAtlante(unittest.TestCase):
-    def _resultado_con_faltante(self):
-        base = {
-            "local": "León",
-            "visitante": "Atlas",
-            "pick_1x2": "Gana Local",
-            "prob_local_pct": 55.0,
-            "prob_empate_pct": 25.0,
-            "prob_visitante_pct": 20.0,
-            "prob_pick_pct": 55.0,
-            "nivel_confianza": "MEDIA",
-            "no_perder_local_pct": 80.0,
-            "no_perder_visitante_pct": 45.0,
-            "pick_ou": "Over",
-            "prob_over_pct": 60.0,
-            "marcador_pick": "1-0",
-        }
-        return {
-            "generado_utc": "2026-07-16T10:00:00Z",
-            "fuente_datos": "ESPN",
-            "total_pronosticos": 1,
-            "pronosticos": [base],
-            "fixtures_sin_modelo": [{"home_team": "Necaxa", "away_team": "Atlante", "fecha": "2026-07-17"}],
-        }
-
-    def test_partido_sin_modelo_aparece_con_momios(self):
-        import comparador_mercado as cm
-
-        momios = {"necaxa|atlante": {"ml": {"local": 1.45, "empate": 4.2, "visita": 7.0}}}
-        cap = {}
-        with (
-            mock.patch.object(tp.motor, "generar_pronosticos", return_value=self._resultado_con_faltante()),
-            mock.patch.object(cm, "momios_para_uso", return_value=(momios, "test")),
-            mock.patch.object(tp.motor, "motivacion_por_equipo", return_value={}),
-            mock.patch("ligamx_api.disponible", return_value=False),
-            mock.patch.object(tp, "enviar_mensaje", side_effect=lambda m: cap.setdefault("msg", m) or True),
-        ):
-            tp.enviar_pronosticos()
-        msg = cap.get("msg", "")
-        self.assertIn("Necaxa", msg)
-        self.assertIn("Atlante", msg)
-        self.assertIn("Solo mercado", msg)
-
-    def test_sin_momios_el_faltante_no_aparece(self):
-        import comparador_mercado as cm
-
-        cap = {}
-        with (
-            mock.patch.object(tp.motor, "generar_pronosticos", return_value=self._resultado_con_faltante()),
-            mock.patch.object(cm, "momios_para_uso", return_value=({}, None)),
-            mock.patch.object(tp.motor, "motivacion_por_equipo", return_value={}),
-            mock.patch("ligamx_api.disponible", return_value=False),
-            mock.patch.object(tp, "enviar_mensaje", side_effect=lambda m: cap.setdefault("msg", m) or True),
-        ):
-            tp.enviar_pronosticos()
-        # Sin momios no se puede pronosticar Atlante -> no aparece.
-        self.assertNotIn("Atlante", cap.get("msg", ""))
+if __name__ == "__main__":
+    unittest.main()

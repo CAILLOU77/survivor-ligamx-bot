@@ -106,10 +106,8 @@ def evaluar_modelo(
 
 
 def main() -> int:
-    try:
-        import fuentes_datos
-    except ImportError:  # pragma: no cover
-        from src import fuentes_datos  # type: ignore
+    from src import fuentes_datos
+
     print("📏 Validando modelo contra resultados reales de ESPN...")
     datos = fuentes_datos.obtener_resultados(meses=18)
     r = evaluar_modelo(datos["resultados"])

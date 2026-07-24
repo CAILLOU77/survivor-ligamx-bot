@@ -20,50 +20,23 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-try:
-    from rate_limit import limiter
-except ImportError:  # pragma: no cover - contexto de paquete (web)
-    from src.rate_limit import limiter  # type: ignore
+from src.rate_limit import limiter
 
-try:
-    import motor_pronosticos as motor
-except ImportError:  # pragma: no cover - contexto de paquete (web)
-    from src import motor_pronosticos as motor  # type: ignore
+from src import motor_pronosticos as motor
 
-try:
-    import tabla_posiciones as tabla_mod
-except ImportError:  # pragma: no cover
-    from src import tabla_posiciones as tabla_mod  # type: ignore
+from src import tabla_posiciones as tabla_mod
 
-try:
-    import comparador_mercado as mercado_mod
-except ImportError:  # pragma: no cover
-    from src import comparador_mercado as mercado_mod  # type: ignore
+from src import comparador_mercado as mercado_mod
 
-try:
-    import fuentes_datos as fuentes_mod
-except ImportError:  # pragma: no cover
-    from src import fuentes_datos as fuentes_mod  # type: ignore
+from src import fuentes_datos as fuentes_mod
 
-try:
-    import analisis_riesgo as riesgo_mod
-except ImportError:  # pragma: no cover
-    from src import analisis_riesgo as riesgo_mod  # type: ignore
+from src import analisis_riesgo as riesgo_mod
 
-try:
-    import planificador_survivor as plan_mod
-except ImportError:  # pragma: no cover
-    from src import planificador_survivor as plan_mod  # type: ignore
+from src import planificador_survivor as plan_mod
 
-try:
-    import poisson_model as pm
-except ImportError:  # pragma: no cover
-    from src import poisson_model as pm  # type: ignore
+from src import poisson_model as pm
 
-try:
-    import ligamx_api as lmx
-except ImportError:  # pragma: no cover
-    from src import ligamx_api as lmx  # type: ignore
+from src import ligamx_api as lmx
 
 router = APIRouter(tags=["Predicciones"])
 
@@ -152,10 +125,8 @@ def _contexto_pick(pick: Dict[str, Any]) -> Dict[str, Any]:
         dossier = lmx.resumen_partido(home, away)
         # Análisis de IA (Groq) sobre las noticias reales (opcional; igual que Telegram).
         try:
-            try:
-                import analista_ia as ia
-            except ImportError:  # pragma: no cover
-                from src import analista_ia as ia  # type: ignore
+            from src import analista_ia as ia
+
             if ia.habilitado() and isinstance(dossier, dict):
                 dossier["analisis_ia"] = ia.analizar_noticias(
                     [dossier.get("home", home), dossier.get("away", away)],
@@ -543,10 +514,8 @@ def historial_pronosticos(request: Request, limit: int = 50, solo_resueltos: boo
     marcador exacto). Se llena solo (cada envío guarda; el cron diario resuelve).
     """
     try:
-        try:
-            from database import historial_pronosticos as _hist
-        except ImportError:  # pragma: no cover
-            from src.database import historial_pronosticos as _hist  # type: ignore
+        from src.database import historial_pronosticos as _hist
+
         filas = _hist(limit=limit, solo_resueltos=solo_resueltos)
         return {"total": len(filas), "pronosticos": filas, "decision": "INFORMATIVO / REVISIÓN HUMANA"}
     except Exception as exc:  # pragma: no cover - fallback defensivo
@@ -558,10 +527,8 @@ def historial_pronosticos(request: Request, limit: int = 50, solo_resueltos: boo
 def historial_rentabilidad(request: Request) -> Dict[str, Any]:
     """% de aciertos 1X2 y de marcador exacto sobre los pronósticos ya resueltos."""
     try:
-        try:
-            from database import rentabilidad_pronosticos as _rent
-        except ImportError:  # pragma: no cover
-            from src.database import rentabilidad_pronosticos as _rent  # type: ignore
+        from src.database import rentabilidad_pronosticos as _rent
+
         return {**_rent(), "decision": "INFORMATIVO / REVISIÓN HUMANA"}
     except Exception as exc:  # pragma: no cover - fallback defensivo
         return {"resueltos": 0, "error": str(exc), "decision": "INFORMATIVO / REVISIÓN HUMANA"}
@@ -578,10 +545,8 @@ def analisis_ia(request: Request, home: str, away: str) -> Dict[str, Any]:
     if not home or not away:
         return {"disponible": False, "error": "Faltan 'home' y 'away'.", "decision": "INFORMATIVO / REVISIÓN HUMANA"}
     try:
-        try:
-            import analista_ia as ia
-        except ImportError:  # pragma: no cover
-            from src import analista_ia as ia  # type: ignore
+        from src import analista_ia as ia
+
         return {**ia.analizar_partido(home, away), "decision": "INFORMATIVO / REVISIÓN HUMANA"}
     except Exception as exc:  # pragma: no cover - fallback defensivo
         return {"disponible": False, "error": str(exc), "decision": "INFORMATIVO / REVISIÓN HUMANA"}

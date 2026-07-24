@@ -1,12 +1,4 @@
-#!/usr/bin/env python3
-"""
-telegram_pronosticos.py — Alertas de Telegram con PRONÓSTICOS REALES.
-
-Este archivo es ahora un wrapper del paquete src.telegram para mantener
-compatibilidad con los scripts existentes y los tests unitarios.
-"""
-
-from src.telegram import (
+from .envio import (
     enviar_mensaje,
     enviar_pronosticos,
     enviar_resumen_rentabilidad,
@@ -20,8 +12,6 @@ from src.telegram import (
     enviar_derrotas,
     enviar_ganadores,
     proxima_jornada,
-    construir_mensaje,
-    construir_mensaje_seguimiento,
     _dividir_mensaje,
     _cargar_calendario_local,
     _cerca_de_jornada,
@@ -33,6 +23,9 @@ from src.telegram import (
     _mapa_horarios,
     requests,
     motor,
+)
+from .formato import construir_mensaje, construir_mensaje_seguimiento
+from .contexto import (
     _contexto_top_pick,
     _alerta_xi,
     _falta_en_xi,
@@ -41,13 +34,16 @@ from src.telegram import (
     _norm_simple,
     _jugadores_seguir_partido,
     _porteros_partido,
-    _pct,
-    _fecha_mx,
+)
+from .utils import _pct, _fecha_mx
+from .formato_partidos import (
     _linea_goles,
     _totales_jornada,
     construir_mensaje_momios,
     construir_recordatorio,
     render_partidos,
+)
+from .formato_pick import (
     construir_mensaje_plan,
     construir_mensaje_rentabilidad,
     construir_mensaje_prueba,
@@ -58,6 +54,7 @@ from src.telegram import (
     construir_mensaje_ganadores,
     render_survivor,
 )
+
 
 __all__ = [
     "enviar_mensaje",
@@ -73,8 +70,6 @@ __all__ = [
     "enviar_derrotas",
     "enviar_ganadores",
     "proxima_jornada",
-    "construir_mensaje",
-    "construir_mensaje_seguimiento",
     "_dividir_mensaje",
     "_cargar_calendario_local",
     "_cerca_de_jornada",
@@ -86,6 +81,8 @@ __all__ = [
     "_mapa_horarios",
     "requests",
     "motor",
+    "construir_mensaje",
+    "construir_mensaje_seguimiento",
     "_contexto_top_pick",
     "_alerta_xi",
     "_falta_en_xi",
@@ -111,7 +108,3 @@ __all__ = [
     "construir_mensaje_ganadores",
     "render_survivor",
 ]
-
-if __name__ == "__main__":
-    res = enviar_pronosticos()
-    print(f"Enviado: {res['enviado']} | pronósticos: {res['total_pronosticos']} | fuente: {res['fuente']}")

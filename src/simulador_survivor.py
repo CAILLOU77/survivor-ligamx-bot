@@ -20,10 +20,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Any, Dict, List, Optional, Sequence
 
-try:
-    import poisson_model as pm
-except ImportError:  # pragma: no cover
-    from src import poisson_model as pm  # type: ignore
+from src import poisson_model as pm
 
 DEC_INFORMATIVA = "INFORMATIVO / REVISIÓN HUMANA"
 MIN_TRAIN = 30  # partidos mínimos de histórico antes de empezar a "jugar"
@@ -154,10 +151,8 @@ def simular_temporada(
 
 
 def main() -> int:
-    try:
-        import fuentes_datos
-    except ImportError:  # pragma: no cover
-        from src import fuentes_datos  # type: ignore
+    from src import fuentes_datos
+
     print("🎮 Simulando temporada de Survivor con el modelo (datos reales ESPN)...")
     datos = fuentes_datos.obtener_resultados(meses=18)
     r = simular_temporada(datos["resultados"])
