@@ -42,6 +42,7 @@ from .formato_partidos import (
     render_partidos,
 )
 from .formato_pick import (
+    construir_mensaje_plan,
     construir_mensaje_rentabilidad,
     construir_mensaje_prueba,
     construir_mensaje_confianza,
@@ -51,13 +52,7 @@ from .formato_pick import (
     construir_mensaje_ganadores,
     render_survivor,
 )
-from .plan_persistido import (
-    _plan_temporada,
-    construir_mensaje_plan_persistido,
-    enviar_plan,
-)
-
-construir_mensaje_plan = construir_mensaje_plan_persistido
+from .plan_persistido import _plan_temporada, enviar_plan
 
 
 __all__ = [

@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
-from .envio import _jornada_actual_num, _usados_persistidos, enviar_mensaje
+from . import envio as envio_mod
 from .utils import _pct
 
 logger = logging.getLogger(__name__)
@@ -59,7 +59,14 @@ def _plan_temporada(
     historial = _cargar_historial_cerrado()
     jornadas_cerradas = {int(item["jornada"]) for item in historial}
     calendario = plan_mod.cargar_calendario()
-    jornada_desde = jornada_desde if jornada_desde is not None else _jornada_actual_num()
+    if not calendario:
+        return {
+            "calendario_incompleto": True,
+            "plan": [],
+            "historial_cerrado": historial,
+        }
+
+    jornada_desde = jornada_desde if jornada_desde is not None else envio_mod._jornada_actual_num()
     if jornada_desde is None:
         return {
             "calendario_incompleto": False,
@@ -196,7 +203,7 @@ def enviar_plan(
 ) -> Dict[str, Any]:
     """Envía historial cerrado y plan futuro sin reasignar jornadas reales."""
     if equipos_usados is None:
-        equipos_usados = _usados_persistidos()
+        equipos_usados = envio_mod._usados_persistidos()
     plan = _plan_temporada(
         equipos_usados,
         peso_victoria=peso_victoria,
@@ -207,7 +214,7 @@ def enviar_plan(
         "<i>Plan optimizado para sobrevivir sin repetir equipo y priorizar victorias.</i>\n\n"
         + construir_mensaje_plan_persistido(plan)
     )
-    enviado = enviar_mensaje(mensaje)
+    enviado = envio_mod.enviar_mensaje(mensaje)
     pasos = plan.get("plan")
     return {
         "enviado": enviado,
