@@ -26,7 +26,7 @@ jobs:
         run: ruff format --check --diff .
 
       - name: Type check (mypy)
-        run: mypy src/ --show-error-codes || echo 'mypy: errores pendientes (no bloqueante)'
+        run: mypy src/ --show-error-codes || echo "mypy: errores pendientes (no bloqueante)"
 
       - name: Sanity check (estructura)
         run: python -c "import os; assert os.path.isdir('src') and os.path.isfile('run_bot_prod.sh')"
