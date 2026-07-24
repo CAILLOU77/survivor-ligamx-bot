@@ -66,7 +66,6 @@ def _plan_temporada(
     from src import fuentes_datos
     from src import planificador_survivor as plan_mod
     from src import poisson_model as pm
-    from src import tendencias_torneo as tt
 
     historial = _cargar_historial_cerrado()
     jornadas_cerradas = {int(item["jornada"]) for item in historial}
@@ -117,23 +116,6 @@ def _plan_temporada(
         if not resultados:
             raise ValueError("No hay resultados históricos en caché para calcular fuerzas")
         fuerzas = pm.calcular_fuerzas(resultados)
-
-        # ── capa de tendencias del torneo ──────────────────────────────
-        tendencias_aplicadas = False
-        fecha_inicio = _fecha_inicio_torneo(calendario)
-        datos_torneo = tt.cargar_resultados_torneo_actual(fecha_inicio)
-        resultados_torneo = datos_torneo.get("resultados")
-        if isinstance(resultados_torneo, list) and resultados_torneo:
-            tendencias = tt.calcular_tendencias(resultados_torneo, None)
-            if tendencias:
-                fuerzas = tt.ajustar_fuerzas(fuerzas, tendencias)
-                tendencias_aplicadas = True
-                logger.info(
-                    "Tendencias del torneo aplicadas: %d equipos con señal",
-                    len(tendencias),
-                )
-        # ───────────────────────────────────────────────────────────────
-
         odds = plan_mod.construir_odds_por_partido(calendario_filtrado) if usar_momios else None
         resultado = plan_mod.planificar(
             calendario_filtrado,
@@ -144,20 +126,51 @@ def _plan_temporada(
         )
         if not isinstance(resultado, dict):
             resultado = {"calendario_incompleto": True, "plan": []}
-
-        resultado["tendencias_aplicadas"] = tendencias_aplicadas
-
     except Exception as exc:
         logger.warning("No se pudo construir el plan restante de temporada", exc_info=True)
         resultado = {
             "calendario_incompleto": True,
             "plan": [],
             "error": str(exc),
-            "tendencias_aplicadas": False,
         }
+
+    # ── capa de tendencias del torneo (no bloqueante) ─────────────────
+    tendencias_aplicadas = False
+    try:
+        from src import tendencias_torneo as tt
+
+        fecha_inicio = _fecha_inicio_torneo(calendario)
+        datos_torneo = tt.cargar_resultados_torneo_actual(fecha_inicio)
+        resultados_torneo = datos_torneo.get("resultados")
+        if isinstance(resultados_torneo, list) and resultados_torneo:
+            tendencias = tt.calcular_tendencias(resultados_torneo, None)
+            if tendencias:
+                _plan = resultado.get("plan")
+                if isinstance(_plan, list) and _plan:
+                    fuerzas = pm.calcular_fuerzas(resultados)
+                    fuerzas = tt.ajustar_fuerzas(fuerzas, tendencias)
+                    odds = plan_mod.construir_odds_por_partido(calendario_filtrado) if usar_momios else None
+                    resultado = plan_mod.planificar(
+                        calendario_filtrado,
+                        fuerzas,
+                        equipos_usados=equipos_usados,
+                        peso_victoria=peso_victoria,
+                        odds_por_partido=odds,
+                    )
+                    if not isinstance(resultado, dict):
+                        resultado = {"calendario_incompleto": True, "plan": []}
+                    tendencias_aplicadas = True
+                    logger.info(
+                        "Tendencias del torneo aplicadas: %d equipos con señal",
+                        len(tendencias),
+                    )
+    except Exception:
+        logger.debug("Capa de tendencias no disponible", exc_info=True)
+    # ───────────────────────────────────────────────────────────────────
 
     resultado["historial_cerrado"] = historial
     resultado["jornada_plan_desde"] = min(int(bloque["jornada"]) for bloque in calendario_filtrado)
+    resultado["tendencias_aplicadas"] = tendencias_aplicadas
     return resultado
 
 
