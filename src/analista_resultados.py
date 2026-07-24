@@ -35,15 +35,9 @@ try:
 except ImportError:  # pragma: no cover
     from src.team_normalizer import canonical_team_key, display_team_name  # type: ignore
 
-try:
-    import ligamx_api as lmx
-except ImportError:  # pragma: no cover
-    from src import ligamx_api as lmx  # type: ignore
+from src import ligamx_api as lmx
 
-try:
-    import analista_ia as ia
-except ImportError:  # pragma: no cover
-    from src import analista_ia as ia  # type: ignore
+from src import analista_ia as ia
 
 _DECISION = "INFORMATIVO / REVISIÓN HUMANA"
 
@@ -103,10 +97,8 @@ def obtener_partidos_jornada(fecha: Optional[str] = None) -> List[Dict[str, Any]
 def _obtener_detalles_fuera(home: str, away: str, fecha: str, hg: int = 0, ag: int = 0) -> Dict[str, Any]:
     """Obtiene detalles usando el scraper fuerte."""
     try:
-        try:
-            import scraper_resultados as sr
-        except ImportError:  # pragma: no cover
-            from src import scraper_resultados as sr  # type: ignore
+        from src import scraper_resultados as sr
+
         return cast(Dict[str, Any], sr.analizar_partido_fuerte(home, away, hg, ag, fecha))
     except Exception:
         return {}
@@ -445,7 +437,7 @@ def obtener_detalle_partido(home: str, away: str, event_id: Optional[str] = None
             mid = lmx.match_id_de_partido(home, away)
             if mid:
                 try:
-                    eventos_lmx = lmx.eventos_partido(mid) or []
+                    eventos_lmx = lmx.eventos_partido(mid)
                     if eventos_lmx:
                         out["eventos"] = eventos_lmx
                 except Exception:

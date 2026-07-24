@@ -26,10 +26,7 @@ try:
 except ImportError:  # pragma: no cover
     requests = None  # type: ignore[assignment]
 
-try:
-    import reglas_liga_mx as rl
-except ImportError:  # pragma: no cover
-    from src import reglas_liga_mx as rl  # type: ignore
+from src import reglas_liga_mx as rl
 
 LIGA_CODE = "mex.1"
 STANDINGS_URL = f"https://site.api.espn.com/apis/v2/sports/soccer/{LIGA_CODE}/standings"
@@ -192,10 +189,8 @@ def obtener_tabla() -> Dict[str, Any]:
 
 def _tabla_desde_ligamx() -> Dict[str, Any]:
     """Tabla intermedia desde la Liga MX API (respaldo). {} si no está disponible."""
-    try:
-        import ligamx_api
-    except ImportError:  # pragma: no cover
-        from src import ligamx_api  # type: ignore
+    from src import ligamx_api
+
     try:
         return cast(Dict[str, Any], ligamx_api.tabla_normalizada())
     except Exception:  # pragma: no cover - error de red

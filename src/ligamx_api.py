@@ -38,6 +38,7 @@ Config (entorno, opcional):
 from __future__ import annotations
 
 import os
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, cast
 import logging
 
@@ -91,6 +92,50 @@ def _get(path: str, params: Optional[Dict[str, Any]] = None, timeout: Optional[f
     if resp.status_code != 200:
         raise RuntimeError(f"Liga MX API respondió HTTP {resp.status_code} en {path}.")
     return resp.json()
+
+
+# ---------------------------------------------------------------------------
+# Contrato estable de partidos (ligamx-api)
+# ---------------------------------------------------------------------------
+def normalizar_kickoff_utc(valor: Any) -> str:
+    """Normaliza ISO-8601 con Z/offset a UTC explícito; naive legacy se asume UTC."""
+    raw = str(valor or "").strip()
+    if not raw:
+        return ""
+    iso = f"{raw[:-1]}+00:00" if raw[-1:].upper() == "Z" else raw
+    try:
+        kickoff = datetime.fromisoformat(iso)
+    except ValueError:
+        logger.warning("Kickoff ISO-8601 inválido recibido de ligamx-api: %s", raw)
+        return raw
+    # Compatibilidad con respuestas antiguas sin zona: históricamente eran UTC.
+    if kickoff.tzinfo is None:
+        kickoff = kickoff.replace(tzinfo=timezone.utc)
+    return kickoff.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def normalizar_partido_api(partido: Dict[str, Any]) -> Dict[str, Any]:
+    """Preserva espn_event_id y publica identidad/kickoff estables sin mutar la entrada."""
+    salida = dict(partido)
+    espn_raw = partido.get("espn_event_id")
+    espn_event_id = str(espn_raw).strip() if espn_raw not in (None, "") else None
+    kickoff_utc = normalizar_kickoff_utc(partido.get("match_date") or partido.get("date"))
+    home = partido.get("home_team") or {}
+    away = partido.get("away_team") or {}
+    home_name = home.get("name", "") if isinstance(home, dict) else str(home)
+    away_name = away.get("name", "") if isinstance(away, dict) else str(away)
+    if espn_event_id:
+        match_key = f"espn:{espn_event_id}"
+    else:
+        match_key = f"legacy:{canonical_team_key(home_name)}:{canonical_team_key(away_name)}:{kickoff_utc}"
+    salida.update(
+        {
+            "espn_event_id": espn_event_id,
+            "match_key": match_key,
+            "kickoff_utc": kickoff_utc,
+        }
+    )
+    return salida
 
 
 # ---------------------------------------------------------------------------
@@ -177,6 +222,7 @@ def calendario_para_planificador(season: Optional[str] = None) -> List[Dict[str,
     for j in sorted(data.get("jornadas", []), key=lambda x: int(x.get("jornada", 0))):
         partidos: List[Dict[str, Any]] = []
         for m in j.get("matches", []):
+            normalizado = normalizar_partido_api(m)
             home = (m.get("home_team") or {}).get("name", "")
             away = (m.get("away_team") or {}).get("name", "")
             if not home or not away:
@@ -185,8 +231,11 @@ def calendario_para_planificador(season: Optional[str] = None) -> List[Dict[str,
                 {
                     "home_team": display_team_name(home),
                     "away_team": display_team_name(away),
-                    "date": m.get("date"),
+                    "date": normalizado["kickoff_utc"] or m.get("date"),
                     "venue": m.get("venue"),
+                    "espn_event_id": normalizado["espn_event_id"],
+                    "match_key": normalizado["match_key"],
+                    "kickoff_utc": normalizado["kickoff_utc"],
                 }
             )
         if partidos:
@@ -215,12 +264,16 @@ def fixtures_planos(season: Optional[str] = None) -> List[Dict[str, Any]]:
             fecha = m.get("date")
             if not home or not away or not fecha:
                 continue
+            normalizado = normalizar_partido_api(m)
             fixtures.append(
                 {
-                    "fecha": fecha,
+                    "fecha": normalizado["kickoff_utc"] or fecha,
                     "home_team": display_team_name(home),
                     "away_team": display_team_name(away),
                     "venue": m.get("venue"),
+                    "espn_event_id": normalizado["espn_event_id"],
+                    "match_key": normalizado["match_key"],
+                    "kickoff_utc": normalizado["kickoff_utc"],
                 }
             )
     return fixtures
@@ -272,13 +325,17 @@ def resultados_historicos(season: Optional[str] = None, max_partidos: int = 1000
                 hg, ag = int(hg), int(ag)
             except (TypeError, ValueError):
                 continue
+            normalizado = normalizar_partido_api(m)
             salida.append(
                 {
                     "home_team": display_team_name(home),
                     "away_team": display_team_name(away),
                     "home_goals": hg,
                     "away_goals": ag,
-                    "fecha": str(m.get("match_date") or "")[:10],
+                    "fecha": str(normalizado["kickoff_utc"] or m.get("match_date") or "")[:10],
+                    "espn_event_id": normalizado["espn_event_id"],
+                    "match_key": normalizado["match_key"],
+                    "kickoff_utc": normalizado["kickoff_utc"],
                 }
             )
         if len(lote) < page:
@@ -572,12 +629,9 @@ def porteros_por_equipo() -> Dict[str, Dict[str, Any]]:
     return mapa
 
 
-def match_id_de_partido(home: str, away: str) -> Optional[int]:
-    """
-    Resuelve el match_id de la Liga MX API para un partido (por nombres, match
-    flexible). Busca en próximos, finalizados y luego en /matches general.
-    None si no lo encuentra.
-    """
+def match_id_de_partido(home: str, away: str, espn_event_id: Optional[str] = None) -> Optional[int]:
+    """Resuelve id interno; con ESPN ID exige coincidencia exacta, sin fallback ambiguo."""
+    esperado = str(espn_event_id).strip() if espn_event_id not in (None, "") else None
 
     def _buscar(lista: Any) -> Optional[int]:
         if not isinstance(lista, list):
@@ -585,27 +639,34 @@ def match_id_de_partido(home: str, away: str) -> Optional[int]:
         for m in lista:
             if not isinstance(m, dict):
                 continue
-            h = m.get("home_team") or {}
-            a = m.get("away_team") or {}
-            hn = h.get("name") if isinstance(h, dict) else h
-            an = a.get("name") if isinstance(a, dict) else a
-            if not hn or not an:
-                continue
-            if teams_match(str(hn), home) and teams_match(str(an), away):
-                mid = _campo(m, "id", "match_id", "matchId")
-                try:
-                    return int(mid) if mid is not None else None
-                except (TypeError, ValueError):
-                    return None
+            if esperado is not None:
+                actual = m.get("espn_event_id")
+                if actual is None or str(actual).strip() != esperado:
+                    continue
+            else:
+                h = m.get("home_team") or {}
+                a = m.get("away_team") or {}
+                hn = h.get("name") if isinstance(h, dict) else h
+                an = a.get("name") if isinstance(a, dict) else a
+                if not hn or not an or not (teams_match(str(hn), home) and teams_match(str(an), away)):
+                    continue
+            mid = _campo(m, "id", "match_id", "matchId")
+            try:
+                return int(mid) if mid is not None else None
+            except (TypeError, ValueError):
+                return None
         return None
 
-    mid = _buscar(_safe(lambda: partidos_proximos(limit=50), []))
-    if mid is not None:
-        return mid
-    mid = _buscar(_safe(lambda: obtener_partidos(status="finished", limit=100), []))
-    if mid is not None:
-        return mid
-    return _buscar(_safe(lambda: obtener_partidos(limit=100), []))
+    fuentes = (
+        lambda: partidos_proximos(limit=50),
+        lambda: obtener_partidos(status="finished", limit=100),
+        lambda: obtener_partidos(limit=100),
+    )
+    for cargar in fuentes:
+        mid = _buscar(_safe(cargar, []))
+        if mid is not None:
+            return mid
+    return None
 
 
 def jugadores_a_seguir_partido(home: str, away: str) -> Dict[str, List[str]]:
