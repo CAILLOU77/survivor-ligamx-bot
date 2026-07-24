@@ -6,7 +6,6 @@ from .envio import (
     enviar_recordatorio_si_aplica,
     enviar_analisis_jornada,
     enviar_seguimiento,
-    enviar_plan,
     enviar_prueba,
     enviar_confianza,
     enviar_derrotas,
@@ -15,7 +14,6 @@ from .envio import (
     _dividir_mensaje,
     _cargar_calendario_local,
     _cerca_de_jornada,
-    _plan_temporada,
     _usados_persistidos,
     _partidos_jugados_torneo,
     _jornada_actual_num,
@@ -54,6 +52,7 @@ from .formato_pick import (
     construir_mensaje_ganadores,
     render_survivor,
 )
+from .plan_persistido import _plan_temporada, enviar_plan
 
 
 __all__ = [
