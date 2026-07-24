@@ -27,6 +27,9 @@ def _historico():
 
 class TestGenerar(unittest.TestCase):
     def test_genera_pronosticos(self):
+        # Limpiar caché para que use los fixtures/resultados inyectados
+        if hasattr(mp.generar_pronosticos, "cache_clear"):
+            mp.generar_pronosticos.cache_clear()
         fixtures = [{"home_team": "América", "away_team": "Toluca", "fecha": "2026-07-18"}]
         res = mp.generar_pronosticos(fixtures=fixtures, resultados=_historico())
         self.assertEqual(res["total_pronosticos"], 1)
@@ -36,11 +39,15 @@ class TestGenerar(unittest.TestCase):
         self.assertEqual(res["decision"], "INFORMATIVO / REVISIÓN HUMANA")
 
     def test_equipo_desconocido_se_omite(self):
+        if hasattr(mp.generar_pronosticos, "cache_clear"):
+            mp.generar_pronosticos.cache_clear()
         fixtures = [{"home_team": "Equipo Inventado", "away_team": "Otro Raro", "fecha": "x"}]
         res = mp.generar_pronosticos(fixtures=fixtures, resultados=_historico())
         self.assertEqual(res["total_pronosticos"], 0)
 
     def test_partido_con_equipo_sin_modelo_se_reporta(self):
+        if hasattr(mp.generar_pronosticos, "cache_clear"):
+            mp.generar_pronosticos.cache_clear()
         # América conocido vs "Atlante" (sin histórico): se omite del pronóstico
         # pero se REPORTA en fixtures_sin_modelo para el fallback de momios.
         fixtures = [{"home_team": "América", "away_team": "Atlante", "fecha": "2026-07-17"}]
@@ -52,15 +59,21 @@ class TestGenerar(unittest.TestCase):
         self.assertEqual(faltantes[0]["fecha"], "2026-07-17")
 
     def test_sin_resultados_no_revienta(self):
+        if hasattr(mp.generar_pronosticos, "cache_clear"):
+            mp.generar_pronosticos.cache_clear()
         res = mp.generar_pronosticos(fixtures=[{"home_team": "A", "away_team": "B"}], resultados=[])
         self.assertEqual(res["total_pronosticos"], 0)
 
     def test_no_perder_es_suma_coherente(self):
+        if hasattr(mp.generar_pronosticos, "cache_clear"):
+            mp.generar_pronosticos.cache_clear()
         fixtures = [{"home_team": "América", "away_team": "Toluca", "fecha": "x"}]
         p = mp.generar_pronosticos(fixtures=fixtures, resultados=_historico())["pronosticos"][0]
         self.assertAlmostEqual(p["no_perder_local_pct"], round(p["prob_local_pct"] + p["prob_empate_pct"], 2), places=1)
 
     def test_h2h_usa_historico_mas_largo_de_la_api(self):
+        if hasattr(mp.generar_pronosticos, "cache_clear"):
+            mp.generar_pronosticos.cache_clear()
         # Si la Liga MX API devuelve MÁS partidos, el H2H debe usarlos (no solo
         # los inyectados del modelo). Verificamos que anotar_h2h reciba el largo.
         from unittest import mock
@@ -73,12 +86,14 @@ class TestGenerar(unittest.TestCase):
             capturado["n"] = len(resultados)
             return pronos
 
-        with mock.patch("ligamx_api.resultados_historicos", return_value=largo, create=True):
-            with mock.patch("matchup_h2h.anotar_h2h", side_effect=_fake_anotar, create=True):
+        with mock.patch("src.ligamx_api.resultados_historicos", return_value=largo, create=True):
+            with mock.patch("src.matchup_h2h.anotar_h2h", side_effect=_fake_anotar, create=True):
                 mp.generar_pronosticos(fixtures=fixtures, resultados=_historico())
         self.assertEqual(capturado.get("n"), len(largo))  # usó el histórico largo
 
     def test_incluye_explicaciones(self):
+        if hasattr(mp.generar_pronosticos, "cache_clear"):
+            mp.generar_pronosticos.cache_clear()
         fixtures = [{"home_team": "América", "away_team": "Toluca", "fecha": "x"}]
         p = mp.generar_pronosticos(fixtures=fixtures, resultados=_historico())["pronosticos"][0]
         self.assertIn("explicacion_1x2", p)
@@ -89,6 +104,8 @@ class TestGenerar(unittest.TestCase):
         self.assertIn("goles_esperados_local", p)
 
     def test_incluye_nivel_confianza(self):
+        if hasattr(mp.generar_pronosticos, "cache_clear"):
+            mp.generar_pronosticos.cache_clear()
         fixtures = [{"home_team": "América", "away_team": "Toluca", "fecha": "x"}]
         p = mp.generar_pronosticos(fixtures=fixtures, resultados=_historico())["pronosticos"][0]
         self.assertIn(p["nivel_confianza"], ("ALTA", "MEDIA", "BAJA"))
@@ -118,9 +135,12 @@ class TestGenerar(unittest.TestCase):
         self.assertEqual(a["nivel_alerta"], "⚠️ PRECAUCIÓN")
 
     def test_pronostico_incluye_alerta(self):
+        if hasattr(mp.generar_pronosticos, "cache_clear"):
+            mp.generar_pronosticos.cache_clear()
         fixtures = [{"home_team": "América", "away_team": "Toluca", "fecha": "x"}]
         p = mp.generar_pronosticos(fixtures=fixtures, resultados=_historico())["pronosticos"][0]
         self.assertIn("precaucion", p)
+
         self.assertIn("nivel_alerta", p)
         self.assertIn("motivos_alerta", p)
 

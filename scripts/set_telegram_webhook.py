@@ -1,17 +1,13 @@
 #!/usr/bin/env python3
-"""
-set_telegram_webhook.py — Registra (o borra) el webhook de comandos en Telegram.
-
-Apunta el bot de Telegram al endpoint POST /telegram/webhook del servicio para
-poder operarlo por chat (/usado, /usados, /pick, ...). Usa TELEGRAM_BOT_TOKEN y,
-si existe, TELEGRAM_WEBHOOK_SECRET (se envía como secret_token).
+"""Registra, verifica o elimina el webhook y menú del bot de Telegram.
 
 Uso:
     python3 scripts/set_telegram_webhook.py --url https://survivor-ligamx-bot.onrender.com
-    python3 scripts/set_telegram_webhook.py --info        # ver estado actual
-    python3 scripts/set_telegram_webhook.py --borrar      # quitar el webhook
+    python3 scripts/set_telegram_webhook.py --info
+    python3 scripts/set_telegram_webhook.py --borrar
 
-No imprime el token ni el secreto. INFORMATIVO / REVISIÓN HUMANA.
+Render ejecuta esta misma sincronización automáticamente durante el arranque.
+Nunca se imprimen el token ni el secreto.
 """
 
 from __future__ import annotations
@@ -19,6 +15,11 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from pathlib import Path
+
+ROOT = str(Path(__file__).resolve().parents[1])
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
 
 try:
     import requests
@@ -32,15 +33,30 @@ try:
 except Exception:  # pragma: no cover
     pass
 
+from src.telegram.configuracion import diagnosticar_telegram, sincronizar_telegram
+
 
 def _api(token: str, metodo: str) -> str:
     return f"https://api.telegram.org/bot{token}/{metodo}"
 
 
+def _mostrar_diagnostico(info: dict) -> None:
+    print(f"Estado: {'✅ correcto' if info.get('ok') else '⚠️ requiere atención'}")
+    if info.get("error"):
+        print(f"Error: {info['error']}")
+        return
+    print(f"Webhook correcto: {bool(info.get('webhook_correcto'))}")
+    print(f"Menú correcto: {bool(info.get('menu_correcto'))}")
+    print(f"Updates pendientes: {int(info.get('pending_update_count') or 0)}")
+    if info.get("ultimo_error"):
+        print(f"Último error de Telegram: {info['ultimo_error']}")
+    print(f"Comandos: {', '.join(info.get('comandos') or []) or '(ninguno)'}")
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Registra el webhook de Telegram.")
+    parser = argparse.ArgumentParser(description="Sincroniza webhook y menú de Telegram.")
     parser.add_argument("--url", help="Base pública del servicio (sin /telegram/webhook).")
-    parser.add_argument("--info", action="store_true", help="Muestra el estado del webhook.")
+    parser.add_argument("--info", action="store_true", help="Muestra webhook, menú y último error.")
     parser.add_argument("--borrar", action="store_true", help="Elimina el webhook.")
     args = parser.parse_args()
 
@@ -54,36 +70,27 @@ def main() -> int:
         return 1
 
     if args.info:
-        r = requests.get(_api(token, "getWebhookInfo"), timeout=20)
-        info = r.json().get("result", {})
-        print(f"URL configurada: {info.get('url') or '(ninguna)'}")
-        print(f"pending_update_count: {info.get('pending_update_count')}")
-        if info.get("last_error_message"):
-            print(f"último error: {info.get('last_error_message')}")
-        return 0
+        info = diagnosticar_telegram()
+        _mostrar_diagnostico(info)
+        return 0 if info.get("ok") else 1
 
     if args.borrar:
-        r = requests.get(_api(token, "deleteWebhook"), timeout=20)
-        print("✅ Webhook eliminado." if r.json().get("ok") else f"⚠️ {r.text[:200]}")
-        return 0
+        try:
+            respuesta = requests.get(_api(token, "deleteWebhook"), timeout=20)
+            data = respuesta.json()
+        except Exception as exc:
+            print(f"⚠️ No se pudo eliminar el webhook: {type(exc).__name__}")
+            return 1
+        print("✅ Webhook eliminado." if data.get("ok") else f"⚠️ {str(data.get('description'))[:200]}")
+        return 0 if data.get("ok") else 1
 
     if not args.url:
         print("Uso: --url https://tu-servicio.onrender.com  (o --info / --borrar)")
         return 2
 
-    hook = args.url.rstrip("/") + "/telegram/webhook"
-    payload = {"url": hook, "allowed_updates": ["message"]}
-    secreto = os.getenv("TELEGRAM_WEBHOOK_SECRET", "").strip()
-    if secreto:
-        payload["secret_token"] = secreto
-
-    r = requests.post(_api(token, "setWebhook"), json=payload, timeout=20)
-    data = r.json()
-    if data.get("ok"):
-        print(f"✅ Webhook registrado en {hook}" + (" (con secreto)" if secreto else " (sin secreto)"))
-        return 0
-    print(f"⚠️ No se pudo registrar: {data.get('description', r.text[:200])}")
-    return 1
+    resultado = sincronizar_telegram(args.url)
+    _mostrar_diagnostico(resultado)
+    return 0 if resultado.get("ok") else 1
 
 
 if __name__ == "__main__":

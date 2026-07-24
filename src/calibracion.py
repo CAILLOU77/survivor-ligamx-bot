@@ -250,10 +250,8 @@ def calibrar_pronostico(
 
 
 def main() -> int:
-    try:
-        import fuentes_datos
-    except ImportError:  # pragma: no cover
-        from src import fuentes_datos  # type: ignore
+    from src import fuentes_datos
+
     print("📐 Midiendo calibración del modelo (walk-forward, historial largo)...")
     datos = fuentes_datos.obtener_historico_largo()
     r = evaluar_calibracion(datos["resultados"])

@@ -136,10 +136,8 @@ def _brier_altitud(
     k_altitud: float,
 ) -> Tuple[Optional[float], int]:
     """Brier prediciendo `evalset` con el modelo + ajuste de altitud (coef k)."""
-    try:
-        import altitud as alt
-    except ImportError:  # pragma: no cover
-        from src import altitud as alt  # type: ignore
+    from src import altitud as alt
+
     try:
         fuerzas = pm.calcular_fuerzas(train)
     except ValueError:
@@ -205,10 +203,8 @@ def medir_altitud(
 
 
 def main() -> int:
-    try:
-        import fuentes_datos
-    except ImportError:  # pragma: no cover
-        from src import fuentes_datos  # type: ignore
+    from src import fuentes_datos
+
     print("🔧 Afinando parámetros del modelo (historial largo, minimiza Brier)...")
     datos = fuentes_datos.obtener_historico_largo()
     r = tunear_hiperparametros(datos["resultados"])

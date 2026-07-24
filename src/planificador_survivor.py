@@ -28,10 +28,8 @@ import math
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple, cast
 
-try:
-    import poisson_model as pm
-except ImportError:  # pragma: no cover
-    from src import poisson_model as pm  # type: ignore
+from src import poisson_model as pm
+from src.team_normalizer import canonical_team_key
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 CALENDARIO_PATH = BASE_DIR / "data" / "calendario.json"
@@ -198,9 +196,9 @@ def planificar(
     from scipy.optimize import linear_sum_assignment  # lazy import (dep ya fijada)
     import numpy as np
 
-    usados = {_norm(e) for e in (equipos_usados or [])}
+    usados = {canonical_team_key(e) for e in (equipos_usados or [])}
     jornadas, equipos_all, celdas = _opciones_por_jornada(calendario, fuerzas, odds_por_partido, peso_modelo)
-    equipos = [e for e in equipos_all if e not in usados]
+    equipos = [e for e in equipos_all if canonical_team_key(e) not in usados]
 
     if not jornadas or not equipos:
         return {
@@ -309,10 +307,7 @@ def construir_odds_por_partido(
 
     `momios_crudos` se puede inyectar (tests). Sin key/momios => {} (no-op).
     """
-    try:
-        import comparador_mercado as cm
-    except ImportError:  # pragma: no cover
-        from src import comparador_mercado as cm  # type: ignore
+    from src import comparador_mercado as cm
 
     if momios_crudos is not None:
         momios = momios_crudos
@@ -367,10 +362,7 @@ def cargar_calendario(path: Path = CALENDARIO_PATH) -> List[Dict[str, Any]]:
 
 
 def main() -> int:
-    try:
-        import fuentes_datos
-    except ImportError:  # pragma: no cover
-        from src import fuentes_datos  # type: ignore
+    from src import fuentes_datos
 
     print("📅 Planificador de temporada Survivor (PlayDoit)...")
     calendario = cargar_calendario()

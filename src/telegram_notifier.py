@@ -1,25 +1,23 @@
 #!/usr/bin/env python3
-"""
-telegram_notifier.py — Notificador (cliente) de PRONÓSTICOS REALES por Telegram.
+"""Cliente asíncrono para publicar pronósticos reales por Telegram.
 
-Antes consultaba el viejo endpoint /picks/latest (picks de "alto EV" basados en
-momios inventados). Ahora consulta el endpoint REAL /predicciones (ESPN +
-Poisson) de la API desplegada y envía un resumen informativo, reutilizando el
-mismo constructor de mensaje que src/telegram_pronosticos.py (DRY).
-
-Informativo / revisión humana. No es consejo de apuesta.
+Consulta ``/predicciones`` y delega la entrega al transportador común de
+``src.telegram``. Así comparte validación HTTP, particionado e idempotencia con
+el resto del bot y nunca informa éxito antes de que Telegram confirme el envío.
 """
+
+from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import os
+from typing import Any
 
 import httpx
 from dotenv import load_dotenv
 
-try:
-    import telegram_pronosticos
-except ImportError:  # pragma: no cover
-    from src import telegram_pronosticos  # type: ignore
+from src import telegram_pronosticos
 
 load_dotenv()
 
@@ -28,11 +26,24 @@ CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 API_BASE = os.getenv("API_BASE", "https://survivor-ligamx-bot.onrender.com")
 
 
-async def notify_predicciones():
-    """Consulta /predicciones (datos reales) y envía el resumen por Telegram."""
+def _clave_predicciones(data: dict[str, Any]) -> str:
+    """Genera una llave estable para no reenviar el mismo lote de pronósticos."""
+    canonico = json.dumps(
+        data.get("pronosticos", []),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
+    digest = hashlib.sha256(canonico.encode("utf-8")).hexdigest()[:24]
+    return f"notifier:predicciones:{digest}"
+
+
+async def notify_predicciones() -> bool:
+    """Consulta datos reales y confirma si la entrega común terminó con éxito."""
     if not TELEGRAM_TOKEN or not CHAT_ID:
         print("⚠️ Faltan credenciales en .env (TELEGRAM_BOT_TOKEN/CHAT_ID).")
-        return
+        return False
 
     print("📡 Consultando predicciones reales (ESPN + Poisson)...")
     try:
@@ -41,17 +52,33 @@ async def notify_predicciones():
             resp.raise_for_status()
             data = resp.json()
 
-        if not data.get("pronosticos"):
+        if not isinstance(data, dict):
+            print("❌ La API devolvió un formato de predicciones inválido.")
+            return False
+        pronosticos = data.get("pronosticos")
+        if not isinstance(pronosticos, list) or not pronosticos:
             print("ℹ️ Sin pronósticos disponibles ahora (faltan fixtures o datos).")
-            return
+            return False
 
         mensaje = telegram_pronosticos.construir_mensaje(data)
-        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-        async with httpx.AsyncClient(timeout=20.0) as tg:
-            await tg.post(url, json={"chat_id": CHAT_ID, "text": mensaje, "parse_mode": "HTML"})
-        print(f"✅ Enviado: {data.get('total_pronosticos', len(data['pronosticos']))} pronósticos.")
-    except Exception as e:
-        print(f"❌ Error: {e}")
+        clave = _clave_predicciones(data)
+        enviado = await asyncio.to_thread(
+            telegram_pronosticos.enviar_mensaje,
+            mensaje,
+            idempotency_key=clave,
+        )
+        if not enviado:
+            print("❌ Telegram no confirmó la entrega de los pronósticos.")
+            return False
+
+        total = data.get("total_pronosticos", len(pronosticos))
+        print(f"✅ Enviado: {total} pronósticos.")
+        return True
+    except Exception as exc:
+        # No imprimir la excepción completa: algunas bibliotecas incluyen URLs
+        # y credenciales en sus mensajes de error.
+        print(f"❌ Error consultando o enviando pronósticos ({type(exc).__name__}).")
+        return False
 
 
 if __name__ == "__main__":

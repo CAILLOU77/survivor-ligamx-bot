@@ -302,10 +302,8 @@ def analizar_riesgo_favoritos(
 
 
 def main() -> int:
-    try:
-        import fuentes_datos
-    except ImportError:  # pragma: no cover
-        from src import fuentes_datos  # type: ignore
+    from src import fuentes_datos
+
     print("🔎 Analizando cuándo falla el favorito del modelo (datos reales ESPN)...")
     datos = fuentes_datos.obtener_resultados(meses=18)
     r = analizar_riesgo_favoritos(datos["resultados"])
