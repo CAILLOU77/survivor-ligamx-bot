@@ -1,146 +1,152 @@
-# 🤝 HANDOFF — Survivor Liga MX Bot
+# 🤝 HANDOFF FINAL — Survivor Liga MX Bot
 
-## 1. Identidad
-- **Repo:** `survivor-ligamx/survivor-ligamx-bot` · rama principal `main`
-- **Stack:** Python **3.12**, FastAPI (web en **Render**: `survivor-ligamx-bot.onrender.com`), Postgres (prod) / SQLite (local)
- **Objetivo:** asistir decisiones de **Survivor Liga MX** + pronósticos (1X2, O/U, BTTS) para el **Apertura 2026** (arranca 16 de julio).
+**Actualizado:** 23 de julio de 2026  
+**Repositorio:** `survivor-ligamx/survivor-ligamx-bot`  
+**Producción:** https://survivor-ligamx-bot.onrender.com  
+**Health:** https://survivor-ligamx-bot.onrender.com/health
 
-## 1b. Infraestructura / bases de datos (IMPORTANTE — sin caducidad)
-- **API hermana `ligamx-api`** (`ligamx-api.onrender.com`) → código en Render (free) · BD **migrada de Render Postgres a Neon** (jul 2026) para evitar la caducidad de 30 días del Postgres gratis de Render. Se re-pobló con `POST /sync` (Apertura 2026, 153 partidos) y `POST /sync/backfill` (Apertura 2025, histórico).
-- **Neon Auth**: NO se usa (es para login de usuarios; el bot no lo necesita).
-- El plan **web** gratis de Render **no** caduca a los 30 días (eso era el Postgres gratis de Render, ya evitado). 750 h/mes colectivas; como los servicios duermen, sobra.
-- Calendario Apertura 2026 validado contra fuentes oficiales (365scores/onefootball); 18 equipos con **Atlante** (sin Mazatlán, regla 2026).
+## Estado ejecutivo
 
-## 2. REGLA MÁXIMA (no negociable)
-**Informativo.** No apuesta, no envía picks automáticos, **no inventa datos**. Toda salida lleva `INFORMATIVO / REVISIÓN HUMANA`. **Cero scraping** a sitios con login/anti-bot. Cero momios o métricas fabricadas.
+El proyecto está **listo para lanzamiento** dentro de su alcance actual. El flujo crítico está implementado, probado, desplegado y monitoreado:
 
-## 3. Arquitectura actual (post-pivote: ESPN + Poisson)
-```
-ESPN API (gratis, sin key) + TheSportsDB (respaldo)
-   → src/fuentes_datos.py (redundancia + caché + healthcheck)
-   → src/poisson_model.py (Dixon-Coles: recencia + shrinkage)  [default]
-   → src/motor_pronosticos.py (1X2/OU/BTTS + pick Survivor + top-3)
-   → src/tabla_posiciones.py (tabla ESPN + motivación por equipo)
-   → Web (FastAPI) + Telegram (telegram_pronosticos.py)
-   (opcional) src/comparador_mercado.py ← momios reales odds-api.io
-```
-Modelos: `poisson_model` (default) y `dixon_coles_mle` (alternativa opcional, validada).
+- API y dashboard Mi Survivor en Render.
+- Persistencia PostgreSQL en Neon y SQLite local.
+- Datos reales de ESPN con Liga MX API como integración hermana.
+- Modelo Poisson/Dixon-Coles para 1X2, Over/Under, BTTS y Survivor.
+- Telegram seguro, durable e idempotente.
+- CI, pruebas E2E, cobertura mínima y smoke tests de producción.
+- Auto-Deploy de Render confirmado desde pushes a `main`.
 
-## 4. Endpoints web
-`/predicciones` · `/survivor?excluir=` · **`/jornada`** (todo-en-uno: pred+pick+top3+motivación+momios; `?contexto=true` añade dossier de la Liga MX API) · **`/plan-survivor`** (estrategia de temporada) · **`/analisis/riesgo`** · **`/analisis-partido?home=&away=`** (dossier Liga MX API) · **`/noticias`** (365Scores+Google) · **`/jugadores-riesgo`** (suspensiones) · **`/survivor/usados`** (GET lista / POST agrega / DELETE quita / POST `/reset`) · `/tabla` · `/valor` · `/valor/diagnostico` · **`/health/fuentes`** · `/stats` · `/history` · `/dashboard` · `/health` · `/cron/backtest` · `POST /alerts/pronosticos` · `POST /alerts/plan` · `/docs`
+## Infraestructura
 
-> **Equipos usados (Survivor):** se guardan en la BD (persisten entre deploys). Regístralos con `POST /survivor/usados?equipo=America` (protegido con API_KEY); el pick, `/jornada`, `/plan-survivor` y el Telegram los EXCLUYEN automáticamente. `POST /survivor/usados/reset` para nueva temporada. El Telegram marca el pick #1 como **⭐ RECOMENDADO** (mayor confianza no-perder + ganar).
+- **Runtime:** Python 3.12
+- **API:** FastAPI 0.139.2 + Uvicorn
+- **Producción:** Render free tier
+- **Base de datos:** Neon PostgreSQL en producción; SQLite en local/pruebas
+- **API hermana:** https://ligamx-api.onrender.com
+- **Repositorio API hermana:** `survivor-ligamx/ligamx-api` o su ubicación vigente
+- **Fuente principal:** ESPN API
+- **Fuente de respaldo/contexto:** Liga MX API y TheSportsDB donde aplique
 
-> **Estrategia anti-sorpresa:** el pick usa `motor.mejores_picks_estrategico` (penaliza favorito visitante; cautela de arranque cuando hay pocos datos). `/analisis/riesgo` mide muy-favoritos y arranque (J1-3) con datos reales. `GET /alineacion?home=&away=` da el XI confirmado (365Scores, ~1h antes) para detectar suplentes; se adjunta al dossier del pick.
+### Auto-Deploy
 
-> **Track-record:** `GET /historial/pronosticos` (marcador predicho vs real + aciertos) y `GET /historial/rentabilidad` (% acierto 1X2 y marcador exacto). Se llena solo: cada envío de Telegram registra los pronósticos y el cron diario (`/cron/backtest`) los resuelve con resultados reales.
+Render está configurado con:
 
-> **Telegram (comandos):** webhook activo (`/telegram/webhook`). Comandos del dueño: `/pick` (o `/picks`, `/survivor`, `/jornada`, `/pronostico`) genera y envía pronóstico + pick; `/usado <equipo>`, `/usados`, `/quitar <equipo>`, `/reset`, `/ayuda`.
+- Source: `survivor-ligamx/survivor-ligamx-bot`
+- Branch: `main`
+- Auto-Deploy: `On Commit`
+- GitHub App de Render instalada y autorizada en la organización `survivor-ligamx`
 
-> **Recordatorio + resumen (automáticos):** `POST /alerts/recordatorio?dias_antes=1` avisa por Telegram cuando la próxima jornada está por arrancar (workflow `recordatorio.yml`, cron diario; lee data/calendario.json, no spamea). `POST /alerts/resumen` manda el track-record (aciertos 1X2 y marcador), enganchado al `cron-backtest.yml`.
+La integración se verificó con el commit de prueba `17318a8`, que apareció automáticamente en Events de Render.
 
-> **Contenido del mensaje de Telegram (rediseñado):** SURVIVOR con pick destacado (partido completo local 🏠/visita ✈️, **Sobrevive** = gana o empata vs **Gana** = victoria/punto, confianza, motivación del rival, porqué) + otras opciones. PARTIDOS numerados con pick por **nombre del club** (no "Gana Local"), probabilidades, goles/BTTS/marcador, explicaciones, alertas 🚨/⚠️, **momios reales** (odds-api.io), **⭐ jugadores a seguir** (goleadores) y **🧤 muro** (portero + vallas invictas, solo si se espera portería a 0 / partido cerrado). Sección **🗓️ CONTEXTO DE CALENDARIO** (Leagues Cup, fechas FIFA, Campeón/Campeones Cup, Intercontinental) que afecta disponibilidad de jugadores. Ver `src/calendario_contexto.py`.
+## Seguridad y regla de producto
 
-> **Estrategia (valora VICTORIAS):** el pick estratégico ordena por `score = no_perder + PESO_VICTORIA*prob_victoria − pen_visitante`. Sobrevivir es prioridad #1, pero entre picks seguros se prefiere el que MÁS gana (desempate del Survivor = más victorias/menos empates). El empate es push (no aporta al score). En arranque el peso de ganar baja (cautela).
+**INFORMATIVO / REVISIÓN HUMANA.** El proyecto no apuesta, no inventa momios ni resultados y no debe enviar una decisión como definitiva sin revisión humana.
 
-## 5. PRs fusionados (julio 2026)
+- Endpoints sensibles protegidos con `X-API-Key`.
+- Webhook de Telegram protegido por secreto.
+- Falla cerrada si faltan credenciales críticas.
+- Deduplicación de updates y entregas Telegram.
+- Sin scraping de sitios con login o medidas anti-bot.
+- Secretos solo en Render/GitHub; nunca en commits ni chats.
 
-### Fase 1 — Contrato de datos y modelo
-- **PR #14** — Contrato estable de partidos (espn_event_id, match_key, kickoff_utc)
-- **PR #15** — Ciclo Survivor v2 (estados, anti-duplicados, snapshots, historial)
+## Trabajo completado
 
-### Fase 2 — Telegram y notificaciones
-- **PR #16** — Telegram idempotente (deduplicación, leases, reintentos)
-- **PR #17** — Notificador unificado (transporte común, sin falsos éxitos)
-- **PR #18** — Prueba E2E completa (predicciones → Telegram → SQLite durable)
+### Contrato y ciclo Survivor
 
-### Fase 3 — Monitoreo y cobertura
-- **PR #19** — Monitoreo automático de producción (production_smoke.py, workflow diario)
-- **PR #20** — Cobertura de rutas críticas API y Telegram (15 pruebas, 67.49% global, CI ✅)
+- **PR #14:** identidad estable de partidos (`espn_event_id`, `match_key`, UTC).
+- **PR #15:** ciclo Survivor v2, estados, snapshots, historial y anti-duplicados.
 
-## 6. Módulos clave (vigentes)
-`fuentes_datos`, `espn_data`, `ligamx_api`, `poisson_model`, `dixon_coles_mle`, `motor_pronosticos`, `planificador_survivor`, `analisis_riesgo`, `tabla_posiciones`, `reglas_liga_mx`, `team_normalizer`, `comparador_mercado`, `assisted_odds_import`, `telegram_pronosticos`, `telegram_notifier`, `validacion_modelo`, `backtesting`, `simulador_survivor`, `backtest_engine`, `database`, `api.py` + `routers/` (`predicciones`, `cron_router`, `api_ligamx`).
+### Telegram y entrega
 
-> ⚠️ **No confundir dos módulos de nombre parecido y dirección OPUESTA:**
-> - **`src/ligamx_api.py`** = **CLIENTE** que CONSUME la API externa hermana (`ligamx-api.onrender.com`): calendario, equipos/ids, tabla, dossier de señales.
-> - **`src/routers/api_ligamx.py`** = **SERVIDOR** que EXPONE la API pública propia del bot (`/api/v1`), con datos propios (ESPN + `calendario.json` + modelo). No llama a la API externa.
-> Deuda menor: `api_ligamx.py` reimplementa normalización de nombres (`_slug`/`_ALIASES`) que ya existe en `team_normalizer.py`; unificar cuando haya calma.
+- **PR #16:** deduplicación durable, leases y reintentos seguros.
+- **PR #17:** transporte Telegram unificado y eliminación de falsos éxitos.
+- **PR #18:** E2E predicciones → formato → Telegram → SQLite durable.
 
-## 7. ⏳ LO QUE FALTA (para el arranque, ~2 semanas)
-**🔑 Setup en Render/GitHub (lo único bloqueante):**
-1. Render → Environment: `API_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `ODDS_API_IO_KEY` y `DATABASE_URL` = la de **Neon** (`neondb`, base PROPIA del bot; NO la `ligamx_api_db` de la API hermana; `REDIS_URL`/`SYNC_API_KEY` son de la API, no de este bot).
-2. GitHub → Settings → Secrets → Actions: agregar secret **`API_KEY`** con el mismo valor (para que el workflow de alertas funcione).
-   > ✅ Validado en local (jul-2026): Telegram (ping OK), odds-api.io (`habilitado:true`, 90 eventos) y Postgres Neon (`init_db` OK). Credenciales cargadas en `.env` local (gitignored). `database.py` arreglado para NO duplicar `sslmode` cuando la URL ya lo trae (Neon).
+### Monitoreo y calidad
 
-**📅 Cuando arranque el Apertura (mediados de julio):**
-3. **Generar `data/calendario.json`** con las 17 jornadas (lo necesita el planificador / `/plan-survivor`; sin él responde `calendario_incompleto`): `python3 scripts/import_calendario.py`. Fuente primaria: **Liga MX API** (`src/ligamx_api.py`, `/calendar`); fallback a ESPN. Config en `LIGAMX_API_URL` (default `https://ligamx-api.onrender.com`); estado en `/health/fuentes`.
-   > ✅ El agrupado de jornadas se RE-DERIVA de las fechas reales (regla round-robin en `construir_calendario`), no del campo `jornada` del upstream —que venía mal (16 jornadas, J1=11, J12=18)—. Verificado: produce **17 jornadas × 9** limpias. El script avisa si algo no cuadra.
-   > ℹ️ La Liga MX API HOY solo tiene el Apertura 2026 sin jugar (0 resultados finalizados, `/seasons` sin históricos), así que NO puede alimentar el modelo todavía. Cuando haya partidos jugados, activar `LIGAMX_API_AS_SOURCE=1` para usarla como fuente de resultados del modelo.
-4. Verificar `/valor/diagnostico` → que aparezcan casas con momios (`eventos_con_odds_por_casa > 0`); luego validar `/valor`.
-5. Recalibrar el modelo con datos frescos: `python3 src/validacion_modelo.py`.
-6. Correr el backtest del juego: `python3 src/simulador_survivor.py`.
+- **PR #19:** smoke de producción diario/manual con reintentos para cold starts.
+- **PR #20:** 15 pruebas de rutas críticas API/Telegram.
+- **PR #6:** FastAPI actualizado a 0.139.2 con CI verde.
+- **PR #21:** PyArrow eliminado al confirmar que no se utilizaba.
+- **PR #2:** `actions/checkout` actualizado a v7.
+- **PR #3:** `actions/setup-python` actualizado a v7.
 
-**🟡 Deuda menor:**
-7. Revisar PRs de Dependabot uno por uno (#2, #3, #4, #5, #6).
-8. Limpiar ramas fusionadas.
-9. Proteger main desde GitHub para bloquear pushes directos.
+## Calidad verificada
 
-## 8. Notas operativas (gotchas)
-- **Merges a main:** PRs normales los puede mergear el agente; los que tocan **`.github/workflows/`** los **mergea el usuario** (barrera de seguridad).
-- **Sandbox pierde paquetes pip entre sesiones** → reinstalar: `pip install -r requirements.txt pytest httpx`.
-- **Cache de datos** `data/resultados_historicos.json` está **gitignored**; regenerar: `python3 -c "import sys;sys.path.insert(0,'src');import fuentes_datos;fuentes_datos.obtener_resultados(meses=18)"`.
-- **odds-api.io free tier:** máx **2 casas** por consulta (3+ da 403); `/odds/multi` es premium → se usa `/odds` individual. Slug Liga MX: `mexico-liga-mx-apertura`.
-- **Correr local:** `bash run_bot.sh` (pipeline real) · `python3 main.py [--telegram] [--excluir A,B]`.
-- **Tests:** `python3 -m pytest tests/`. **Lint:** `ruff check .`. Ambos en CI.
+- **661 pruebas** aprobadas en la validación completa registrada.
+- Cobertura global: **67.49%**, superior al mínimo de **64%**.
+- Ruff check y format check activos.
+- Mypy y validación estructural en CI.
+- Dos ejecuciones de CI por PR para cambios recientes.
+- Dashboard, `/health`, BD, ESPN, Liga MX API y Telegram verificados en producción.
 
-## 9. Reglas Liga MX 2025-2026 (codificadas en `reglas_liga_mx`)
-18 equipos · Apertura (jul-dic) + Clausura (ene-may) · Liguilla: top 6 directo + Play-In (7-10) · Clausura 2026 fue excepción (top 8 directo, sin Play-In) · Descenso suspendido.
+## Dependencias
 
----
+- FastAPI quedó en `0.139.2` tras pasar CI y producción.
+- PyArrow se eliminó porque no existían imports en el código.
+- `requests` permanece fijado en `2.32.5`: la actualización a `2.34.2` falló ambos checks después de rebase y el PR #4 se cerró.
+- El antiguo PR #5 de PyArrow se cerró por quedar reemplazado por #21.
 
-**Estado: sólido, limpio, moderno y monitoreable.** El gran trabajo está hecho; lo pendiente es **configurar las keys en Render/GitHub** y **recalibrar con datos reales** cuando arranque la liga.
+No subir una dependencia mayor sin CI verde y comprobación posterior en Render.
 
-## Runbook Operativo
+## Endpoints operativos principales
 
-### Arquitectura
-- **survivor-ligamx-bot** → Bot de Telegram + API REST (FastAPI en Render)
-- **ligamx-api** → API hermana con datos de Liga MX (también en Render free tier)
-- **ESPN** → Fuente principal de fixtures y resultados
-- **PostgreSQL** → Persistencia (Neon/Render Postgres)
+- `/` → redirección a Mi Survivor
+- `/dashboard`
+- `/health`
+- `/health/fuentes`
+- `/predicciones`
+- `/survivor`
+- `/survivor/mio`
+- `/survivor/usados`
+- `/survivor/picks/confirmar`
+- `/jornada`
+- `/plan-survivor`
+- `/alerts/pronosticos`
+- `/alerts/momios`
+- `/alerts/recordatorio`
+- `/alerts/resumen`
+- `/telegram/webhook`
+- `/docs`
 
-### Endpoints CRON (ejecutados por Render Cron Jobs)
-| Endpoint | Frecuencia | Descripción |
-|----------|-----------|-------------|
-| /alerts/pronosticos | Cada jornada | Genera y envía predicciones por Telegram |
-| /alerts/plan | Cada jornada | Envía plan óptimo de temporada |
-| /alerts/momios?flexible=true | Cada 12h | Refresca momios silenciosamente |
-| /alerts/recordatorio?dias_antes=1 | Diario | Recordatorio de jornada próxima |
+## Runbook
 
-### Recuperación ante fallos
+### Después de cada cambio
 
-#### Si ESPN falla (timeout/5xx)
-1. El healthcheck muestra "espn": "error"
-2. El bot usa datos cacheados de la última consulta exitosa
-3. Si el cache está vacío, devuelve mensaje informativo sin predicciones
-4. **Acción manual**: Verificar https://espn.com.mx/ y reintentar /alerts/pronosticos
+1. Trabajar en rama y PR.
+2. Esperar todos los checks verdes.
+3. Fusionar con squash.
+4. Confirmar que Render inicia Auto-Deploy.
+5. Revisar `/health` hasta que todas las dependencias estén en `ok`.
+6. Considerar transitoria una desconexión SSL de Neon durante el reinicio; debe recuperarse en menos de un minuto. Si persiste, revisar logs y `DATABASE_URL`.
 
-#### Si ligamx-api falla
-1. El healthcheck muestra "ligamx_api": "error"
-2. El bot funciona sin datos de la API hermana (usa ESPN directamente)
-3. **Acción manual**: Verificar https://ligamx-api.onrender.com/health
+### Cold start de Render
 
-#### Si la BD falla
-1. El healthcheck muestra "status": "degradado" con "base_de_datos": "error"
-2. El bot no puede operar comandos que requieren BD (/usado, /usados, /plan)
-3. **Acción manual**: Revisar conexión PostgreSQL en Render Dashboard
+El free tier puede dormir el servicio. El primer request puede tardar alrededor de 50 segundos o devolver temporalmente 503. Los smoke tests tienen reintentos para esta condición.
 
-#### Si el bot no responde en Telegram
-1. Verificar healthcheck en https://survivor-ligamx-bot.onrender.com/health
-2. Verificar logs en Render Dashboard
-3. Reintentar webhook via curl desde terminal
+### Si Neon falla
 
-### Mantenimiento
-- **Actualizar dependencias**: bash scripts/sync_deps.sh
-- **Correr tests**: pytest tests/ -v
-- **Nueva temporada**: /reset en Telegram para limpiar equipos usados
-- **Despliegue**: Push a main → Render deploy automático (~2-3 min)
+- Revisar `/health` y logs de Render.
+- Confirmar `DATABASE_URL` y SSL.
+- No repetir operaciones de escritura ambiguas sin comprobar su estado.
+
+### Si Telegram falla
+
+- Revisar `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` y el secreto del webhook.
+- Consultar `/health` y logs.
+- La entrega idempotente permite reintentos sin duplicar mensajes.
+
+## Pendientes manuales finales
+
+1. **Proteger `main`** con una ruleset que exija PR y CI verde.
+2. Confirmar que `API_KEY` esté configurada tanto en Render como en GitHub Actions cuando los workflows la necesiten.
+3. Ejecutar recalibración y backtest con datos recientes antes de cada tramo importante del torneo:
+   - `python3 src/validacion_modelo.py`
+   - `python3 src/simulador_survivor.py`
+4. Realizar una prueba funcional del dashboard y comandos Telegram con la cuenta propietaria.
+5. Limpiar ramas fusionadas desde GitHub cuando sea conveniente.
+
+## Criterio de lanzamiento
+
+El sistema puede considerarse **10/10 para lanzamiento dentro del alcance definido** cuando `main` quede protegido y se complete la prueba funcional propietaria. Esto no significa software sin mantenimiento: las fuentes externas, dependencias y el modelo requieren seguimiento continuo.
