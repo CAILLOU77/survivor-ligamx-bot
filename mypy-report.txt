@@ -1,6 +1,0 @@
-src/telegram/plan_persistido.py:32: error: Argument 1 to "int" has incompatible
-type "Any | None"; expected
-"str | Buffer | SupportsInt | SupportsIndex | SupportsTrunc"  [arg-type]
-                jornada = int(pick.get("jornada"))
-                              ^~~~~~~~~~~~~~~~~~~
-Found 1 error in 1 file (checked 56 source files)
