@@ -173,10 +173,7 @@ def construir_mensaje_plan_persistido(plan: Dict[str, Any]) -> str:
             ]
         )
         for pick in futuro:
-            lineas.append(
-                f"<b>J{pick['jornada']} · {pick['equipo']}</b> "
-                f"({pick['condicion']} vs {pick['rival']})"
-            )
+            lineas.append(f"<b>J{pick['jornada']} · {pick['equipo']}</b> ({pick['condicion']} vs {pick['rival']})")
             lineas.append(
                 f"🏆 gana {_pct(pick['prob_ganar_pct'])}% · "
                 f"🛡️ sobrevive {_pct(pick['no_perder_pct'])}% [{pick['nivel']}]"
