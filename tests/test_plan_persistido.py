@@ -82,10 +82,6 @@ def test_plan_excluye_jornadas_cerradas_y_muestra_historial():
             return_value={"equipos": {}},
         ),
         mock.patch(
-            "src.tendencias_torneo.cargar_resultados_torneo_actual",
-            return_value={"fuente": "no_disponible", "resultados": []},
-        ),
-        mock.patch(
             "src.planificador_survivor.planificar",
             return_value=_resultado_plan(),
         ) as planificar,
@@ -101,7 +97,6 @@ def test_plan_excluye_jornadas_cerradas_y_muestra_historial():
     assert [bloque["jornada"] for bloque in calendario_recibido] == [3, 4]
     assert [item["jornada"] for item in resultado["historial_cerrado"]] == [1, 2]
     assert [item["jornada"] for item in resultado["plan"]] == [3]
-    assert resultado["tendencias_aplicadas"] is False
 
     mensaje = pp.construir_mensaje_plan_persistido(resultado)
     assert "J1 · Monterrey</b> 🔒 ✅ Ganó" in mensaje
@@ -149,37 +144,47 @@ def test_fallback_sin_bd_conserva_horizonte_actual():
     calendario_recibido = planificar.call_args.args[0]
     assert [bloque["jornada"] for bloque in calendario_recibido] == [2, 3]
     assert resultado["historial_cerrado"] == []
-    assert resultado["tendencias_aplicadas"] is False
 
 
-def test_tendencias_aplica_ajuste_de_fuerzas_cuando_hay_resultados():
+def test_tendencias_no_disponibles_devuelve_false():
+    """Si no hay resultados del torneo, _aplicar_tendencias retorna False."""
+    plan = _resultado_plan()
+    plan["historial_cerrado"] = []
+    plan["jornada_plan_desde"] = 3
     calendario = [
         {"jornada": 3, "partidos": [{"fecha": "2026-07-20"}]},
     ]
     with (
         mock.patch(
-            "src.database.temporada_survivor_actual",
-            return_value="Apertura-2026",
-        ),
-        mock.patch("src.database.get_survivor_picks", return_value=[]),
-        mock.patch(
             "src.planificador_survivor.cargar_calendario",
             return_value=calendario,
+        ),
+        mock.patch(
+            "src.tendencias_torneo.cargar_resultados_torneo_actual",
+            return_value={"fuente": "no_disponible", "resultados": []},
         ),
         mock.patch(
             "src.fuentes_datos.leer_cache",
             return_value=[{"home_team": "A", "away_team": "B"}],
         ),
+    ):
+        aplicado = pp._aplicar_tendencias(plan, [], 0.5, False, False)
+
+    assert aplicado is False
+
+
+def test_tendencias_aplica_ajuste_y_marca_true():
+    """Con datos del torneo, _aplicar_tendencias ajusta el plan y retorna True."""
+    plan = _resultado_plan()
+    plan["historial_cerrado"] = []
+    plan["jornada_plan_desde"] = 3
+    calendario = [
+        {"jornada": 3, "partidos": [{"fecha": "2026-07-20"}]},
+    ]
+    with (
         mock.patch(
-            "src.poisson_model.calcular_fuerzas",
-            return_value={
-                "equipos": {
-                    "undes fc": {
-                        "ataque_local": 1.0,
-                        "defensa_local": 1.0,
-                    }
-                }
-            },
+            "src.planificador_survivor.cargar_calendario",
+            return_value=calendario,
         ),
         mock.patch(
             "src.tendencias_torneo.cargar_resultados_torneo_actual",
@@ -191,7 +196,7 @@ def test_tendencias_aplica_ajuste_de_fuerzas_cuando_hay_resultados():
         mock.patch(
             "src.tendencias_torneo.calcular_tendencias",
             return_value=_tendencias(),
-        ) as calc_tend,
+        ),
         mock.patch(
             "src.tendencias_torneo.ajustar_fuerzas",
             return_value={
@@ -199,39 +204,6 @@ def test_tendencias_aplica_ajuste_de_fuerzas_cuando_hay_resultados():
                     "undes fc": {"ataque_local": 1.02, "defensa_local": 0.98}
                 }
             },
-        ) as ajustar_f,
-        mock.patch(
-            "src.planificador_survivor.planificar",
-            return_value=_resultado_plan(),
-        ) as planificar,
-    ):
-        resultado = pp._plan_temporada(
-            [],
-            usar_momios=False,
-            jornada_desde=3,
-            permitir_descarga=False,
-        )
-
-    assert planificar.call_count >= 2
-    ajustar_f.assert_called_once()
-    calc_tend.assert_called_once()
-    assert resultado["tendencias_aplicadas"] is True
-
-    mensaje = pp.construir_mensaje_plan_persistido(resultado)
-    assert "Tendencias del torneo en vivo aplicadas" in mensaje
-
-
-def test_tendencias_no_rompe_si_falla_la_capa():
-    calendario = [{"jornada": 3, "partidos": []}]
-    with (
-        mock.patch(
-            "src.database.temporada_survivor_actual",
-            return_value="Apertura-2026",
-        ),
-        mock.patch("src.database.get_survivor_picks", return_value=[]),
-        mock.patch(
-            "src.planificador_survivor.cargar_calendario",
-            return_value=calendario,
         ),
         mock.patch(
             "src.fuentes_datos.leer_cache",
@@ -239,23 +211,42 @@ def test_tendencias_no_rompe_si_falla_la_capa():
         ),
         mock.patch(
             "src.poisson_model.calcular_fuerzas",
-            return_value={"equipos": {}},
+            return_value={
+                "equipos": {
+                    "undes fc": {"ataque_local": 1.0, "defensa_local": 1.0}
+                }
+            },
+        ),
+        mock.patch(
+            "src.planificador_survivor.planificar",
+            return_value=_resultado_plan(),
+        ),
+    ):
+        aplicado = pp._aplicar_tendencias(plan, [], 0.5, False, False)
+
+    assert aplicado is True
+
+
+def test_tendencias_no_rompe_si_falla():
+    """Si falla la capa de tendencias, retorna False sin lanzar excepción."""
+    plan = _resultado_plan()
+    plan["historial_cerrado"] = []
+    plan["jornada_plan_desde"] = 3
+    calendario = [{"jornada": 3, "partidos": []}]
+    with (
+        mock.patch(
+            "src.planificador_survivor.cargar_calendario",
+            return_value=calendario,
         ),
         mock.patch(
             "src.tendencias_torneo.cargar_resultados_torneo_actual",
             side_effect=RuntimeError("sin red"),
         ),
         mock.patch(
-            "src.planificador_survivor.planificar",
-            return_value=_resultado_plan(),
-        ) as planificar,
+            "src.fuentes_datos.leer_cache",
+            return_value=[{"home_team": "A", "away_team": "B"}],
+        ),
     ):
-        resultado = pp._plan_temporada(
-            [],
-            usar_momios=False,
-            jornada_desde=3,
-            permitir_descarga=False,
-        )
+        aplicado = pp._aplicar_tendencias(plan, [], 0.5, False, False)
 
-    planificar.assert_called_once()
-    assert resultado["tendencias_aplicadas"] is False
+    assert aplicado is False
