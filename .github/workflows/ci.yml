@@ -26,7 +26,7 @@ jobs:
         run: ruff format --check --diff .
 
       - name: Type check (mypy)
-        run: mypy src/tendencias_torneo.py --show-error-codes || true
+        run: mypy src/
 
       - name: Sanity check (estructura)
         run: python -c "import os; assert os.path.isdir('src') and os.path.isfile('run_bot_prod.sh')"
