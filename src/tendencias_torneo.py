@@ -5,11 +5,9 @@ arranque se regulariza con un prior de ocho partidos y cualquier ajuste queda
 limitado a pocos puntos porcentuales.
 """
 
-from __future__ import annotations
-
 from collections import defaultdict
 from copy import deepcopy
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, cast
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from src.team_normalizer import canonical_team_key
 
@@ -39,7 +37,7 @@ def _registro(equipo: str, rival: str, gf: float, gc: float, condicion: str, fec
 
 
 def _partidos_por_equipo(resultados: Sequence[Mapping[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
-    partidos = cast(Dict[str, List[Dict[str, Any]]], defaultdict(list))
+    partidos: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     ordenados = sorted(resultados, key=lambda p: str(p.get("fecha") or p.get("kickoff_utc") or ""))
     for partido in ordenados:
         local = str(partido.get("home_team") or "").strip()
@@ -122,8 +120,7 @@ def _fortaleza_base(equipo: str, fortalezas_base: Optional[Mapping[str, float]])
 def _etiquetas(metricas: Mapping[str, Any], fortaleza: float) -> Tuple[List[str], List[str]]:
     pj = int(metricas.get("pj") or 0)
     if pj < 2:
-        empty: List[str] = []
-        return empty, empty
+        return [], []
     etiquetas: List[str] = []
     razones: List[str] = []
     gf_pp = float(metricas.get("gf_pp") or 0.0)
