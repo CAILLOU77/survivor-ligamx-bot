@@ -19,15 +19,9 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-try:
-    import poisson_model as pm
-except ImportError:  # pragma: no cover
-    from src import poisson_model as pm  # type: ignore
+from src import poisson_model as pm
 
-try:
-    from team_normalizer import canonical_team_key
-except ImportError:  # pragma: no cover
-    from src.team_normalizer import canonical_team_key  # type: ignore
+from src.team_normalizer import canonical_team_key
 
 # Parámetros del ajuste (transparentes y acotados).
 K_LINEUP = 0.6

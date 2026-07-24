@@ -19,10 +19,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-try:
-    from team_normalizer import canonical_team_key
-except ImportError:  # pragma: no cover
-    from src.team_normalizer import canonical_team_key  # type: ignore
+from src.team_normalizer import canonical_team_key
 
 _DIAS = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"]
 
