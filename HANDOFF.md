@@ -1,7 +1,7 @@
 # 🤝 HANDOFF — Survivor Liga MX Bot
 
 ## 1. Identidad
-- **Repo:** `CAILLOU77/survivor-ligamx-bot` · rama principal `main`
+- **Repo:** `survivor-ligamx/survivor-ligamx-bot` · rama principal `main`
 - **Stack:** Python **3.12**, FastAPI (web en **Render**: `survivor-ligamx-bot.onrender.com`), Postgres (prod) / SQLite (local)
  **Objetivo:** asistir decisiones de **Survivor Liga MX** + pronósticos (1X2, O/U, BTTS) para el **Apertura 2026** (arranca 16 de julio).
 
@@ -43,31 +43,20 @@ Modelos: `poisson_model` (default) y `dixon_coles_mle` (alternativa opcional, va
 
 > **Estrategia (valora VICTORIAS):** el pick estratégico ordena por `score = no_perder + PESO_VICTORIA*prob_victoria − pen_visitante`. Sobrevivir es prioridad #1, pero entre picks seguros se prefiere el que MÁS gana (desempate del Survivor = más victorias/menos empates). El empate es push (no aporta al score). En arranque el peso de ganar baja (cautela).
 
-## 5. Lo que se hizo en sesiones previas (todo en `main`)
-**Modelo (lo grande):**
-- Pasó de **38.3% → 49.3%** de accuracy (supera baseline 45%), Brier 0.70→0.63. El fix clave fue **más datos** (8→18 meses) + recencia + shrinkage + rho calibrado.
-- Se probó MLE (empató, no es default) y **forma reciente** (medida y **descartada honestamente** porque bajaba el accuracy).
+## 5. PRs fusionados (julio 2026)
 
-**Integridad / limpieza:**
-- 🚩 Quitado el **backtest falso** (`random.random()` que inventaba win-rate/profit) → ahora valida con resultados reales.
-- Quitados **momios inventados** (2.0/3.5/3.5) y el path viejo.
-- Web/Telegram repunteados al **path real** (ESPN+Poisson), no al EV falso.
-- DB **unificada** (Postgres prod / SQLite local; `/history` y `/backtest/settle` estaban rotos en Render, arreglados).
-- **−30,000+ líneas** de legado/basura eliminadas (módulos muertos, datos scrapeados commiteados, CSVs/zip, scripts rotos).
+### Fase 1 — Contrato de datos y modelo
+- **PR #14** — Contrato estable de partidos (espn_event_id, match_key, kickoff_utc)
+- **PR #15** — Ciclo Survivor v2 (estados, anti-duplicados, snapshots, historial)
 
-**Calidad / infra:**
-- **ruff** (linter, gate en CI) + 71 autofixes.
-- **Python 3.9 → 3.12** (3.9 estaba EOL).
-- **requirements.txt fijado** (reproducible) y **`.env.example` actualizado** a la realidad.
-- **`API_KEY` endurecido** (sin default público; workflow usa `secrets.API_KEY`).
-- **README/PROYECTO_MASTER** reescritos al estado real.
+### Fase 2 — Telegram y notificaciones
+- **PR #16** — Telegram idempotente (deduplicación, leases, reintentos)
+- **PR #17** — Notificador unificado (transporte común, sin falsos éxitos)
+- **PR #18** — Prueba E2E completa (predicciones → Telegram → SQLite durable)
 
-**Features nuevas:**
-- **Momios reales odds-api.io** integrados (opcional, apagado sin key): favorito, Over/Under (explosivo/cauteloso), hándicap, "valor"; **auto-selecciona** las 2 casas con cobertura (límite del tier gratis); match flexible de nombres ESPN↔casas.
-- `/jornada` (todo-en-uno) + **Telegram top-3** picks.
-- **`/health/fuentes`** (monitoreo de APIs).
-- **`src/simulador_survivor.py`** (backtest del *juego*: ¿cuántas jornadas sobrevives?).
-- `/tabla` con **motivación** por equipo, usada como desempate del pick Survivor.
+### Fase 3 — Monitoreo y cobertura
+- **PR #19** — Monitoreo automático de producción (production_smoke.py, workflow diario)
+- **PR #20** — Cobertura de rutas críticas API y Telegram (15 pruebas, 67.49% global, CI ✅)
 
 ## 6. Módulos clave (vigentes)
 `fuentes_datos`, `espn_data`, `ligamx_api`, `poisson_model`, `dixon_coles_mle`, `motor_pronosticos`, `planificador_survivor`, `analisis_riesgo`, `tabla_posiciones`, `reglas_liga_mx`, `team_normalizer`, `comparador_mercado`, `assisted_odds_import`, `telegram_pronosticos`, `telegram_notifier`, `validacion_modelo`, `backtesting`, `simulador_survivor`, `backtest_engine`, `database`, `api.py` + `routers/` (`predicciones`, `cron_router`, `api_ligamx`).
@@ -91,9 +80,10 @@ Modelos: `poisson_model` (default) y `dixon_coles_mle` (alternativa opcional, va
 5. Recalibrar el modelo con datos frescos: `python3 src/validacion_modelo.py`.
 6. Correr el backtest del juego: `python3 src/simulador_survivor.py`.
 
-**🟡 Opcionales / deuda menor:**
-7. Subir cobertura de la capa web/persistencia (sin test directo: `api.py`, `database.py`, `telegram_notifier.py`, `routers/cron_router.py`).
-8. Mejora de modelo solo con datos reales en mano (forma por torneo, etc.) — medir siempre con `validacion_modelo`.
+**🟡 Deuda menor:**
+7. Revisar PRs de Dependabot uno por uno (#2, #3, #4, #5, #6).
+8. Limpiar ramas fusionadas.
+9. Proteger main desde GitHub para bloquear pushes directos.
 
 ## 8. Notas operativas (gotchas)
 - **Merges a main:** PRs normales los puede mergear el agente; los que tocan **`.github/workflows/`** los **mergea el usuario** (barrera de seguridad).
