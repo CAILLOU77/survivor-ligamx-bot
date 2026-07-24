@@ -23,7 +23,7 @@ jobs:
         run: ruff check .
 
       - name: Format check (ruff)
-        run: ruff format --check .
+        run: ruff format --check --diff .
 
       - name: Type check (mypy)
         run: mypy src/
