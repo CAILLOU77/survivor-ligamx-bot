@@ -88,13 +88,18 @@ def _equipos_del_torneo(calendario: List[Dict[str, Any]]) -> List[str]:
     return sorted(list(vistos), key=lambda s: s.lower())
 
 
-def _resolver_equipo(q: str, *args: Any, **kwargs: Any) -> Optional[str]:
-    """Resuelve un nombre de búsqueda al nombre canónico visible."""
-    # team_normalizer es mucho más robusto que el sistema anterior.
+def _resolver_equipo(q: str, calendario: List[Dict[str, Any]], *args: Any, **kwargs: Any) -> Optional[str]:
+    """Resuelve un nombre de búsqueda al nombre canónico visible del torneo."""
     name = tn.display_team_name(q)
-    # Si el normalizador no lo conoce (no está en DISPLAY), devuelve el original limpio.
-    # Para la API, queremos asegurar que es un equipo válido del torneo.
-    return name
+    # Validar que el equipo realmente exista en el calendario del torneo actual
+    equipos_torneo = _equipos_del_torneo(calendario)
+    if name in equipos_torneo:
+        return name
+    # Búsqueda tolerante en equipos del torneo
+    for et in equipos_torneo:
+        if tn.teams_match(q, et):
+            return et
+    return None
 
 
 def _tiene_modelo(equipo: str, fuerzas: Dict[str, Any]) -> bool:
@@ -162,7 +167,7 @@ def equipos() -> Dict[str, Any]:
 def equipo_detalle(equipo: str) -> Dict[str, Any]:
     calendario = _calendario()
     datos, fuerzas = _datos_y_fuerzas()
-    nombre = _resolver_equipo(equipo, calendario, fuerzas, datos)
+    nombre = _resolver_equipo(equipo, calendario)
     if not nombre:
         raise HTTPException(status_code=404, detail=f"Equipo no encontrado: {equipo}")
 
@@ -277,7 +282,7 @@ def _calcular_jornada_actual(calendario: List[Dict[str, Any]], hoy: date) -> Dic
 def equipo_calendario(equipo: str) -> Dict[str, Any]:
     calendario = _calendario()
     datos, fuerzas = _datos_y_fuerzas()
-    nombre = _resolver_equipo(equipo, calendario, fuerzas, datos)
+    nombre = _resolver_equipo(equipo, calendario)
     if not nombre:
         raise HTTPException(status_code=404, detail=f"Equipo no encontrado: {equipo}")
     partidos = _partidos_de_equipo(nombre, calendario, fuerzas)
@@ -361,13 +366,13 @@ def head_to_head(
 ) -> Dict[str, Any]:
     calendario = _calendario()
     datos, fuerzas = _datos_y_fuerzas()
-    nl = _resolver_equipo(local, calendario, fuerzas, datos)
-    nv = _resolver_equipo(visitante, calendario, fuerzas, datos)
+    nl = _resolver_equipo(local, calendario)
+    nv = _resolver_equipo(visitante, calendario)
     if not nl or not nv:
         faltan = [q for q, r in ((local, nl), (visitante, nv)) if not r]
         raise HTTPException(status_code=404, detail=f"Equipo(s) no encontrado(s): {faltan}")
     if pm._norm(nl) == pm._norm(nv):
-        raise HTTPException(status_code=400, detail="local y visitante no pueden ser el mismo equipo")
+        raise HTTPException(status_code=400, detail="Local y visitante deben ser distintos")
 
     norm_l, norm_v = pm._norm(nl), pm._norm(nv)
     enfrentamientos: List[Dict[str, Any]] = []

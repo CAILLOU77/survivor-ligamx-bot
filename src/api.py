@@ -1,15 +1,15 @@
 import logging
-
-logger = logging.getLogger(__name__)
-from fastapi import FastAPI, Request
-from slowapi import _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
-from fastapi import HTTPException, Header, Depends, BackgroundTasks
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
 import os
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
+from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, RedirectResponse
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 # Cargar .env en local (en Render/prod las vars vienen del entorno; esto es no-op).
 try:
@@ -48,6 +48,7 @@ class UsadosResponse(BaseModel):
 
     usados: List[str]
     total: int
+    temporada: Optional[str] = None
     decision: str = "INFORMATIVO / REVISIÓN HUMANA"
     error: Optional[str] = None
 
@@ -60,6 +61,45 @@ class UsadoResponse(BaseModel):
     quitado: Optional[bool] = None
     ya_estaba: Optional[bool] = None
     usados: List[str]
+    temporada: Optional[str] = None
+
+
+class SurvivorPickResponse(BaseModel):
+    """Selección Survivor persistida para una temporada y jornada."""
+
+    temporada: str
+    jornada: int
+    fecha: Optional[str] = None
+    equipo: str
+    rival: Optional[str] = None
+    condicion: Optional[str] = None
+    local: Optional[str] = None
+    visitante: Optional[str] = None
+    no_perder_pct: float = 0.0
+    prob_victoria_pct: float = 0.0
+    estado: str
+    resultado: Optional[str] = None
+    marcador_real: Optional[str] = None
+    origen: str
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    confirmado_at: Optional[datetime] = None
+    bloqueado_at: Optional[datetime] = None
+    resuelto_at: Optional[datetime] = None
+
+
+class MiSurvivorResponse(BaseModel):
+    """Estado completo de la participación Survivor del dueño."""
+
+    temporada: str
+    sigue_vivo: bool
+    racha: int
+    victorias: int
+    empates: int
+    derrotas: int
+    usados: List[str]
+    pick_actual: Optional[SurvivorPickResponse] = None
+    picks: List[SurvivorPickResponse]
 
 
 class MetricsResponse(BaseModel):
@@ -115,6 +155,7 @@ from src.auth import verify_api_key  # noqa: E402
 
 
 app = FastAPI(title="Survivor LigaMX API Premium", version="2.1.0", docs_url="/docs")
+DASHBOARD_DIR = Path(__file__).resolve().parent / "dashboard_ui"
 # CORS configurable: en producción usa CORS_ORIGINS="https://tudominio.com,https://otro.com"
 # En desarrollo deja vacío (solo localhost) o define CORS_ORIGINS=* explícitamente.
 _cors_raw = os.getenv("CORS_ORIGINS", "").strip()
@@ -162,6 +203,15 @@ from src.routers.api_ligamx import router as api_ligamx_router
 app.include_router(api_ligamx_router)
 init_db()
 
+# Render repara idempotentemente el webhook y sincroniza el menú de comandos
+# sin bloquear el arranque del servicio.
+try:
+    from src.telegram.configuracion import iniciar_sincronizacion_telegram
+
+    iniciar_sincronizacion_telegram()
+except Exception:  # pragma: no cover - Telegram es una integración externa
+    logger.exception("No se pudo iniciar la sincronización de Telegram")
+
 # NOTA: el viejo path de "picks de alto EV" leia un parquet de momios scrapeados
 # (data_kiro/ligamx_odds_clean.parquet) que NO existe en produccion (Render) y
 # dependia de momios. El proyecto pivoto a predicciones reales (ESPN + Poisson).
@@ -195,7 +245,12 @@ def health():
     """
     import requests
 
-    deps = {"base_de_datos": "error", "espn": "error", "ligamx_api": "error"}
+    deps = {
+        "base_de_datos": "error",
+        "espn": "error",
+        "ligamx_api": "error",
+        "telegram_webhook": "error",
+    }
     status_global = "ok"
 
     # 1) Base de datos
@@ -232,6 +287,29 @@ def health():
         deps["ligamx_api"] = f"error: {e}"
         status_global = "degradado"
 
+    # 4) Telegram: configuración local + último resultado remoto de sincronización.
+    try:
+        from src.telegram.configuracion import estado_sincronizacion_telegram, obtener_secreto_webhook
+
+        token_configurado = bool(os.getenv("TELEGRAM_BOT_TOKEN", "").strip())
+        chat_configurado = bool(os.getenv("TELEGRAM_CHAT_ID", "").strip())
+        telegram_local = token_configurado and chat_configurado and bool(obtener_secreto_webhook())
+        estado_telegram = estado_sincronizacion_telegram()
+        if telegram_local and (not os.getenv("RENDER") or estado_telegram.get("ok")):
+            deps["telegram_webhook"] = "ok"
+        elif telegram_local and estado_telegram.get("estado") == "sincronizando":
+            deps["telegram_webhook"] = "sincronizando"
+            status_global = "degradado"
+        elif os.getenv("RENDER") or token_configurado or chat_configurado:
+            detalle = str(estado_telegram.get("error") or "configuración incompleta")[:160]
+            deps["telegram_webhook"] = f"error: {detalle}"
+            status_global = "degradado"
+        else:
+            deps["telegram_webhook"] = "deshabilitado"
+    except Exception as e:
+        deps["telegram_webhook"] = f"error: {e}"
+        status_global = "degradado"
+
     return {
         "status": status_global,
         "version": "2.1.0-premium",
@@ -265,7 +343,8 @@ def alerts_pronosticos(request: Request, api_key: str = Depends(verify_api_key))
     """Genera predicciones reales (ESPN + Poisson) y las envía por Telegram."""
     from src import telegram_pronosticos
 
-    return telegram_pronosticos.enviar_pronosticos()
+    clave = f"cron:pronosticos:{datetime.now(timezone.utc).date().isoformat()}"
+    return telegram_pronosticos.enviar_pronosticos(idempotency_key=clave)
 
 
 @app.post("/alerts/high-ev", summary="(Deprecado) Alias → pronósticos reales", tags=["Alerts"])
@@ -315,7 +394,8 @@ def alerts_momios(request: Request, solo_si_hay: bool = False, api_key: str = De
     """
     from src import telegram_pronosticos
 
-    return telegram_pronosticos.enviar_momios_estado(solo_si_hay=solo_si_hay)
+    clave = f"cron:momios:{datetime.now(timezone.utc).date().isoformat()}" if solo_si_hay else None
+    return telegram_pronosticos.enviar_momios_estado(solo_si_hay=solo_si_hay, idempotency_key=clave)
 
 
 @app.post("/alerts/recordatorio", summary="Recordar por Telegram que se acerca la jornada", tags=["Alerts"])
@@ -367,47 +447,205 @@ def get_fichajes(request: Request, equipo: str):
     tags=["Survivor"],
 )
 @limiter.limit("30/minute")
-def survivor_usados_listar(request: Request):
+def survivor_usados_listar(request: Request, temporada: Optional[str] = None):
     """Equipos que ya gastaste (se excluyen automáticamente del pick y del plan)."""
     try:
-        from src.database import get_equipos_usados
+        from src.database import get_equipos_usados, temporada_survivor_actual
 
-        usados = get_equipos_usados()
+        temporada = temporada or temporada_survivor_actual()
+        usados = get_equipos_usados(temporada)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        return {"usados": [], "total": 0, "error": str(exc)}
-    return {"usados": usados, "total": len(usados), "decision": "INFORMATIVO / REVISIÓN HUMANA"}
+        return {"usados": [], "total": 0, "temporada": temporada, "error": str(exc)}
+    return {
+        "usados": usados,
+        "total": len(usados),
+        "temporada": temporada,
+        "decision": "INFORMATIVO / REVISIÓN HUMANA",
+    }
 
 
 @app.post("/survivor/usados", response_model=UsadoResponse, summary="Marcar un equipo como usado", tags=["Survivor"])
 @limiter.limit("30/minute")
-def survivor_usados_agregar(request: Request, equipo: str, api_key: str = Depends(verify_api_key)):
-    """Registra el equipo que escogiste esta jornada para que ya no se sugiera."""
-    from src.database import add_equipo_usado, get_equipos_usados
+def survivor_usados_agregar(
+    request: Request,
+    equipo: str,
+    temporada: Optional[str] = None,
+    jornada: Optional[int] = None,
+    api_key: str = Depends(verify_api_key),
+):
+    """Compatibilidad: registra un usado; para el ciclo completo usa /survivor/picks/confirmar."""
+    from src.database import add_equipo_usado, get_equipos_usados, temporada_survivor_actual
 
     if not equipo or not equipo.strip():
         raise HTTPException(status_code=400, detail="Falta el parámetro 'equipo'.")
-    agregado = add_equipo_usado(equipo)
-    return {"equipo": equipo.strip(), "agregado": agregado, "ya_estaba": not agregado, "usados": get_equipos_usados()}
+    temporada = temporada or temporada_survivor_actual()
+    try:
+        agregado = add_equipo_usado(equipo, temporada=temporada, jornada=jornada)
+        usados = get_equipos_usados(temporada)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {
+        "equipo": equipo.strip(),
+        "agregado": agregado,
+        "ya_estaba": not agregado,
+        "usados": usados,
+        "temporada": temporada,
+    }
 
 
 @app.delete("/survivor/usados", summary="Quitar un equipo usado", tags=["Survivor"])
 @limiter.limit("30/minute")
-def survivor_usados_quitar(request: Request, equipo: str, api_key: str = Depends(verify_api_key)):
-    """Quita un equipo de la lista de usados (por si te equivocaste al registrarlo)."""
-    from src.database import remove_equipo_usado, get_equipos_usados
+def survivor_usados_quitar(
+    request: Request,
+    equipo: str,
+    temporada: Optional[str] = None,
+    api_key: str = Depends(verify_api_key),
+):
+    """Quita un equipo de usados en la temporada activa; no borra picks resueltos."""
+    from src.database import get_equipos_usados, remove_equipo_usado, temporada_survivor_actual
 
-    filas = remove_equipo_usado(equipo)
-    return {"equipo": equipo.strip(), "quitado": bool(filas), "usados": get_equipos_usados()}
+    temporada = temporada or temporada_survivor_actual()
+    try:
+        filas = remove_equipo_usado(equipo, temporada)
+        usados = get_equipos_usados(temporada)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {
+        "equipo": equipo.strip(),
+        "quitado": bool(filas),
+        "usados": usados,
+        "temporada": temporada,
+    }
 
 
-@app.post("/survivor/usados/reset", summary="Reiniciar equipos usados (nueva temporada)", tags=["Survivor"])
+@app.post("/survivor/usados/reset", summary="Limpiar marcadores manuales de usados", tags=["Survivor"])
 @limiter.limit("10/minute")
-def survivor_usados_reset(request: Request, api_key: str = Depends(verify_api_key)):
-    """Vacía la lista de usados (úsalo al empezar una temporada nueva)."""
-    from src.database import clear_equipos_usados
+def survivor_usados_reset(
+    request: Request,
+    temporada: Optional[str] = None,
+    api_key: str = Depends(verify_api_key),
+):
+    """Vacía usados solo para la temporada indicada; conserva el historial."""
+    from src.database import clear_equipos_usados, get_equipos_usados, temporada_survivor_actual
 
-    borrados = clear_equipos_usados()
-    return {"borrados": borrados, "usados": []}
+    temporada = temporada or temporada_survivor_actual()
+    try:
+        borrados = clear_equipos_usados(temporada)
+        usados = get_equipos_usados(temporada)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"borrados": borrados, "usados": usados, "temporada": temporada}
+
+
+@app.get(
+    "/survivor/mio",
+    response_model=MiSurvivorResponse,
+    summary="Mi participación Survivor por temporada",
+    tags=["Survivor"],
+)
+@limiter.limit("30/minute")
+def mi_survivor(
+    request: Request,
+    temporada: Optional[str] = None,
+    api_key: str = Depends(verify_api_key),
+):
+    """Devuelve racha, usados, pick actual e historial; es la vista principal del producto."""
+    from src.database import resumen_mi_survivor
+
+    try:
+        return resumen_mi_survivor(temporada)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post(
+    "/survivor/picks/confirmar",
+    response_model=SurvivorPickResponse,
+    summary="Confirmar el pick real de una jornada",
+    tags=["Survivor"],
+)
+@limiter.limit("20/minute")
+def survivor_pick_confirmar(
+    request: Request,
+    jornada: int,
+    equipo: str,
+    temporada: Optional[str] = None,
+    rival: str = "",
+    condicion: str = "",
+    local: str = "",
+    visitante: str = "",
+    fecha: str = "",
+    api_key: str = Depends(verify_api_key),
+):
+    """Confirma la decisión humana y excluye el equipo de futuras recomendaciones."""
+    from src.database import confirmar_survivor_pick, temporada_survivor_actual
+
+    try:
+        return confirmar_survivor_pick(
+            temporada or temporada_survivor_actual(),
+            jornada,
+            equipo,
+            rival=rival,
+            condicion=condicion,
+            local=local,
+            visitante=visitante,
+            fecha=fecha,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post(
+    "/survivor/picks/{jornada}/bloquear",
+    response_model=SurvivorPickResponse,
+    summary="Bloquear el pick confirmado",
+    tags=["Survivor"],
+)
+@limiter.limit("20/minute")
+def survivor_pick_bloquear(
+    request: Request,
+    jornada: int,
+    temporada: Optional[str] = None,
+    api_key: str = Depends(verify_api_key),
+):
+    """Bloquea una selección confirmada para evitar cambios accidentales."""
+    from src.database import bloquear_survivor_pick, temporada_survivor_actual
+
+    try:
+        return bloquear_survivor_pick(temporada or temporada_survivor_actual(), jornada)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post(
+    "/survivor/picks/{jornada}/resolver",
+    response_model=SurvivorPickResponse,
+    summary="Resolver el resultado del pick",
+    tags=["Survivor"],
+)
+@limiter.limit("20/minute")
+def survivor_pick_resolver(
+    request: Request,
+    jornada: int,
+    resultado: str,
+    temporada: Optional[str] = None,
+    marcador_real: str = "",
+    api_key: str = Depends(verify_api_key),
+):
+    """Cierra la jornada como gano, empate o perdio, conservando el historial."""
+    from src.database import resolver_survivor_pick, temporada_survivor_actual
+
+    try:
+        return resolver_survivor_pick(
+            temporada or temporada_survivor_actual(),
+            jornada,
+            resultado,
+            marcador_real=marcador_real,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -421,12 +659,20 @@ async def telegram_webhook(
     x_telegram_bot_api_secret_token: Optional[str] = Header(None),
 ):
     """
-    Recibe updates de Telegram y responde a comandos del DUEÑO (/usado, /usados,
-    /quitar, /reset, /pick, /ayuda). Solo atiende el TELEGRAM_CHAT_ID configurado
-    y, si hay TELEGRAM_WEBHOOK_SECRET, valida el header secreto de Telegram.
+    Recibe updates de Telegram y responde a todos los comandos del dueño,
+    incluidos /mipick, /confirmar, /bloquear y /resolver. Si hay un secreto
+    explícito lo usa; si no, deriva uno estable de API_KEY + BOT_TOKEN.
     """
-    # 1) Validación del secreto del webhook (si está configurado).
-    secreto = os.getenv("TELEGRAM_WEBHOOK_SECRET", "").strip()
+    # 1) Validación del secreto del webhook (fail-closed en producción).
+    from src.telegram.configuracion import obtener_secreto_webhook
+
+    secreto = obtener_secreto_webhook()
+    if os.getenv("RENDER") and not secreto:
+        raise HTTPException(
+            status_code=503,
+            detail="TELEGRAM_WEBHOOK_SECRET no configurado y no se pudo derivar de API_KEY + BOT_TOKEN",
+        )
+
     if secreto and x_telegram_bot_api_secret_token != secreto:
         raise HTTPException(status_code=403, detail="Secreto de webhook inválido")
 
@@ -440,9 +686,11 @@ async def telegram_webhook(
 
     chat_id, texto = tw.extraer_mensaje(update)
 
-    # 2) Solo el dueño (chat configurado) puede operar.
+    # 2) Solo el dueño (chat configurado) puede operar; falla cerrado.
     chat_cfg = os.getenv("TELEGRAM_CHAT_ID", "").strip()
-    if chat_cfg and str(chat_id) != chat_cfg:
+    if not chat_cfg:
+        raise HTTPException(status_code=503, detail="TELEGRAM_CHAT_ID no configurado")
+    if str(chat_id) != chat_cfg:
         return {"ok": True}  # ignora mensajes de otros chats
 
     if not texto:
@@ -452,37 +700,73 @@ async def telegram_webhook(
     if cmd is None:
         return {"ok": True}  # texto normal, no comando
 
-    if cmd in tw.CMDS_PICK:
-        # Generación pesada (ESPN+modelo) en segundo plano; responde rápido.
-        background_tasks.add_task(tp.enviar_pronosticos)
-        tp.enviar_mensaje("🔄 Generando tu pronóstico y pick de la jornada...")
-    elif cmd in tw.CMDS_PLAN:
-        background_tasks.add_task(tp.enviar_plan)
-        tp.enviar_mensaje("🔄 Armando tu plan de temporada (las 17 jornadas)...")
-    elif cmd in tw.CMDS_MOMIOS:
-        background_tasks.add_task(tp.enviar_momios_estado)
-        tp.enviar_mensaje("🔄 Bajando momios y revisando cobertura...")
-    elif cmd in tw.CMDS_SEGUIMIENTO:
-        background_tasks.add_task(tp.enviar_seguimiento)
-        tp.enviar_mensaje("🔄 Armando tu lista de seguimiento de la jornada...")
-    elif cmd in tw.CMDS_PRUEBA:
-        background_tasks.add_task(tp.enviar_prueba)
-        tp.enviar_mensaje("🔄 Probando la estrategia con torneos pasados (tarda un poco)...")
-    elif cmd in tw.CMDS_CONFIANZA:
-        background_tasks.add_task(tp.enviar_confianza)
-        tp.enviar_mensaje("🔄 Revisando qué tan honesta es la confianza del bot...")
-    elif cmd in tw.CMDS_DERROTAS:
-        background_tasks.add_task(tp.enviar_derrotas)
-        tp.enviar_mensaje("🔄 Revisando en qué partidos cayó el bot y por qué...")
-    elif cmd in tw.CMDS_GANADORES:
-        background_tasks.add_task(tp.enviar_ganadores)
-        tp.enviar_mensaje("🔄 Calculando el 'Survivor perfecto' y comparándolo con el bot...")
-    elif cmd in tw.CMDS_ANALISIS:
-        background_tasks.add_task(tp.enviar_analisis_jornada)
-        tp.enviar_mensaje("🔄 Analizando la jornada: goles, tarjetas, alineaciones y conclusiones...")
+    update_id_raw = update.get("update_id")
+    update_id = update_id_raw if isinstance(update_id_raw, int) and not isinstance(update_id_raw, bool) else None
+    update_reclamado = False
+    if update_id is not None:
+        from src.database import reclamar_telegram_update
+
+        update_reclamado = reclamar_telegram_update(update_id)
+        if not update_reclamado:
+            return {"ok": True, "duplicado": True, "update_id": update_id}
+
+    try:
+        enviado = True
+
+        def _enviar(mensaje: str) -> bool:
+            ok = bool(tp.enviar_mensaje(mensaje))
+            if not ok:
+                logger.error("Telegram rechazó la respuesta al comando /%s", cmd)
+            return ok
+
+        if cmd in tw.CMDS_PICK:
+            # Generación pesada (ESPN+modelo) en segundo plano; responde rápido.
+            background_tasks.add_task(tp.enviar_pronosticos)
+            enviado = _enviar("🔄 Generando tu pronóstico y pick de la jornada...")
+        elif cmd in tw.CMDS_PLAN:
+            background_tasks.add_task(tp.enviar_plan)
+            enviado = _enviar("🔄 Armando tu plan de temporada (las 17 jornadas)...")
+        elif cmd in tw.CMDS_MOMIOS:
+            background_tasks.add_task(tp.enviar_momios_estado)
+            enviado = _enviar("🔄 Bajando momios y revisando cobertura...")
+        elif cmd in tw.CMDS_SEGUIMIENTO:
+            background_tasks.add_task(tp.enviar_seguimiento)
+            enviado = _enviar("🔄 Armando tu lista de seguimiento de la jornada...")
+        elif cmd in tw.CMDS_PRUEBA:
+            background_tasks.add_task(tp.enviar_prueba)
+            enviado = _enviar("🔄 Probando la estrategia con torneos pasados (tarda un poco)...")
+        elif cmd in tw.CMDS_CONFIANZA:
+            background_tasks.add_task(tp.enviar_confianza)
+            enviado = _enviar("🔄 Revisando qué tan honesta es la confianza del bot...")
+        elif cmd in tw.CMDS_DERROTAS:
+            background_tasks.add_task(tp.enviar_derrotas)
+            enviado = _enviar("🔄 Revisando en qué partidos cayó el bot y por qué...")
+        elif cmd in tw.CMDS_GANADORES:
+            background_tasks.add_task(tp.enviar_ganadores)
+            enviado = _enviar("🔄 Calculando el 'Survivor perfecto' y comparándolo con el bot...")
+        elif cmd in tw.CMDS_ANALISIS:
+            background_tasks.add_task(tp.enviar_analisis_jornada)
+            enviado = _enviar("🔄 Analizando la jornada: goles, tarjetas, alineaciones y conclusiones...")
+        else:
+            enviado = _enviar(tw.responder(cmd, arg))
+            if not enviado:
+                # Las operaciones ligeras son idempotentes; 502 hace que Telegram
+                # reintente el update en lugar de perder /mipick silenciosamente.
+                raise HTTPException(status_code=502, detail="No se pudo entregar la respuesta en Telegram")
+        if not enviado:
+            raise HTTPException(status_code=502, detail="No se pudo entregar la respuesta en Telegram")
+    except Exception as exc:
+        if update_reclamado and update_id is not None:
+            from src.database import fallar_telegram_update
+
+            fallar_telegram_update(update_id, type(exc).__name__)
+        raise
     else:
-        tp.enviar_mensaje(tw.responder(cmd, arg))
-    return {"ok": True}
+        if update_reclamado and update_id is not None:
+            from src.database import completar_telegram_update
+
+            completar_telegram_update(update_id)
+        return {"ok": enviado, "comando": cmd, "update_id": update_id}
 
 
 @app.get("/stats", summary="Métricas de rendimiento", tags=["Analytics"])
@@ -549,86 +833,49 @@ def settle_pick_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/dashboard", response_class=HTMLResponse, summary="Dashboard visual", tags=["Dashboard"])
-def dashboard():
-    stats = get_metrics()
+DASHBOARD_SECURITY_HEADERS = {
+    "Cache-Control": "no-store, max-age=0",
+    "Content-Security-Policy": (
+        "default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; "
+        "form-action 'self'; connect-src 'self'; img-src 'self' data:; "
+        "style-src 'self'; script-src 'self'"
+    ),
+    "Cross-Origin-Opener-Policy": "same-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+}
 
-    html = """<!DOCTYPE html>
-<html>
-<head>
-    <title>Survivor LigaMX Dashboard</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-        body {{ font-family: Arial, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; background: #f5f5f5; }}
-        .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 10px; margin-bottom: 30px; }}
-        .metrics {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }}
-        .metric {{ background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
-        .metric h3 {{ margin: 0; color: #666; font-size: 14px; }}
-        .metric .value {{ font-size: 32px; font-weight: bold; color: #333; margin-top: 10px; }}
-        .chart-container {{ background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }}
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h1>📊 Survivor LigaMX Premium</h1>
-        <p>Dashboard de Rendimiento en Vivo</p>
-    </div>
-    <div class="metrics">
-        <div class="metric">
-            <h3>Total Picks</h3>
-            <div class="value">{total_picks}</div>
-        </div>
-        <div class="metric">
-            <h3>Wins</h3>
-            <div class="value">{wins}</div>
-        </div>
-        <div class="metric">
-            <h3>Win Rate</h3>
-            <div class="value">{win_rate}%</div>
-        </div>
-        <div class="metric">
-            <h3>Total Profit</h3>
-            <div class="value">{total_profit}</div>
-        </div>
-    </div>
-    <div class="chart-container">
-        <h3>📈 Rendimiento</h3>
-        <canvas id="performanceChart"></canvas>
-    </div>
-    <script>
-        const ctx = document.getElementById('performanceChart').getContext('2d');
-        new Chart(ctx, {{
-            type: 'bar',
-            data: {{
-                labels: ['Total Picks', 'Wins', 'Losses'],
-                datasets: [{{
-                    label: 'Estadísticas',
-                    data: [{total_picks}, {wins}, {losses}],
-                    backgroundColor: ['#667eea', '#10b981', '#ef4444']
-                }}]
-            }},
-            options: {{
-                responsive: true,
-                plugins: {{
-                    legend: {{ display: false }}
-                }}
-            }}
-        }});
-    </script>
-    <p><a href="/docs">📚 Ver documentación API</a></p>
-</body>
-</html>"""
 
-    losses = stats["total_picks"] - stats["wins"]
-    html = html.format(
-        total_picks=stats["total_picks"],
-        wins=stats["wins"],
-        win_rate=f"{stats['win_rate']:.1f}",
-        total_profit=f"{stats['total_profit']:.2f}",
-        losses=losses,
+@app.get("/", include_in_schema=False)
+def root():
+    """Entrada del producto: lleva directamente a Mi Survivor."""
+    return RedirectResponse(url="/dashboard", status_code=307, headers={"Cache-Control": "no-store"})
+
+
+@app.get("/dashboard/assets/{asset_name}", include_in_schema=False)
+def dashboard_asset(asset_name: str):
+    """Sirve únicamente los dos assets permitidos; nunca publica el HTML alterno."""
+    media_types = {"app.css": "text/css", "app.js": "application/javascript"}
+    media_type = media_types.get(asset_name)
+    if media_type is None:
+        raise HTTPException(status_code=404, detail="Asset no encontrado")
+    return FileResponse(
+        DASHBOARD_DIR / asset_name,
+        media_type=media_type,
+        headers=DASHBOARD_SECURITY_HEADERS,
     )
 
-    return HTMLResponse(content=html)
+
+@app.get("/dashboard", summary="Mi Survivor", tags=["Dashboard"])
+def dashboard():
+    """Shell owner-only: los datos se solicitan con X-API-Key desde la pestaña."""
+    return FileResponse(
+        DASHBOARD_DIR / "index.html",
+        media_type="text/html",
+        headers=DASHBOARD_SECURITY_HEADERS,
+    )
 
 
 @app.get("/debug/jornadas", summary="Debug: ver contenido de jornadas.json", tags=["Debug"])

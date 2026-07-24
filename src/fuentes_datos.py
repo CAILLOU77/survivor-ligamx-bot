@@ -25,15 +25,9 @@ try:
 except ImportError:  # pragma: no cover
     requests = None  # type: ignore[assignment]
 
-try:
-    import espn_data
-except ImportError:  # pragma: no cover
-    from src import espn_data  # type: ignore
+from src import espn_data
 
-try:
-    import ligamx_api
-except ImportError:  # pragma: no cover
-    from src import ligamx_api  # type: ignore
+from src import ligamx_api
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 CACHE_PATH = BASE_DIR / "data" / "resultados_historicos.json"
@@ -228,10 +222,8 @@ def estado_fuentes() -> Dict[str, Any]:
 
     # IA opcional (Groq): estado por presencia de key (sin llamada de red).
     try:
-        try:
-            import analista_ia
-        except ImportError:  # pragma: no cover
-            from src import analista_ia  # type: ignore
+        from src import analista_ia
+
         groq = (
             {"ok": True, "estado": "habilitado (IA opcional)"}
             if analista_ia.habilitado()
