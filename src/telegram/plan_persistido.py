@@ -44,17 +44,6 @@ def _cargar_historial_cerrado() -> List[Dict[str, Any]]:
     return historial
 
 
-def _fecha_inicio_torneo(calendario: List[Dict[str, Any]]) -> Optional[str]:
-    """Extrae la fecha del primer partido del calendario como inicio del torneo."""
-    fechas: List[str] = []
-    for bloque in calendario:
-        for partido in bloque.get("partidos") or []:
-            fecha = str(partido.get("fecha") or "")[:10]
-            if fecha:
-                fechas.append(fecha)
-    return min(fechas) if fechas else None
-
-
 def _plan_temporada(
     equipos_usados: Optional[List[str]],
     peso_victoria: float = 0.5,
@@ -134,44 +123,109 @@ def _plan_temporada(
             "error": str(exc),
         }
 
-    # ── capa de tendencias del torneo (no bloqueante) ─────────────────
-    tendencias_aplicadas = False
+    resultado["historial_cerrado"] = historial
+    resultado["jornada_plan_desde"] = min(int(bloque["jornada"]) for bloque in calendario_filtrado)
+    return resultado
+
+
+def _fecha_inicio_torneo(calendario: List[Dict[str, Any]]) -> Optional[str]:
+    """Extrae la fecha del primer partido del calendario como inicio del torneo."""
+    fechas: List[str] = []
+    for bloque in calendario:
+        for partido in bloque.get("partidos") or []:
+            fecha = str(partido.get("fecha") or "")[:10]
+            if fecha:
+                fechas.append(fecha)
+    return min(fechas) if fechas else None
+
+
+def _aplicar_tendencias(
+    plan: Dict[str, Any],
+    equipos_usados: Optional[List[str]],
+    peso_victoria: float,
+    usar_momios: bool,
+    permitir_descarga: bool,
+) -> bool:
+    """Aplica tendencias del torneo al plan si hay datos disponibles. No bloqueante."""
     try:
+        from src import fuentes_datos
+        from src import planificador_survivor as plan_mod
+        from src import poisson_model as pm
         from src import tendencias_torneo as tt
+
+        calendario = plan_mod.cargar_calendario()
+        if not calendario:
+            return False
 
         fecha_inicio = _fecha_inicio_torneo(calendario)
         datos_torneo = tt.cargar_resultados_torneo_actual(fecha_inicio)
         resultados_torneo = datos_torneo.get("resultados")
-        if isinstance(resultados_torneo, list) and resultados_torneo:
-            tendencias = tt.calcular_tendencias(resultados_torneo, None)
-            if tendencias:
-                _plan = resultado.get("plan")
-                if isinstance(_plan, list) and _plan:
-                    fuerzas = pm.calcular_fuerzas(resultados)
-                    fuerzas = tt.ajustar_fuerzas(fuerzas, tendencias)
-                    odds = plan_mod.construir_odds_por_partido(calendario_filtrado) if usar_momios else None
-                    resultado = plan_mod.planificar(
-                        calendario_filtrado,
-                        fuerzas,
-                        equipos_usados=equipos_usados,
-                        peso_victoria=peso_victoria,
-                        odds_por_partido=odds,
-                    )
-                    if not isinstance(resultado, dict):
-                        resultado = {"calendario_incompleto": True, "plan": []}
-                    tendencias_aplicadas = True
-                    logger.info(
-                        "Tendencias del torneo aplicadas: %d equipos con señal",
-                        len(tendencias),
-                    )
+        if not isinstance(resultados_torneo, list) or not resultados_torneo:
+            return False
+
+        tendencias = tt.calcular_tendencias(resultados_torneo, None)
+        if not tendencias:
+            return False
+
+        _plan = plan.get("plan")
+        if not isinstance(_plan, list) or not _plan:
+            return False
+
+        # Build complete calendar for re-planning
+        historial = plan.get("historial_cerrado") or []
+        jornadas_cerradas = {int(item["jornada"]) for item in historial}
+        jornada_desde = plan.get("jornada_plan_desde")
+        if jornada_desde is None:
+            return False
+
+        calendario_filtrado: List[Dict[str, Any]] = []
+        for bloque in calendario:
+            try:
+                jornada = int(str(bloque.get("jornada")))
+            except (TypeError, ValueError):
+                continue
+            if jornada >= jornada_desde and jornada not in jornadas_cerradas:
+                calendario_filtrado.append(bloque)
+
+        if not calendario_filtrado:
+            return False
+
+        resultados = fuentes_datos.leer_cache()
+        if not resultados and permitir_descarga:
+            datos = fuentes_datos.obtener_resultados(meses=18)
+            datos_resultados = datos.get("resultados")
+            resultados = datos_resultados if isinstance(datos_resultados, list) else []
+        if not resultados:
+            return False
+
+        fuerzas = pm.calcular_fuerzas(resultados)
+        fuerzas = tt.ajustar_fuerzas(fuerzas, tendencias)
+        odds = plan_mod.construir_odds_por_partido(calendario_filtrado) if usar_momios else None
+        nuevo = plan_mod.planificar(
+            calendario_filtrado,
+            fuerzas,
+            equipos_usados=equipos_usados,
+            peso_victoria=peso_victoria,
+            odds_por_partido=odds,
+        )
+        if isinstance(nuevo, dict):
+            plan["plan"] = nuevo.get("plan", plan.get("plan"))
+            plan["prob_supervivencia_total_pct"] = nuevo.get(
+                "prob_supervivencia_total_pct",
+                plan.get("prob_supervivencia_total_pct"),
+            )
+            plan["victorias_esperadas"] = nuevo.get(
+                "victorias_esperadas", plan.get("victorias_esperadas")
+            )
+
+        logger.info(
+            "Tendencias del torneo aplicadas: %d equipos con señal",
+            len(tendencias),
+        )
+        return True
     except Exception:
         logger.debug("Capa de tendencias no disponible", exc_info=True)
-    # ───────────────────────────────────────────────────────────────────
-
-    resultado["historial_cerrado"] = historial
-    resultado["jornada_plan_desde"] = min(int(bloque["jornada"]) for bloque in calendario_filtrado)
-    resultado["tendencias_aplicadas"] = tendencias_aplicadas
-    return resultado
+        return False
 
 
 def _estado_historial(item: Dict[str, Any]) -> str:
@@ -260,6 +314,11 @@ def enviar_plan(
         peso_victoria=peso_victoria,
         usar_momios=usar_momios,
     )
+    tendencias_aplicadas = _aplicar_tendencias(
+        plan, equipos_usados, peso_victoria, usar_momios, True
+    )
+    plan["tendencias_aplicadas"] = tendencias_aplicadas
+
     mensaje = (
         "🧠 <b>ANÁLISIS INTELIGENTE</b>\n"
         "<i>Plan optimizado para sobrevivir sin repetir equipo y priorizar victorias.</i>\n\n"
